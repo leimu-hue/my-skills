@@ -26,12 +26,24 @@ public class UserManager {
 }
 
 // ✅ 正确：每个类只有一个职责
+/**
+ * 用户领域服务。
+ *
+ * 负责用户创建流程中的业务编排，不直接承载控制层或持久层细节。
+ */
 @Service
+@RequiredArgsConstructor
 public class UserService {
     private final UserRepository userRepository;
     private final EmailService emailService;
     private final ReportService reportService;
 
+    /**
+     * 创建用户并在成功后发送欢迎邮件。
+     *
+     * @param request 用户创建请求
+     * @return 创建后的用户对象
+     */
     public User createUser(UserCreateRequest request) {
         User user = buildUser(request);
         user = userRepository.save(user);
@@ -40,15 +52,31 @@ public class UserService {
     }
 }
 
+/**
+ * 邮件发送服务。
+ */
 @Service
 public class EmailService {
+    /**
+     * 发送欢迎邮件。
+     *
+     * @param user 新注册用户
+     */
     public void sendWelcomeEmail(User user) {
         // 只负责发送邮件
     }
 }
 
+/**
+ * 报表生成服务。
+ */
 @Service
 public class ReportService {
+    /**
+     * 生成用户报表。
+     *
+     * @param user 用户对象
+     */
     public void generateUserReport(User user) {
         // 只负责生成报告
     }
@@ -104,9 +132,16 @@ public class AlipayProcessor implements PaymentProcessor {
 }
 
 @Service
+@RequiredArgsConstructor
 public class PaymentService {
     private final List<PaymentProcessor> processors;
 
+    /**
+     * 根据支付类型选择处理器并执行支付。
+     *
+     * @param payment 支付请求
+     * @return 支付结果
+     */
     public PaymentResult processPayment(Payment payment) {
         PaymentProcessor processor = processors.stream()
             .filter(p -> p.supports(payment.getType()))
@@ -316,13 +351,25 @@ public class UserController {
 }
 
 // Service层：业务逻辑
+/**
+ * 用户应用服务。
+ *
+ * 负责承接控制层请求并组织用户创建相关流程。
+ */
 @Service
 @Transactional
+@RequiredArgsConstructor
 public class UserService {
 
     private final UserRepository userRepository;
     private final EmailService emailService;
 
+    /**
+     * 创建用户。
+     *
+     * @param request 用户创建请求
+     * @return 创建成功后的用户
+     */
     public User createUser(UserCreateRequest request) {
         // 业务验证
         validateUserCreateRequest(request);
@@ -410,6 +457,14 @@ public class SmsNotification implements Notification {
 public class NotificationFactory {
     private final Map<NotificationType, Notification> notifications;
 
+    /**
+     * 基于已注册的通知实现创建通知查找表。
+     *
+     * <p>示例：
+     * <pre>{@code
+     * Notification notification = notificationFactory.getNotification(NotificationType.EMAIL);
+     * }</pre>
+     */
     public NotificationFactory(List<Notification> notificationList) {
         this.notifications = notificationList.stream()
             .collect(Collectors.toMap(
@@ -418,6 +473,12 @@ public class NotificationFactory {
             ));
     }
 
+    /**
+     * 根据通知类型返回对应实现。
+     *
+     * @param type 通知类型
+     * @return 通知实现
+     */
     public Notification getNotification(NotificationType type) {
         return notifications.get(type);
     }
@@ -872,6 +933,11 @@ public class UserController {
 #### 请求格式
 ```java
 // ✅ 正确：标准的请求格式
+/**
+ * 用户创建请求。
+ */
+@Data
+@Builder
 public class UserCreateRequest {
     @NotBlank(message = "用户名不能为空")
     @Size(min = 3, max = 50, message = "用户名长度必须在3-50个字符之间")
@@ -884,77 +950,100 @@ public class UserCreateRequest {
     @NotBlank(message = "密码不能为空")
     @Size(min = 8, message = "密码长度不能少于8个字符")
     private String password;
-
-    // getters and setters
 }
 
+/**
+ * 用户更新请求。
+ */
+@Data
 public class UserUpdateRequest {
     @Size(min = 3, max = 50, message = "用户名长度必须在3-50个字符之间")
     private String userName;
 
     @Email(message = "邮箱格式不正确")
     private String email;
-
-    // getters and setters
 }
 ```
 
 #### 响应格式
 ```java
 // ✅ 正确：统一的响应格式
+/**
+ * 通用接口响应体。
+ */
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
 public class ApiResponse<T> {
     private int code;
     private String message;
     private T data;
     private long timestamp;
 
-    public ApiResponse(int code, String message, T data) {
-        this.code = code;
-        this.message = message;
-        this.data = data;
-        this.timestamp = System.currentTimeMillis();
-    }
-
+    /**
+     * 返回成功响应。
+     *
+     * @param data 响应数据
+     * @return 成功响应
+     */
     public static <T> ApiResponse<T> success(T data) {
-        return new ApiResponse<>(200, "success", data);
+        return new ApiResponse<>(200, "success", data, System.currentTimeMillis());
     }
 
+    /**
+     * 返回带消息的成功响应。
+     *
+     * @param message 成功消息
+     * @param data 响应数据
+     * @return 成功响应
+     */
     public static <T> ApiResponse<T> success(String message, T data) {
-        return new ApiResponse<>(200, message, data);
+        return new ApiResponse<>(200, message, data, System.currentTimeMillis());
     }
 
+    /**
+     * 返回无数据成功响应。
+     *
+     * @return 成功响应
+     */
     public static ApiResponse<Void> success() {
-        return new ApiResponse<>(200, "success", null);
+        return new ApiResponse<>(200, "success", null, System.currentTimeMillis());
     }
 
+    /**
+     * 返回失败响应。
+     *
+     * @param code 错误码
+     * @param message 错误信息
+     * @return 失败响应
+     */
     public static ApiResponse<Void> error(int code, String message) {
-        return new ApiResponse<>(code, message, null);
+        return new ApiResponse<>(code, message, null, System.currentTimeMillis());
     }
-
-    // getters and setters
 }
 
 // 错误响应格式
+/**
+ * 错误响应体。
+ */
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
 public class ErrorResponse {
     private int code;
     private String message;
     private String details;
     private long timestamp;
-
-    public ErrorResponse(int code, String message, String details) {
-        this.code = code;
-        this.message = message;
-        this.details = details;
-        this.timestamp = System.currentTimeMillis();
-    }
-
-    // getters and setters
 }
 ```
 
 #### 分页响应
 ```java
 // ✅ 正确：分页响应格式
+/**
+ * 分页响应对象。
+ */
+@Data
 public class PageResponse<T> {
     private List<T> content;
     private int pageNumber;
@@ -966,6 +1055,12 @@ public class PageResponse<T> {
     private boolean hasNext;
     private boolean hasPrevious;
 
+    /**
+     * 根据 Spring Data 分页对象构建分页响应。
+     *
+     * @param page 原始分页对象
+     * @return 分页响应
+     */
     public static <T> PageResponse<T> from(Page<T> page) {
         PageResponse<T> response = new PageResponse<>();
         response.setContent(page.getContent());
@@ -979,8 +1074,6 @@ public class PageResponse<T> {
         response.setHasPrevious(page.hasPrevious());
         return response;
     }
-
-    // getters and setters
 }
 
 // 使用示例

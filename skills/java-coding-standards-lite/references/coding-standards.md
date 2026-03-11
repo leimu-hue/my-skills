@@ -604,6 +604,12 @@ public User updateUser(Long id, UserUpdateRequest request) {
 
 ## 注释规范
 
+### 强制要求
+- 新增类必须添加类级别注释，说明职责、适用场景和必要的使用方式
+- 新增方法必须添加方法级别注释，说明用途、关键参数、返回值以及异常或副作用
+- 对外复用的类、工具类、适配器、策略类，建议补充最小可运行示例，帮助调用方快速理解用法
+- 注释应解释业务意图和约束，不要只把方法名换一种说法重复一遍
+
 ### 类级别注释
 ```java
 /**
@@ -617,6 +623,23 @@ public User updateUser(Long id, UserUpdateRequest request) {
  * @since 2023-01-01
  */
 public class UserService {
+    // 类实现
+}
+```
+
+```java
+/**
+ * 用户注册服务。
+ *
+ * 负责处理注册参数校验、用户落库以及注册后的通知动作。
+ *
+ * <p>示例：
+ * <pre>{@code
+ * User user = userRegisterService.register(request);
+ * }</pre>
+ */
+@Service
+public class UserRegisterService {
     // 类实现
 }
 ```
@@ -636,6 +659,20 @@ public User getUserById(Long id) {
 }
 ```
 
+```java
+/**
+ * 创建新用户并返回持久化结果。
+ *
+ * @param request 用户创建请求，不能为空
+ * @return 已保存的用户对象
+ * @throws IllegalArgumentException 当请求为空时抛出
+ * @throws ValidationException 当用户名或邮箱不合法时抛出
+ */
+public User createUser(UserCreateRequest request) {
+    // 方法实现
+}
+```
+
 ### 行内注释
 ```java
 // ✅ 正确：解释复杂逻辑
@@ -647,6 +684,66 @@ if (user.getStatus() == USER_STATUS_ACTIVE &&
 
 // ❌ 错误：注释过于简单
 int count = 0; // 设置count为0
+```
+
+## Lombok 使用约定
+
+### 基本原则
+- 在模块已经使用 Lombok 的前提下，优先使用 Lombok 注解减少重复样板代码
+- Spring Bean 的依赖注入优先使用 `final` 字段配合 `@RequiredArgsConstructor`
+- DTO、VO、命令对象、返回对象等简单数据载体，优先使用 `@Data`、`@Getter`、`@Setter`、`@Builder`
+- 日志类优先使用 `@Slf4j`，避免重复声明 `Logger`
+- 如果当前包或模块明确不使用 Lombok，则遵循本地约定，不要强行引入
+
+### 推荐示例
+```java
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class UserService {
+
+    private final UserDao userDao;
+    private final EmailService emailService;
+
+    /**
+     * 根据用户ID查询用户。
+     *
+     * @param id 用户ID
+     * @return 用户信息
+     */
+    public User getUserById(Long id) {
+        if (id == null) {
+            throw new IllegalArgumentException("ID不能为空");
+        }
+        return userDao.selectById(id);
+    }
+}
+
+@Data
+@Builder
+public class UserCreateRequest {
+    private String userName;
+    private String email;
+}
+```
+
+### 不推荐示例
+```java
+public class UserService {
+    private static final Logger logger = LoggerFactory.getLogger(UserService.class);
+
+    private final UserDao userDao;
+    private final EmailService emailService;
+
+    public UserService(UserDao userDao, EmailService emailService) {
+        this.userDao = userDao;
+        this.emailService = emailService;
+    }
+
+    public UserDao getUserDao() {
+        return userDao;
+    }
+}
 ```
 
 ## 代码质量检查清单
@@ -673,6 +770,17 @@ int count = 0; // 设置count为0
 - [ ] 方法参数不超过5个
 - [ ] 方法职责单一
 - [ ] 参数验证完整
+- [ ] 新增方法包含必要注释
+
+### 注释与文档检查
+- [ ] 新增类包含类注释
+- [ ] 新增方法包含方法注释
+- [ ] 复用类在必要时提供示例
+
+### Lombok检查
+- [ ] Lombok 已使用的模块优先减少样板代码
+- [ ] Spring Bean 优先使用 `@RequiredArgsConstructor`
+- [ ] DTO/VO 未手写重复 getter/setter/constructor
 
 ### 集合检查
 - [ ] 集合初始化指定容量
