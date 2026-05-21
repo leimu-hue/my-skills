@@ -1,44 +1,26 @@
 # 异常处理与日志规范
 
-## 异常处理原则
+## 基本原则
 
-### 异常分类
+- 异常用于表达失败原因，不用于普通流程控制
+- 能在边界处校验的参数，尽早校验并抛出明确异常
+- 捕获异常后必须处理、转换或继续抛出，禁止空 `catch`、`printStackTrace()`
+- 转换异常时保留原始异常作为 `cause`
+- 默认由全局异常处理器统一转换 HTTP 响应，Controller 不手写重复 `try/catch`
+- 同一个异常不要在多层重复打 ERROR 日志；优先在最终处理边界记录
 
-#### 检查型异常（Checked Exception）
-- 编译时检查，必须处理
-- 用于可恢复的错误情况
-- 调用者需要处理或声明抛出
+## 异常分类
 
-```java
-// ✅ 正确：检查型异常用于可恢复错误
-public void readFile(String path) throws FileNotFoundException {
-    if (!Files.exists(Paths.get(path))) {
-        throw new FileNotFoundException("文件不存在: " + path);
-    }
-    // 读取文件
-}
-```
+| 类型 | 适用场景 | 建议 |
+| --- | --- | --- |
+| Checked Exception | 调用方可恢复且必须显式处理的外部失败，如文件、网络、IO | 只在确实需要调用方处理时使用 |
+| Runtime Exception | 参数非法、业务规则失败、不可恢复系统错误 | 业务代码默认使用 |
+| BusinessException | 业务可预期失败，如用户不存在、余额不足、重复提交 | 带稳定错误码和用户可理解消息 |
+| SystemException | 数据库、缓存、RPC、未知系统失败 | 对外返回泛化消息，日志保留 cause |
 
-#### 运行时异常（Unchecked Exception）
-- 运行时检查，不强制处理
-- 用于编程错误或不可恢复错误
-- 通常表示代码逻辑问题
+业务异常示例：
 
 ```java
-// ✅ 正确：运行时异常用于编程错误
-public int divide(int a, int b) {
-    if (b == 0) {
-        throw new IllegalArgumentException("除数不能为零");
-    }
-    return a / b;
-}
-```
-
-### 异常层次结构
-
-#### 自定义异常设计
-```java
-// 基础业务异常
 public class BusinessException extends RuntimeException {
     private final String errorCode;
 
@@ -51,445 +33,158 @@ public class BusinessException extends RuntimeException {
         super(message, cause);
         this.errorCode = errorCode;
     }
-
-    public String getErrorCode() {
-        return errorCode;
-    }
-}
-
-// 特定业务异常
-public class UserNotFoundException extends BusinessException {
-    public UserNotFoundException(String userId) {
-        super("USER_NOT_FOUND", "用户不存在: " + userId);
-    }
-}
-
-public class ValidationException extends BusinessException {
-    public ValidationException(String message) {
-        super("VALIDATION_ERROR", message);
-    }
-
-    public ValidationException(String field, String message) {
-        super("VALIDATION_ERROR", String.format("字段[%s]验证失败: %s", field, message));
-    }
-
-    public ValidationException(String field, String message, Throwable cause) {
-        super("VALIDATION_ERROR", String.format("字段[%s]验证失败: %s", field, message), cause);
-    }
-}
-
-public class InsufficientBalanceException extends BusinessException {
-    public InsufficientBalanceException(BigDecimal balance, BigDecimal amount) {
-        super("INSUFFICIENT_BALANCE",
-              String.format("余额不足，当前余额: %s, 需要金额: %s", balance, amount));
-    }
 }
 ```
 
-## 异常处理最佳实践
+## 抛出与转换
 
-### 1. 异常抛出原则
+### 参数与业务校验
 
-#### 尽早抛出
+- 参数为空、格式非法、范围非法：优先 `IllegalArgumentException` 或项目统一的 `ValidationException`
+- 业务规则不满足：抛出明确的业务异常，错误码保持稳定
+- 异常消息包含必要上下文，但不要包含密码、密钥、完整证件号、完整卡号等敏感信息
+
 ```java
-// ✅ 正确：尽早验证参数并抛出异常
 public User getUserById(Long id) {
-    if (id == null) {
-        throw new IllegalArgumentException("用户ID不能为空");
-    }
-    if (id <= 0) {
+    if (id == null || id <= 0) {
         throw new IllegalArgumentException("用户ID必须大于0");
     }
-
-    User user = userDao.selectById(id);
-    if (user == null) {
-        throw new UserNotFoundException(id.toString());
-    }
-
-    return user;
-}
-
-// ❌ 错误：延迟验证
-public User getUserById(Long id) {
-    // 直接使用id，可能在后续操作中才发现问题
-    User user = userDao.selectById(id); // 如果id为null，可能抛出NPE
-    return user;
+    return userRepository.findById(id)
+        .orElseThrow(() -> new UserNotFoundException(id));
 }
 ```
 
-#### 提供详细信息
+### 底层异常转换
+
+- Repository / Client / Adapter 层可捕获底层异常并转换为项目异常
+- 转换时必须传入原始异常，避免丢失堆栈
+- 不要把底层错误细节直接暴露给外部用户
+
 ```java
-// ✅ 正确：异常信息包含详细信息
-public void transferMoney(Long fromAccountId, Long toAccountId, BigDecimal amount) {
-    if (fromAccountId == null) {
-        throw new IllegalArgumentException("转出账户ID不能为空");
-    }
-    if (toAccountId == null) {
-        throw new IllegalArgumentException("转入账户ID不能为空");
-    }
-    if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
-        throw new IllegalArgumentException("转账金额必须大于0，当前金额: " + amount);
-    }
-    if (fromAccountId.equals(toAccountId)) {
-        throw new IllegalArgumentException("转出账户和转入账户不能相同");
-    }
-
-    // 业务逻辑
-}
-```
-
-### 2. 异常捕获原则
-
-#### 不要捕获异常后什么都不做
-```java
-// ❌ 错误：空的catch块
-try {
-    processOrder(order);
-} catch (Exception e) {
-    // 什么都没做，静默失败
-}
-
-// ❌ 错误：只打印堆栈，没有处理
-try {
-    processOrder(order);
-} catch (Exception e) {
-    e.printStackTrace();
-}
-
-// ✅ 正确：适当的异常处理
-try {
-    processOrder(order);
-} catch (BusinessException e) {
-    // 业务异常，记录日志并返回错误信息
-    logger.warn("订单处理失败，订单号: {}, 错误: {}", order.getOrderNo(), e.getMessage());
-    throw e;
-} catch (Exception e) {
-    // 系统异常，记录详细日志并转换为业务异常
-    logger.error("订单处理发生系统错误，订单号: {}", order.getOrderNo(), e);
-    throw new BusinessException("SYSTEM_ERROR", "系统繁忙，请稍后重试", e);
-}
-```
-
-#### 捕获特定异常
-```java
-// ✅ 正确：捕获特定异常类型
-public void processFile(String filePath) {
-    try {
-        readFile(filePath);
-    } catch (FileNotFoundException e) {
-        // 处理文件不存在的情况
-        logger.warn("文件不存在: {}", filePath);
-        createDefaultFile(filePath);
-    } catch (IOException e) {
-        // 处理IO异常
-        logger.error("读取文件失败: {}", filePath, e);
-        throw new BusinessException("FILE_READ_ERROR", "文件读取失败", e);
-    }
-}
-
-// ❌ 错误：捕获过于宽泛的异常
-public void processFile(String filePath) {
-    try {
-        readFile(filePath);
-    } catch (Exception e) { // 捕获所有异常
-        logger.error("处理文件失败", e);
-    }
-}
-```
-
-### 3. 异常转换
-
-#### 将底层异常转换为业务异常
-```java
-// ✅ 正确：异常转换
 public User createUser(UserCreateRequest request) {
     try {
-        return userDao.insert(request.toUser());
+        return userRepository.save(request.toUser());
     } catch (DuplicateKeyException e) {
-        // 数据库异常转换为业务异常
         throw new BusinessException("USER_EXISTS", "用户名已存在", e);
-    } catch (DataIntegrityViolationException e) {
-        // 数据完整性异常
-        throw new ValidationException("data", "数据格式不正确", e);
-    } catch (Exception e) {
-        // 其他数据库异常
-        logger.error("创建用户失败，请求: {}", request, e);
-        throw new BusinessException("SYSTEM_ERROR", "系统错误，请稍后重试", e);
+    } catch (DataAccessException e) {
+        throw new SystemException("USER_CREATE_FAILED", "用户创建失败", e);
     }
 }
 ```
 
-#### 保留原始异常信息
+## 捕获边界
+
+推荐处理位置：
+
+- Service：处理业务补偿、异常转换、事务回滚语义
+- Adapter / Client：转换第三方、RPC、SDK、IO 异常
+- GlobalExceptionHandler：统一 HTTP 状态码、错误响应、最终日志
+- Controller：默认不捕获异常，除非该接口有明确局部恢复逻辑
+
 ```java
-// ✅ 正确：保留原始异常作为cause
-public void serviceMethod() {
-    try {
-        daoMethod();
-    } catch (SQLException e) {
-        throw new BusinessException("DATABASE_ERROR", "数据库操作失败", e);
+@RestControllerAdvice
+public class GlobalExceptionHandler {
+
+    @ExceptionHandler(BusinessException.class)
+    public ResponseEntity<ErrorResponse> handleBusiness(BusinessException e) {
+        log.warn("业务处理失败 code={} message={}", e.getErrorCode(), e.getMessage());
+        return ResponseEntity.unprocessableEntity()
+            .body(ErrorResponse.of(e.getErrorCode(), e.getMessage()));
     }
-}
 
-// ❌ 错误：丢失原始异常信息
-public void serviceMethod() {
-    try {
-        daoMethod();
-    } catch (SQLException e) {
-        throw new BusinessException("DATABASE_ERROR", "数据库操作失败");
-        // 原始SQLException信息丢失
-    }
-}
-```
-
-### 4. 异常传播
-
-#### 适当传播异常
-```java
-// ✅ 正确：在合适层级处理异常
-@Service
-public class OrderService {
-
-    @Transactional
-    public OrderResult createOrder(OrderCreateRequest request) {
-        try {
-            // 业务逻辑
-            validateRequest(request);
-            Order order = buildOrder(request);
-            orderDao.save(order);
-            processPayment(order);
-            return OrderResult.success(order);
-        } catch (ValidationException e) {
-            // 验证异常直接抛出
-            throw e;
-        } catch (PaymentException e) {
-            // 支付异常，可能需要特殊处理
-            logger.error("订单支付失败，订单: {}", request, e);
-            throw new BusinessException("PAYMENT_FAILED", "支付失败，请检查支付信息", e);
-        } catch (Exception e) {
-            // 系统异常，记录日志并抛出
-            logger.error("创建订单失败，请求: {}", request, e);
-            throw new BusinessException("ORDER_CREATE_FAILED", "订单创建失败", e);
-        }
-    }
-}
-
-@Controller
-public class OrderController {
-
-    @PostMapping("/orders")
-    public ResponseEntity<?> createOrder(@RequestBody OrderCreateRequest request) {
-        try {
-            OrderResult result = orderService.createOrder(request);
-            return ResponseEntity.ok(result);
-        } catch (ValidationException e) {
-            // 参数验证错误，返回400
-            return ResponseEntity.badRequest().body(
-                ErrorResponse.of(e.getErrorCode(), e.getMessage()));
-        } catch (BusinessException e) {
-            // 业务错误，返回422
-            return ResponseEntity.unprocessableEntity().body(
-                ErrorResponse.of(e.getErrorCode(), e.getMessage()));
-        } catch (Exception e) {
-            // 系统错误，返回500
-            logger.error("创建订单发生未预期错误", e);
-            return ResponseEntity.internalServerError().body(
-                ErrorResponse.of("INTERNAL_ERROR", "系统繁忙，请稍后重试"));
-        }
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<ErrorResponse> handleUnknown(Exception e) {
+        log.error("未预期系统异常", e);
+        return ResponseEntity.internalServerError()
+            .body(ErrorResponse.of("INTERNAL_ERROR", "系统繁忙，请稍后重试"));
     }
 }
 ```
 
-## 日志规范
+## 日志级别
 
-### 日志级别使用
+| 级别 | 使用场景 | 不要用于 |
+| --- | --- | --- |
+| DEBUG | 调试细节、入参摘要、分支选择、耗时明细 | 默认生产审计 |
+| INFO | 关键业务结果、状态流转、外部任务启动/结束 | 高频循环、敏感参数 |
+| WARN | 可恢复失败、业务预期失败、降级、重试、缓存异常 | 已由调用方正常处理的噪声 |
+| ERROR | 不可恢复系统错误、未知异常、数据不一致、外部依赖持续失败 | 普通参数校验和可预期业务失败 |
 
-#### DEBUG级别
+## 日志写法
+
+### 参数化与上下文
+
+- 使用参数化日志，不拼接字符串
+- 日志必须包含排查所需上下文，如 `orderNo`、`userId`、`requestId`、`gateway`、`errorCode`
+- 异常对象放在最后一个参数，保留完整堆栈
+
 ```java
-// 用于调试信息，生产环境通常关闭
-logger.debug("开始处理用户请求，用户ID: {}", userId);
-logger.debug("SQL查询: {}, 参数: {}", sql, parameters);
-logger.debug("方法执行时间: {} ms", executionTime);
-```
+log.info("订单创建成功 orderNo={} userId={} amount={}",
+    orderNo, userId, amount);
 
-#### INFO级别
-```java
-// 用于重要业务操作记录
-logger.info("用户登录成功，用户名: {}, IP: {}", username, ip);
-logger.info("订单创建成功，订单号: {}, 金额: {}", orderNo, amount);
-logger.info("支付处理完成，交易号: {}, 状态: {}", transactionId, status);
-```
-
-#### WARN级别
-```java
-// 用于可恢复的异常或需要注意的情况
-logger.warn("用户尝试使用已过期token，用户ID: {}", userId);
-logger.warn("支付网关响应超时，订单号: {}, 超时时间: {}ms", orderNo, timeout);
-logger.warn("缓存未命中，key: {}, 将查询数据库", cacheKey);
-```
-
-#### ERROR级别
-```java
-// 用于系统错误或不可恢复的异常
-logger.error("数据库连接失败，连接信息: {}", connectionInfo, exception);
-logger.error("支付处理失败，订单号: {}, 错误码: {}", orderNo, errorCode, exception);
-logger.error("用户认证失败，用户名: {}, 原因: {}", username, reason, exception);
-```
-
-### 日志格式规范
-
-#### 结构化日志
-```java
-// ✅ 正确：结构化日志，便于解析
-logger.info("订单创建成功 orderNo={} userId={} amount={} status={}",
-    order.getOrderNo(),
-    order.getUserId(),
-    order.getAmount(),
-    order.getStatus());
-
-logger.error("支付处理失败 orderNo={} errorCode={} errorMessage={}",
-    orderNo,
-    errorCode,
-    errorMessage,
-    exception);
-
-// ❌ 错误：字符串拼接，不利于解析
-logger.info("订单创建成功: " + order.getOrderNo() + ", 用户: " + order.getUserId());
-```
-
-#### 敏感信息处理
-```java
-// ✅ 正确：敏感信息脱敏
-logger.info("用户登录，用户名: {}, 密码: [PROTECTED], IP: {}",
-    username, clientIp);
-
-logger.info("支付信息，卡号: {}, 金额: {}",
-    maskCardNumber(cardNumber), amount);
-
-// 密码、密钥等敏感信息不应该记录
-// ❌ 错误：记录敏感信息
-logger.debug("用户登录，用户名: {}, 密码: {}", username, password);
-```
-
-### 日志配置
-
-#### SLF4J + Logback配置
-```xml
-<!-- logback-spring.xml -->
-<configuration>
-    <!-- 控制台输出 -->
-    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
-        <encoder>
-            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
-        </encoder>
-    </appender>
-
-    <!-- 文件输出 -->
-    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
-        <file>logs/application.log</file>
-        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
-            <fileNamePattern>logs/application.%d{yyyy-MM-dd}.log</fileNamePattern>
-            <maxHistory>30</maxHistory>
-        </rollingPolicy>
-        <encoder>
-            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
-        </encoder>
-    </appender>
-
-    <!-- 异步日志 -->
-    <appender name="ASYNC" class="ch.qos.logback.classic.AsyncAppender">
-        <appender-ref ref="FILE" />
-        <queueSize>1000</queueSize>
-        <discardingThreshold>0</discardingThreshold>
-    </appender>
-
-    <!-- 包级别日志配置 -->
-    <logger name="com.company" level="INFO" />
-    <logger name="org.springframework" level="WARN" />
-    <logger name="org.mybatis" level="DEBUG" />
-
-    <root level="INFO">
-        <appender-ref ref="CONSOLE" />
-        <appender-ref ref="ASYNC" />
-    </root>
-</configuration>
-```
-
-### 日志最佳实践
-
-#### 1. 日志位置
-```java
-// ✅ 正确：在方法开始和结束处记录日志
-public User getUserById(Long id) {
-    logger.debug("开始获取用户信息，用户ID: {}", id);
-
-    try {
-        User user = userDao.selectById(id);
-        if (user == null) {
-            logger.warn("用户不存在，用户ID: {}", id);
-            throw new UserNotFoundException(id.toString());
-        }
-
-        logger.debug("成功获取用户信息，用户ID: {}, 用户名: {}", id, user.getUserName());
-        return user;
-    } catch (Exception e) {
-        logger.error("获取用户信息失败，用户ID: {}", id, e);
-        throw e;
-    }
-}
-```
-
-#### 2. 性能考虑
-```java
-// ✅ 正确：避免在日志语句中进行复杂计算
-if (logger.isDebugEnabled()) {
-    logger.debug("复杂计算结果: {}", expensiveCalculation());
-}
-
-// ✅ 正确：使用参数化日志
-logger.info("用户操作，操作类型: {}, 操作对象: {}", operationType, targetObject);
-
-// ❌ 错误：字符串拼接影响性能
-logger.debug("计算结果: " + expensiveCalculation());
-```
-
-#### 3. 异常日志
-```java
-// ✅ 正确：记录异常的完整信息
-logger.error("业务处理失败，参数: {}", parameters, exception);
-
-// ✅ 正确：包含上下文信息
-logger.error("订单支付失败，订单号: {}, 支付网关: {}, 错误码: {}",
+log.error("支付处理失败 orderNo={} gateway={} errorCode={}",
     orderNo, gateway, errorCode, exception);
-
-// ❌ 错误：只记录异常消息
-logger.error("处理失败: " + exception.getMessage());
-
-// ❌ 错误：只记录异常对象，没有消息
-logger.error("处理失败", exception); // 缺少上下文信息
 ```
 
-## 异常和日志检查清单
+### 敏感信息
 
-### 异常处理检查
-- [ ] 异常分类正确（Checked vs Unchecked）
-- [ ] 异常信息详细且有意义
-- [ ] 避免空的catch块
-- [ ] 捕获特定异常类型
-- [ ] 异常转换时保留原始异常
-- [ ] 在合适层级处理异常
-- [ ] 自定义异常有清晰的层次结构
+禁止记录：
 
-### 日志检查
-- [ ] 正确使用日志级别
-- [ ] 使用参数化日志格式
-- [ ] 避免记录敏感信息
-- [ ] 异常日志包含完整堆栈信息
-- [ ] 日志信息包含足够的上下文
-- [ ] 考虑日志性能影响
-- [ ] 配置合适的日志输出
+- 密码、token、session、cookie、API key、私钥
+- 完整手机号、身份证号、银行卡号、邮箱、地址
+- 完整 SQL 参数、完整第三方请求/响应中可能包含隐私的数据
 
-### 安全考虑
-- [ ] 不记录密码、密钥等敏感信息
-- [ ] 对卡号、手机号等敏感数据进行脱敏
-- [ ] 避免记录完整的SQL语句（可能包含敏感数据）
-- [ ] 控制日志文件访问权限
+需要记录时必须脱敏：
+
+```java
+log.info("用户登录 username={} phone={} ip={}",
+    username, maskPhone(phone), clientIp);
+```
+
+### 性能
+
+- 高频 DEBUG 日志前先判断 `log.isDebugEnabled()`
+- 不在日志参数中直接调用昂贵计算、远程请求或序列化大对象
+- 大对象只记录摘要、ID、数量、状态，不直接输出完整内容
+
+```java
+if (log.isDebugEnabled()) {
+    log.debug("复杂规则计算结果 result={}", buildDebugSummary(result));
+}
+```
+
+## 常见反例
+
+```java
+catch (Exception e) {
+    // 禁止：静默吞掉异常
+}
+
+catch (Exception e) {
+    e.printStackTrace(); // 禁止：绕过日志框架
+}
+
+log.error("处理失败: " + e.getMessage()); // 禁止：丢堆栈且字符串拼接
+
+throw new BusinessException("DB_ERROR", "数据库失败"); // 避免：丢失 cause
+```
+
+## 检查清单
+
+### 异常
+
+- [ ] 参数和业务校验尽早失败
+- [ ] 捕获的是具体异常，不是无理由捕获 `Exception`
+- [ ] 捕获后有处理、转换或继续抛出
+- [ ] 异常转换保留原始 `cause`
+- [ ] Controller 未重复手写全局异常处理逻辑
+- [ ] 对外消息安全、稳定、可理解
+
+### 日志
+
+- [ ] 日志级别符合影响范围
+- [ ] 使用参数化日志
+- [ ] 异常日志带完整堆栈
+- [ ] 日志包含排查上下文
+- [ ] 没有敏感信息明文
+- [ ] 高频或复杂日志考虑性能影响

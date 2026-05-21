@@ -1,0 +1,4 @@
+interface:
+  display_name: "Java Coding Standards Lite"
+  short_description: "Practical Java and Spring coding standards"
+  default_prompt: "Use $java-coding-standards-lite when editing Java or Spring code."

@@ -1,967 +1,175 @@
 # 安全编程规范
 
+## 基本原则
+
+- 所有外部输入默认不可信：HTTP 参数、Header、Cookie、文件、消息队列、第三方回调、数据库反查结果
+- 优先使用框架安全能力和成熟库，不手写密码算法、HTML/JS 编码器、鉴权框架
+- 安全控制放在边界和公共层：参数校验、认证授权、异常响应、日志脱敏、SQL 参数绑定
+- 白名单优先于黑名单；无法白名单时，至少限制长度、格式、范围和字符集
+- 不在日志、异常、响应中暴露密码、token、密钥、完整证件号、完整卡号、完整手机号等敏感数据
+
 ## 输入验证
 
-### 1. 数据验证原则
+| 输入类型 | 必做校验 |
+| --- | --- |
+| 字符串 | 非空、长度、字符集、业务格式 |
+| 数值 | 最小值、最大值、精度、单位 |
+| 枚举 | 必须落在已知枚举或白名单内 |
+| 列表 | 最大数量、元素格式、去重规则 |
+| 文件 | 大小、扩展名、MIME、内容签名、存储路径 |
+| URL / 回调地址 | 协议、域名、端口、内网地址限制 |
 
-#### 白名单验证
 ```java
-// ✅ 正确：使用白名单验证
-public class InputValidator {
-
-    // 验证邮箱格式
-    private static final Pattern EMAIL_PATTERN = Pattern.compile(
-        "^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$"
-    );
-
-    // 验证手机号格式
-    private static final Pattern MOBILE_PATTERN = Pattern.compile(
-        "^1[3-9]\\d{9}$"
-    );
-
-    // 验证用户名（只允许字母、数字、下划线）
-    private static final Pattern USERNAME_PATTERN = Pattern.compile(
-        "^[a-zA-Z0-9_]{3,20}$"
-    );
-
-    public static boolean isValidEmail(String email) {
-        return email != null && EMAIL_PATTERN.matcher(email).matches();
-    }
-
-    public static boolean isValidMobile(String mobile) {
-        return mobile != null && MOBILE_PATTERN.matcher(mobile).matches();
-    }
-
-    public static boolean isValidUsername(String username) {
-        return username != null && USERNAME_PATTERN.matcher(username).matches();
-    }
-}
-
-// 使用验证器
 public void createUser(UserCreateRequest request) {
-    if (!InputValidator.isValidUsername(request.getUserName())) {
+    if (request == null || StringUtils.isBlank(request.getUserName())) {
+        throw new ValidationException("用户名不能为空");
+    }
+    if (!USERNAME_PATTERN.matcher(request.getUserName()).matches()) {
         throw new ValidationException("用户名格式不正确");
     }
-    if (!InputValidator.isValidEmail(request.getEmail())) {
-        throw new ValidationException("邮箱格式不正确");
-    }
-    if (!InputValidator.isValidMobile(request.getMobile())) {
-        throw new ValidationException("手机号格式不正确");
-    }
-    // 继续处理...
 }
 ```
 
-#### 长度和范围验证
+## SQL 注入防护
+
+- SQL 值一律参数化：JDBC `PreparedStatement`、MyBatis `#{}`、JPA 参数绑定
+- 禁止拼接用户输入构造 SQL
+- MyBatis `${}` 只能用于表名、字段名、排序方向等无法参数化的位置，且必须先映射到服务端白名单值
+- `LIKE` 查询也使用绑定参数，不拼接原始输入
+- 数据库账号使用最小权限，不给应用账号 DDL 或越权库表权限
+
 ```java
-// ✅ 正确：验证长度和范围
-public void validateProduct(ProductCreateRequest request) {
-    // 字符串长度验证
-    if (StringUtils.isBlank(request.getName())) {
-        throw new ValidationException("商品名称不能为空");
-    }
-    if (request.getName().length() > 100) {
-        throw new ValidationException("商品名称不能超过100个字符");
-    }
+@Select("SELECT id, user_name FROM sys_user WHERE user_name = #{userName}")
+User findByUserName(@Param("userName") String userName);
 
-    // 数值范围验证
-    if (request.getPrice().compareTo(BigDecimal.ZERO) <= 0) {
-        throw new ValidationException("商品价格必须大于0");
-    }
-    if (request.getPrice().compareTo(new BigDecimal("999999.99")) > 0) {
-        throw new ValidationException("商品价格不能超过999999.99");
-    }
+private static final Map<String, String> SORT_FIELD = Map.of(
+    "createTime", "create_time",
+    "userName", "user_name"
+);
 
-    // 整数范围验证
-    if (request.getStock() < 0) {
-        throw new ValidationException("库存不能为负数");
-    }
-    if (request.getStock() > 999999) {
-        throw new ValidationException("库存不能超过999999");
-    }
+public String resolveSortField(String field) {
+    return Optional.ofNullable(SORT_FIELD.get(field)).orElse("create_time");
 }
 ```
 
-### 2. 特殊字符处理
+## XSS 与输出编码
 
-#### HTML转义
+- XSS 防护重点是“按输出上下文编码”，不是只在输入时过滤
+- HTML 内容、HTML 属性、JavaScript 字符串、URL 参数使用不同编码方法
+- 优先使用模板引擎自动转义或 OWASP Java Encoder
+- 富文本必须使用可靠 HTML sanitizer，仅允许有限标签和属性
+- CSP 默认从严格策略开始；`unsafe-inline` 只能作为兼容例外，并应有迁移计划
+
 ```java
-// ✅ 正确：HTML特殊字符转义
-public class HtmlUtils {
-
-    private static final Map<Character, String> HTML_ESCAPE_MAP = new HashMap<>();
-    static {
-        HTML_ESCAPE_MAP.put('&', "&amp;");
-        HTML_ESCAPE_MAP.put('<', "&lt;");
-        HTML_ESCAPE_MAP.put('>', "&gt;");
-        HTML_ESCAPE_MAP.put('"', "&quot;");
-        HTML_ESCAPE_MAP.put('\'', "&#x27;");
-    }
-
-    public static String escapeHtml(String input) {
-        if (input == null) {
-            return null;
-        }
-
-        StringBuilder result = new StringBuilder();
-        for (char c : input.toCharArray()) {
-            String escaped = HTML_ESCAPE_MAP.get(c);
-            result.append(escaped != null ? escaped : c);
-        }
-        return result.toString();
-    }
-
-    // 使用示例
-    public String generateUserProfileHtml(User user) {
-        StringBuilder html = new StringBuilder();
-        html.append("<div class='user-profile'>");
-        html.append("<h2>").append(HtmlUtils.escapeHtml(user.getName())).append("</h2>");
-        html.append("<p>").append(HtmlUtils.escapeHtml(user.getBio())).append("</p>");
-        html.append("</div>");
-        return html.toString();
-    }
-}
-
-// 使用OWASP Java Encoder（推荐）
-import org.owasp.encoder.Encode;
-public String safeHtmlOutput(String userInput) {
-    return Encode.forHtml(userInput);
-}
+String html = Encode.forHtml(userInput);
+String attr = Encode.forHtmlAttribute(userInput);
+String js = Encode.forJavaScript(userInput);
+String url = URLEncoder.encode(userInput, StandardCharsets.UTF_8);
 ```
 
-#### JavaScript转义
+推荐安全响应头：
+
+```text
+Content-Security-Policy: default-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'
+X-Content-Type-Options: nosniff
+Referrer-Policy: strict-origin-when-cross-origin
+```
+
+## CSRF
+
+- 浏览器 Cookie 会自动携带身份凭证时，修改类请求必须考虑 CSRF
+- Spring Security 表单登录、Session Cookie 场景默认启用 CSRF
+- 纯 Bearer Token 且不依赖 Cookie 的 API 可按项目安全方案关闭 CSRF，但要明确原因
+- Cookie 应设置 `HttpOnly`、`Secure`、合适的 `SameSite`
+- GET、HEAD、OPTIONS 不执行有副作用操作
+
+## 敏感数据与密码
+
+- 密码只存强哈希结果：BCrypt、Argon2、PBKDF2；禁止 MD5、SHA-1、SHA-256 直接哈希密码
+- 密码策略包含最小长度、最大长度、弱密码拦截；错误提示避免泄露账号是否存在
+- token、密钥、私钥放配置中心、KMS、环境变量或密钥管理系统，禁止硬编码进仓库
+- 需要可逆加密时优先使用经安全评审的统一加密组件；自实现至少使用带认证的模式如 AES-GCM，并正确管理随机 IV/nonce
+- 日志和响应只输出脱敏后的手机号、邮箱、证件号、卡号
+
 ```java
-// ✅ 正确：JavaScript字符串转义
-public class JavaScriptUtils {
-
-    public static String escapeJavaScript(String input) {
-        if (input == null) {
-            return null;
-        }
-
-        return input
-            .replace("\\", "\\\\")
-            .replace("'", "\\'")
-            .replace("\"", "\\\"")
-            .replace("\n", "\\n")
-            .replace("\r", "\\r")
-            .replace("\t", "\\t")
-            .replace("/", "\\/");
-    }
-
-    // 使用示例
-    public String generateJavaScript(String userName) {
-        return String.format("var userName = '%s';", escapeJavaScript(userName));
-    }
-}
-```
-
-## SQL注入防护
-
-### 1. 参数化查询
-
-#### JDBC预编译语句
-```java
-// ✅ 正确：使用PreparedStatement
-public User findUserByUserName(String userName) {
-    String sql = "SELECT id, user_name, email FROM users WHERE user_name = ? AND status = ?";
-
-    try (Connection conn = dataSource.getConnection();
-         PreparedStatement ps = conn.prepareStatement(sql)) {
-
-        ps.setString(1, userName);
-        ps.setInt(2, UserStatus.ACTIVE.getValue());
-
-        try (ResultSet rs = ps.executeQuery()) {
-            if (rs.next()) {
-                User user = new User();
-                user.setId(rs.getLong("id"));
-                user.setUserName(rs.getString("user_name"));
-                user.setEmail(rs.getString("email"));
-                return user;
-            }
-        }
-    } catch (SQLException e) {
-        throw new DatabaseException("查询用户失败", e);
-    }
-
-    return null;
-}
-
-// ❌ 错误：字符串拼接（SQL注入风险）
-public User findUserByUserName(String userName) {
-    String sql = "SELECT * FROM users WHERE user_name = '" + userName + "'";
-    // 如果userName是 "' OR '1'='1"，将导致SQL注入
-}
-```
-
-#### MyBatis参数绑定
-```java
-// ✅ 正确：使用#{}参数绑定
-@Mapper
-public interface UserMapper {
-
-    @Select("SELECT * FROM users WHERE user_name = #{userName} AND status = #{status}")
-    User findByUserName(@Param("userName") String userName, @Param("status") int status);
-
-    @Select("SELECT * FROM users WHERE id IN <foreach item='id' collection='ids' open='(' separator=',' close=')'>#{id}</foreach>")
-    List<User> findByIds(@Param("ids") List<Long> ids);
-
-    @Insert("INSERT INTO users (user_name, email, create_time) VALUES (#{userName}, #{email}, #{createTime})")
-    @Options(useGeneratedKeys = true, keyProperty = "id")
-    int insert(User user);
-}
-
-// ❌ 错误：使用${}（存在SQL注入风险）
-@Select("SELECT * FROM users WHERE user_name = '${userName}'")
-User findByUserNameUnsafe(@Param("userName") String userName);
-```
-
-### 2. 动态SQL安全
-
-#### MyBatis动态SQL
-```java
-// ✅ 正确：安全的动态SQL
-@Select("<script>" +
-       "SELECT * FROM users WHERE 1=1" +
-       "<if test='userName != null'> AND user_name = #{userName}</if>" +
-       "<if test='email != null'> AND email = #{email}</if>" +
-       "<if test='status != null'> AND status = #{status}</if>" +
-       "</script>")
-List<User> searchUsers(@Param("userName") String userName,
-                      @Param("email") String email,
-                      @Param("status") Integer status);
-
-// ✅ 正确：安全的排序
-@Select("<script>" +
-       "SELECT * FROM users" +
-       "<where>" +
-       "<if test='userName != null'> AND user_name LIKE CONCAT('%', #{userName}, '%')</if>" +
-       "</where>" +
-       "ORDER BY ${sortField} ${sortOrder}" +
-       "</script>")
-List<User> searchUsersWithSort(@Param("userName") String userName,
-                              @Param("sortField") String sortField,
-                              @Param("sortOrder") String sortOrder);
-
-// 注意：${}用于表名、字段名等无法参数化的地方，但要严格控制输入
-```
-
-#### 白名单验证排序字段
-```java
-// ✅ 正确：验证排序字段
-public List<User> searchUsers(String userName, String sortField, String sortOrder) {
-    // 验证排序字段
-    Set<String> allowedSortFields = Set.of("id", "user_name", "email", "create_time");
-    if (!allowedSortFields.contains(sortField)) {
-        sortField = "id"; // 默认排序字段
-    }
-
-    // 验证排序方向
-    if (!"ASC".equalsIgnoreCase(sortOrder) && !"DESC".equalsIgnoreCase(sortOrder)) {
-        sortOrder = "ASC"; // 默认排序方向
-    }
-
-    return userDao.searchUsersWithSort(userName, sortField, sortOrder);
-}
-```
-
-## XSS防护
-
-### 1. 输出编码
-
-#### HTML上下文编码
-```java
-// ✅ 正确：根据输出上下文进行编码
-public class XssProtection {
-
-    // HTML内容编码
-    public static String encodeForHtml(String input) {
-        return Encode.forHtml(input);
-    }
-
-    // HTML属性编码
-    public static String encodeForHtmlAttribute(String input) {
-        return Encode.forHtmlAttribute(input);
-    }
-
-    // JavaScript编码
-    public static String encodeForJavaScript(String input) {
-        return Encode.forJavaScript(input);
-    }
-
-    // URL参数编码
-    public static String encodeForUrl(String input) {
-        try {
-            return URLEncoder.encode(input, StandardCharsets.UTF_8.name());
-        } catch (UnsupportedEncodingException e) {
-            return input;
-        }
-    }
-}
-
-// 使用示例
-public String generateUserCard(User user) {
-    StringBuilder html = new StringBuilder();
-    html.append("<div class='user-card' data-user-id='")
-        .append(XssProtection.encodeForHtmlAttribute(user.getId().toString()))
-        .append("'>;")
-        .append("<h3>")
-        .append(XssProtection.encodeForHtml(user.getName()))
-        .append("</h3>")
-        .append("<p>")
-        .append(XssProtection.encodeForHtml(user.getBio()))
-        .append("</p>")
-        .append("</div>");
-    return html.toString();
-}
-```
-
-### 2. CSP策略
-
-#### 设置CSP头
-```java
-// ✅ 正确：设置内容安全策略
-@Configuration
-public class WebSecurityConfig {
-
-    @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
-        http.headers()
-            .contentSecurityPolicy(
-                "default-src 'self'; " +
-                "script-src 'self' 'unsafe-inline' https://trusted-cdn.com; " +
-                "style-src 'self' 'unsafe-inline'; " +
-                "img-src 'self' data: https:; " +
-                "font-src 'self' https://fonts.googleapis.com; " +
-                "frame-ancestors 'none'; " +
-                "form-action 'self';"
-            )
-            .and()
-            .frameOptions()
-            .deny();
-
-        return http.build();
-    }
-}
-
-// 或者使用过滤器设置响应头
-@Component
-public class SecurityHeadersFilter implements Filter {
-
-    @Override
-    public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
-            throws IOException, ServletException {
-
-        HttpServletResponse httpResponse = (HttpServletResponse) response;
-        httpResponse.setHeader("Content-Security-Policy",
-            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';" +
-            "img-src 'self' data:; font-src 'self'; frame-ancestors 'none';"
-        );
-        httpResponse.setHeader("X-Content-Type-Options", "nosniff");
-        httpResponse.setHeader("X-Frame-Options", "DENY");
-        httpResponse.setHeader("X-XSS-Protection", "1; mode=block");
-
-        chain.doFilter(request, response);
-    }
-}
-```
-
-## CSRF防护
-
-### 1. Spring Security CSRF防护
-
-#### 启用CSRF防护
-```java
-// ✅ 正确：启用CSRF防护
-@Configuration
-@EnableWebSecurity
-public class SecurityConfig {
-
-    @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
-        http
-            .csrf(csrf -> csrf
-                .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
-            )
-            .authorizeHttpRequests(authz -> authz
-                .requestMatchers("/api/public/**").permitAll()
-                .requestMatchers(HttpMethod.GET, "/**").permitAll()
-                .anyRequest().authenticated()
-            )
-            .formLogin(withDefaults());
-
-        return http.build();
-    }
-}
-```
-
-#### CSRF Token使用
-```html
-<!-- ✅ 正确：在表单中包含CSRF token -->
-<form method="post" action="/api/users">
-    <input type="hidden" name="_csrf" value="${_csrf.token}" />
-    <input type="text" name="userName" />
-    <input type="email" name="email" />
-    <button type="submit">创建用户</button>
-</form>
-
-<!-- AJAX请求中的CSRF token -->
-<script>
-$.ajaxSetup({
-    beforeSend: function(xhr, settings) {
-        if (!/^(GET|HEAD|OPTIONS|TRACE)$/i.test(settings.type) && !this.crossDomain) {
-            xhr.setRequestHeader("X-CSRF-TOKEN", $("#csrfToken").val());
-        }
-    }
-});
-</script>
-```
-
-### 2. 自定义CSRF防护
-
-#### CSRF Token生成和验证
-```java
-// ✅ 正确：自定义CSRF防护
-@Component
-public class CsrfTokenManager {
-
-    private static final String CSRF_TOKEN_ATTRIBUTE = "CSRF_TOKEN";
-    private static final SecureRandom random = new SecureRandom();
-
-    public String generateToken() {
-        byte[] bytes = new byte[32];
-        random.nextBytes(bytes);
-        return Base64.getEncoder().encodeToString(bytes);
-    }
-
-    public void validateToken(String token, HttpSession session) {
-        if (StringUtils.isBlank(token)) {
-            throw new CsrfException("CSRF token不能为空");
-        }
-
-        String sessionToken = (String) session.getAttribute(CSRF_TOKEN_ATTRIBUTE);
-        if (sessionToken == null || !sessionToken.equals(token)) {
-            throw new CsrfException("CSRF token验证失败");
-        }
-    }
-
-    public void setToken(HttpSession session) {
-        String token = generateToken();
-        session.setAttribute(CSRF_TOKEN_ATTRIBUTE, token);
-    }
-}
-
-@Controller
-public class UserController {
-
-    @Autowired
-    private CsrfTokenManager csrfTokenManager;
-
-    @GetMapping("/form")
-    public String showForm(Model model, HttpSession session) {
-        csrfTokenManager.setToken(session);
-        return "user-form";
-    }
-
-    @PostMapping("/users")
-    public String createUser(@RequestParam String userName,
-                           @RequestParam String email,
-                           @RequestParam String _csrf,
-                           HttpSession session) {
-        csrfTokenManager.validateToken(_csrf, session);
-        // 处理用户创建
-        return "redirect:/users";
-    }
-}
-```
-
-## 敏感数据处理
-
-### 1. 密码安全
-
-#### 密码哈希
-```java
-// ✅ 正确：使用BCrypt加密密码
-@Component
-public class PasswordEncoder {
-
-    private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
-
-    public String encode(String rawPassword) {
-        return encoder.encode(rawPassword);
-    }
-
-    public boolean matches(String rawPassword, String encodedPassword) {
-        return encoder.matches(rawPassword, encodedPassword);
-    }
-}
-
-// 用户注册
-public void registerUser(UserRegisterRequest request) {
-    // 验证密码强度
-    if (!isPasswordStrong(request.getPassword())) {
-        throw new ValidationException("密码强度不够");
-    }
-
-    User user = new User();
-    user.setUserName(request.getUserName());
-    user.setEmail(request.getEmail());
-    user.setPassword(passwordEncoder.encode(request.getPassword()));
-
-    userDao.save(user);
-}
-
-// 密码强度验证
-private boolean isPasswordStrong(String password) {
-    if (password == null || password.length() < 8) {
-        return false;
-    }
-
-    // 检查是否包含数字、字母、特殊字符
-    boolean hasDigit = password.matches(".*[0-9].*");
-    boolean hasLetter = password.matches(".*[a-zA-Z].*");
-    boolean hasSpecial = password.matches(".*[!@#$%^&*()].*");
-
-    return hasDigit && hasLetter && hasSpecial;
-}
-```
-
-#### 密码策略
-```java
-// ✅ 正确：密码策略管理
-@Component
-public class PasswordPolicy {
-
-    private static final int MIN_LENGTH = 8;
-    private static final int MAX_LENGTH = 128;
-    private static final Pattern DIGIT_PATTERN = Pattern.compile(".*[0-9].*");
-    private static final Pattern LETTER_PATTERN = Pattern.compile(".*[a-zA-Z].*");
-    private static final Pattern SPECIAL_PATTERN = Pattern.compile(".*[!@#$%^&*()_+\\-=\\[\\]{};':.,<>?].*");
-
-    public void validate(String password) {
-        if (password == null) {
-            throw new ValidationException("密码不能为空");
-        }
-
-        if (password.length() < MIN_LENGTH) {
-            throw new ValidationException("密码长度不能少于" + MIN_LENGTH + "位");
-        }
-
-        if (password.length() > MAX_LENGTH) {
-            throw new ValidationException("密码长度不能超过" + MAX_LENGTH + "位");
-        }
-
-        if (!DIGIT_PATTERN.matcher(password).matches()) {
-            throw new ValidationException("密码必须包含数字");
-        }
-
-        if (!LETTER_PATTERN.matcher(password).matches()) {
-            throw new ValidationException("密码必须包含字母");
-        }
-
-        if (!SPECIAL_PATTERN.matcher(password).matches()) {
-            throw new ValidationException("密码必须包含特殊字符");
-        }
-
-        // 检查常见弱密码
-        if (isCommonWeakPassword(password)) {
-            throw new ValidationException("不能使用常见弱密码");
-        }
-    }
-
-    private boolean isCommonWeakPassword(String password) {
-        Set<String> weakPasswords = Set.of(
-            "123456", "password", "123456789", "12345678",
-            "12345", "1234567", "1234567890", "qwerty"
-        );
-        return weakPasswords.contains(password.toLowerCase());
-    }
-}
-```
-
-### 2. 敏感信息脱敏
-
-#### 数据脱敏工具
-```java
-// ✅ 正确：敏感信息脱敏
-@Component
-public class DataMasking {
-
-    // 手机号脱敏：138****8000
-    public static String maskMobile(String mobile) {
-        if (StringUtils.isBlank(mobile) || mobile.length() != 11) {
-            return mobile;
-        }
-        return mobile.substring(0, 3) + "****" + mobile.substring(7);
-    }
-
-    // 邮箱脱敏：joh***@example.com
-    public static String maskEmail(String email) {
-        if (StringUtils.isBlank(email) || !email.contains("@")) {
-            return email;
-        }
-
-        String[] parts = email.split("@");
-        String username = parts[0];
-        String domain = parts[1];
-
-        if (username.length() <= 2) {
-            return email;
-        }
-
-        String maskedUsername = username.substring(0, 2) +
-            "***" + username.substring(username.length() - 1);
-
-        return maskedUsername + "@" + domain;
-    }
-
-    // 身份证号脱敏：110101********1234
-    public static String maskIdCard(String idCard) {
-        if (StringUtils.isBlank(idCard) || idCard.length() < 8) {
-            return idCard;
-        }
-        return idCard.substring(0, 6) + "********" + idCard.substring(idCard.length() - 4);
-    }
-
-    // 银行卡号脱敏：6222****1234
-    public static String maskBankCard(String bankCard) {
-        if (StringUtils.isBlank(bankCard) || bankCard.length() < 8) {
-            return bankCard;
-        }
-        return bankCard.substring(0, 4) + "****" + bankCard.substring(bankCard.length() - 4);
-    }
-}
-
-// 使用示例
-@Service
-public class UserService {
-
-    private static final Logger logger = LoggerFactory.getLogger(UserService.class);
-
-    public void processUserLogin(User user) {
-        // 记录日志时脱敏
-        logger.info("用户登录成功，用户名: {}, 手机号: {}, 邮箱: {}",
-            user.getUserName(),
-            DataMasking.maskMobile(user.getMobile()),
-            DataMasking.maskEmail(user.getEmail()));
-    }
-}
-```
-
-### 3. 加密存储
-
-#### AES加密
-```java
-// ✅ 正确：使用AES加密敏感数据
-@Component
-public class AesEncryption {
-
-    private static final String ALGORITHM = "AES";
-    private static final String TRANSFORMATION = "AES/CBC/PKCS5Padding";
-    private final SecretKey secretKey;
-    private final IvParameterSpec ivParameterSpec;
-
-    public AesEncryption(@Value("${encryption.key}") String keyString,
-                        @Value("${encryption.iv}") String ivString) {
-        this.secretKey = new SecretKeySpec(Base64.getDecoder().decode(keyString), ALGORITHM);
-        this.ivParameterSpec = new IvParameterSpec(Base64.getDecoder().decode(ivString));
-    }
-
-    public String encrypt(String data) {
-        try {
-            Cipher cipher = Cipher.getInstance(TRANSFORMATION);
-            cipher.init(Cipher.ENCRYPT_MODE, secretKey, ivParameterSpec);
-            byte[] encrypted = cipher.doFinal(data.getBytes(StandardCharsets.UTF_8));
-            return Base64.getEncoder().encodeToString(encrypted);
-        } catch (Exception e) {
-            throw new EncryptionException("加密失败", e);
-        }
-    }
-
-    public String decrypt(String encryptedData) {
-        try {
-            Cipher cipher = Cipher.getInstance(TRANSFORMATION);
-            cipher.init(Cipher.DECRYPT_MODE, secretKey, ivParameterSpec);
-            byte[] decoded = Base64.getDecoder().decode(encryptedData);
-            byte[] decrypted = cipher.doFinal(decoded);
-            return new String(decrypted, StandardCharsets.UTF_8);
-        } catch (Exception e) {
-            throw new EncryptionException("解密失败", e);
-        }
-    }
-}
-
-// 使用示例
-@Entity
-@Table(name = "user_sensitive_data")
-public class UserSensitiveData {
-
-    @Id
-    private Long id;
-
-    @Column(name = "encrypted_credit_card")
-    private String encryptedCreditCard;
-
-    @Transient
-    private String creditCard;
-
-    // 在Service层处理加密解密
-    public void setCreditCard(String creditCard, AesEncryption encryption) {
-        this.creditCard = creditCard;
-        this.encryptedCreditCard = encryption.encrypt(creditCard);
-    }
-
-    public String getCreditCard(AesEncryption encryption) {
-        if (this.creditCard == null && this.encryptedCreditCard != null) {
-            this.creditCard = encryption.decrypt(this.encryptedCreditCard);
-        }
-        return this.creditCard;
-    }
-}
+String encoded = passwordEncoder.encode(rawPassword);
+boolean matched = passwordEncoder.matches(rawPassword, encoded);
 ```
 
 ## 访问控制
 
-### 1. 认证与授权
+- 默认拒绝，显式放行
+- 认证只证明“是谁”，授权必须判断“能否访问该资源”
+- 接口权限和数据权限都要校验，不能只依赖前端隐藏按钮
+- 对象级权限在 Service 或方法安全层校验，如订单只能由所有者或管理员访问
+- 管理员、导出、审批、支付、删除等高风险操作需要更严格审计，必要时二次确认或 MFA
 
-#### Spring Security配置
 ```java
-// ✅ 正确：细粒度权限控制
-@Configuration
-@EnableWebSecurity
-@EnableMethodSecurity
-public class SecurityConfig {
-
-    @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
-        http
-            .authorizeHttpRequests(authz -> authz
-                .requestMatchers("/api/public/**").permitAll()
-                .requestMatchers("/api/admin/**").hasRole("ADMIN")
-                .requestMatchers("/api/users/**").hasAnyRole("USER", "ADMIN")
-                .requestMatchers(HttpMethod.GET, "/api/orders/**").hasAnyRole("USER", "ADMIN")
-                .requestMatchers(HttpMethod.POST, "/api/orders/**").hasRole("USER")
-                .anyRequest().authenticated()
-            )
-            .formLogin(withDefaults())
-            .logout(withDefaults());
-
-        return http.build();
-    }
-}
-
-// 方法级别权限控制
-@Service
-public class OrderService {
-
-    @PreAuthorize("hasRole('USER') and #order.userId == authentication.principal.id")
-    public Order getOrder(Long orderId, Order order) {
-        // 只有订单所有者才能查看
-        return orderDao.findById(orderId);
-    }
-
-    @PreAuthorize("hasRole('ADMIN') or (#order.userId == authentication.principal.id)")
-    public Order updateOrder(Order order) {
-        // 管理员或订单所有者才能更新
-        return orderDao.save(order);
-    }
-
-    @PreAuthorize("hasRole('ADMIN')")
-    public void deleteOrder(Long orderId) {
-        // 只有管理员才能删除
-        orderDao.deleteById(orderId);
-    }
+@PreAuthorize("hasRole('ADMIN') or @orderPermission.canRead(authentication, #orderId)")
+public Order getOrder(Long orderId) {
+    return orderRepository.findById(orderId)
+        .orElseThrow(() -> new OrderNotFoundException(orderId));
 }
 ```
 
-### 2. 会话管理
+## 会话与 Cookie
 
-#### 安全的会话配置
-```java
-// ✅ 正确：安全的会话管理
-@Configuration
-@EnableWebSecurity
-public class SecurityConfig {
+- 登录后更新 Session ID，防止 session fixation
+- 退出登录清理服务端会话和相关 Cookie
+- Cookie 认证场景设置 `HttpOnly`、`Secure`、`SameSite`
+- 记住我、刷新 token、长期会话必须可撤销，并限制有效期
+- 高风险操作不完全信任长期会话，必要时要求重新认证
 
-    @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
-        http
-            .sessionManagement(session -> session
-                .maximumSessions(1)  // 同一用户最多1个会话
-                .maxSessionsPreventsLogin(false)  // 新登录踢掉旧会话
-                .expiredUrl("/login?expired")
-            )
-            .sessionManagement(session -> session
-                .sessionFixation().migrateSession()  // 登录后会话ID变更
-                .sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
-            )
-            .logout(logout -> logout
-                .logoutUrl("/logout")
-                .logoutSuccessUrl("/login?logout")
-                .invalidateHttpSession(true)
-                .deleteCookies("JSESSIONID", "remember-me")
-            );
+## 文件与路径
 
-        return http.build();
-    }
-}
-
-// 记住我功能
-@Configuration
-public class RememberMeConfig {
-
-    @Bean
-    public RememberMeConfigurer rememberMeConfigurer() {
-        return new RememberMeConfigurer()
-            .key("uniqueAndSecret")  // 安全的key
-            .tokenValiditySeconds(86400)  // 24小时
-            .rememberMeParameter("remember-me")
-            .useSecureCookie(true);  // 仅HTTPS传输
-    }
-}
-```
+- 上传文件限制大小、扩展名、MIME 和内容签名
+- 文件名由服务端生成，不信任用户原始文件名
+- 存储路径使用固定根目录和规范化路径，防止 `../` 路径穿越
+- 下载文件时校验访问权限，不直接暴露服务器真实路径
+- 压缩包解压需防 Zip Slip，并限制解压总大小和文件数量
 
 ## 安全日志
 
-### 1. 安全事件记录
+必须记录：
 
-#### 安全日志记录
-```java
-// ✅ 正确：记录安全相关事件
-@Component
-public class SecurityLogger {
+- 登录成功/失败、登出、密码重置、MFA 变更
+- 权限拒绝、越权访问、关键配置变更
+- 支付、导出、删除、审批等高风险操作
+- 安全策略命中：限流、验证码、风控、异常 IP
 
-    private static final Logger logger = LoggerFactory.getLogger("security");
+日志要求：
 
-    public void logLoginSuccess(String username, String ip) {
-        logger.info("LOGIN_SUCCESS username={} ip={} timestamp={}",
-            username, ip, System.currentTimeMillis());
-    }
+- 使用独立 security/audit logger 或可检索字段
+- 包含 `userId`、`requestId`、`ip`、`resource`、`action`、`result`
+- 敏感数据必须脱敏
+- 明确保留期限和访问权限
 
-    public void logLoginFailure(String username, String ip, String reason) {
-        logger.warn("LOGIN_FAILURE username={} ip={} reason={} timestamp={}",
-            username, ip, reason, System.currentTimeMillis());
-    }
+## 检查清单
 
-    public void logAccessDenied(String username, String resource, String ip) {
-        logger.warn("ACCESS_DENIED username={} resource={} ip={} timestamp={}",
-            username, resource, ip, System.currentTimeMillis());
-    }
+### 输入与输出
 
-    public void logSuspiciousActivity(String username, String activity, String ip) {
-        logger.error("SUSPICIOUS_ACTIVITY username={} activity={} ip={} timestamp={}",
-            username, activity, ip, System.currentTimeMillis());
-    }
-}
+- [ ] 外部输入做白名单、长度、范围校验
+- [ ] SQL 值使用参数绑定
+- [ ] MyBatis `${}` 只使用服务端白名单映射结果
+- [ ] 输出按 HTML、属性、JS、URL 上下文编码
+- [ ] 文件上传和路径访问有边界校验
 
-// 使用示例
-@Service
-public class AuthenticationService {
+### 身份与权限
 
-    @Autowired
-    private SecurityLogger securityLogger;
+- [ ] 默认拒绝，显式授权
+- [ ] 同时校验接口权限和对象级数据权限
+- [ ] CSRF 策略与认证方式匹配
+- [ ] Cookie、Session、Token 有安全属性和有效期
 
-    public LoginResult login(String username, String password, String ip) {
-        try {
-            User user = authenticate(username, password);
-            securityLogger.logLoginSuccess(username, ip);
-            return LoginResult.success(user);
-        } catch (AuthenticationException e) {
-            securityLogger.logLoginFailure(username, ip, e.getMessage());
-            throw e;
-        }
-    }
-}
-```
+### 敏感数据
 
-### 2. 日志配置
+- [ ] 密码使用 BCrypt、Argon2 或 PBKDF2
+- [ ] 密钥不硬编码
+- [ ] 可逆加密使用统一安全组件或认证加密模式
+- [ ] 日志、异常、响应无敏感信息明文
 
-#### 安全日志配置
-```xml
-<!-- logback-security.xml -->
-<configuration>
-    <!-- 安全日志文件 -->
-    <appender name="SECURITY_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
-        <file>logs/security.log</file>
-        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
-            <fileNamePattern>logs/security.%d{yyyy-MM-dd}.log</fileNamePattern>
-            <maxHistory>90</maxHistory>  <!-- 保留90天 -->
-        </rollingPolicy>
-        <encoder>
-            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
-        </encoder>
-    </appender>
+### 审计
 
-    <!-- 安全日志logger -->
-    <logger name="security" level="INFO" additivity="false">
-        <appender-ref ref="SECURITY_FILE" />
-    </logger>
-
-    <!-- 审计日志 -->
-    <appender name="AUDIT_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
-        <file>logs/audit.log</file>
-        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
-            <fileNamePattern>logs/audit.%d{yyyy-MM-dd}.log</fileNamePattern>
-            <maxHistory>365</maxHistory>  <!-- 保留1年 -->
-        </rollingPolicy>
-        <encoder>
-            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} AUDIT - %msg%n</pattern>
-        </encoder>
-    </appender>
-
-    <logger name="audit" level="INFO" additivity="false">
-        <appender-ref ref="AUDIT_FILE" />
-    </logger>
-</configuration>
-```
-
-## 安全检查清单
-
-### 输入验证检查
-- [ ] 所有外部输入都经过验证
-- [ ] 使用白名单验证格式
-- [ ] 验证数据长度和范围
-- [ ] 特殊字符正确转义
-- [ ] 文件上传类型和大小验证
-
-### SQL注入防护检查
-- [ ] 使用参数化查询
-- [ ] 避免字符串拼接SQL
-- [ ] MyBatis使用#{}参数绑定
-- [ ] 动态SQL字段白名单验证
-- [ ] 数据库用户权限控制
-
-### XSS防护检查
-- [ ] 输出根据上下文编码
-- [ ] 设置CSP策略
-- [ ] 使用安全的模板引擎
-- [ ] Cookie设置HttpOnly
-- [ ] 避免内联JavaScript
-
-### CSRF防护检查
-- [ ] 启用CSRF防护
-- [ ] 关键操作验证CSRF token
-- [ ] AJAX请求包含CSRF token
-- [ ] 使用SameSite Cookie属性
-
-### 敏感数据保护检查
-- [ ] 密码使用强哈希算法
-- [ ] 敏感信息加密存储
-- [ ] 日志中敏感数据脱敏
-- [ ] HTTPS传输敏感数据
-- [ ] 定期轮换加密密钥
-
-### 访问控制检查
-- [ ] 实施最小权限原则
-- [ ] 细粒度权限控制
-- [ ] 安全的会话管理
-- [ ] 多因素认证
-- [ ] 定期审计权限
-
-### 安全日志检查
-- [ ] 记录关键安全事件
-- [ ] 日志文件权限控制
-- [ ] 定期备份安全日志
-- [ ] 监控异常登录行为
-- [ ] 安全日志保留策略
+- [ ] 关键安全事件有日志
+- [ ] 审计日志字段可检索
+- [ ] 日志有保留期限和访问控制

@@ -1,9 +1,7 @@
 ---
 name: java-coding-standards-lite
-description: 面向日常 Java 与 Spring 开发的实用编码规范。创建或修改 `.java` 文件、服务逻辑、控制器、仓储、DTO、异常处理、校验、测试或 SQL 相关代码时都应应用此 skill。重点关注：清晰的守卫式写法、新增类和方法必须补充注释、优先使用 Lombok 减少样板代码、安全的字符串处理、构造器注入、参数化 SQL，以及符合项目现有风格的可读性。
+description: Use when creating, modifying, or reviewing Java/Spring code, tests, DTOs, controllers, services, repositories, exception handling, validation, MyBatis XML, SQL, or DDL in Java projects.
 license: MIT
-compatibility:
-  - requires: "**/*.java"
 ---
 
 # Java 编码规范（轻量版）
@@ -18,7 +16,7 @@ compatibility:
 - Spring Controller、Service、Repository、Configuration
 - DTO、请求对象、响应对象、校验逻辑
 - 异常处理、日志输出、防御式编程
-- Java 中内嵌 SQL、注解 SQL、XML SQL、SQL builder
+- Java 中内嵌 SQL、注解 SQL、MyBatis XML SQL、SQL builder、DDL
 - 单元测试、集成测试、测试辅助代码
 
 ## 核心规则
@@ -30,19 +28,17 @@ compatibility:
 ```java
 public void process(User user) {
     if (user == null) {
-        log.warn("User is null");
-        return;
+        throw new IllegalArgumentException("user must not be null");
     }
     if (StringUtils.isBlank(user.getName())) {
-        log.warn("User name is blank");
-        return;
+        throw new IllegalArgumentException("user name must not be blank");
     }
 
     executeLogic(user);
 }
 ```
 
-如果 `return`、`continue`、`throw` 能明显降低嵌套层级，就优先这样写。
+如果 `return`、`continue`、`throw` 能明显降低嵌套层级，就优先这样写。命令型业务和边界校验默认抛出明确异常；批处理、查询兜底、可跳过单条数据等场景才使用 `return` / `continue` 静默跳过，并记录必要上下文。
 
 ### 2. 跟随项目既有工具风格
 
@@ -96,10 +92,11 @@ try {
 }
 ```
 
-### 5. 新增类和新增方法必须写注释
+### 5. 新增类型和关键方法必须写注释
 
 - 新增类必须有类注释，说明职责、适用场景、边界或主要用途
-- 新增方法必须有方法注释，说明用途、关键参数、返回值、约束、异常或副作用
+- 新增 public/protected 方法、业务方法、接口方法、复杂私有方法必须有方法注释，说明用途、关键参数、返回值、约束、异常或副作用
+- 简单 getter/setter、构造器、显而易见的私有拆分方法不强制写机械注释
 - 注释要解释业务意图，不要只是把类名或方法名换个说法复述一遍
 - 新增可复用类、工具类、适配器、策略类时，合适的话补一个简短示例
 
@@ -130,12 +127,13 @@ public class UserRegistrationService {
 }
 ```
 
-### 6. 优先使用构造器注入，并结合 Lombok 减少样板代码
+### 6. Java 17 数据载体优先 record，其他场景结合 Lombok 减少样板代码
 
-构造器注入能让依赖更明确，也更利于测试；在项目已使用 Lombok 的前提下，优先用 Lombok 消除重复代码。
+构造器注入能让依赖更明确，也更利于测试。先识别项目 Java 版本（如 `maven-compiler-plugin`、`release`、`sourceCompatibility`、`targetCompatibility`）；Java 17+ 项目中，简单不可变 DTO、VO、Command、Response 等数据载体优先使用 `record`。Java 8/11 项目，或不适合 `record` 的可变对象、实体、Spring Bean，再按项目约定使用普通 class 或 Lombok 减少重复代码。
 
 - Spring Bean 默认优先 `final` 字段 + `@RequiredArgsConstructor`
-- DTO、VO、命令对象、返回对象等简单数据载体，优先用 `@Data`、`@Getter`、`@Setter`、`@Builder`
+- DTO、VO、命令对象、返回对象等简单不可变数据载体，在确认 Java 17+ 后优先用 `record`
+- 需要 setter、无参构造、ORM 代理、复杂 Builder 的对象，再考虑 `@Data`、`@Getter`、`@Setter`、`@Builder`
 - 需要日志时优先用 `@Slf4j`
 - 如果当前模块或包明确不使用 Lombok，就遵循本地约定，不要强推
 
@@ -148,11 +146,10 @@ public class UserService {
     private final EmailService emailService;
 }
 
-@Data
-@Builder
-public class UserCreateCommand {
-    private String userName;
-    private String email;
+/**
+ * 用户创建命令。
+ */
+public record UserCreateCommand(String userName, String email) {
 }
 ```
 
@@ -179,6 +176,9 @@ public void createUser(UserCreateRequest request) {
 - 使用参数化 SQL、占位符、框架绑定参数
 - 禁止直接拼接用户输入
 - 查询语句优先写明确字段，避免 `SELECT *`
+- 业务表默认包含 `create_user_id`、`update_user_id`、`create_time`、`update_time`、`is_deleted`
+- 数据库字段默认 `NOT NULL`；确需可空时必须有明确业务原因
+- 业务查询默认过滤 `is_deleted = 0`
 
 ```java
 @Select("SELECT id, user_name, email FROM users WHERE user_name = #{userName}")
@@ -224,8 +224,8 @@ class UserServiceTest {
 
 1. 先读附近 2-3 个类，跟随本地风格
 2. 优先保证名字清晰、方法简短、职责单一
-3. 只要是新增类或新增方法，就补齐注释
-4. 模块已使用 Lombok 时，优先减少重复构造器、getter、setter、logger 样板代码
+3. 新增类型和关键方法补齐解释业务意图的注释
+4. 先确认 Java 版本；Java 17+ 简单不可变数据载体优先用 record；不适合 record 时再用普通 class 或 Lombok 减少样板代码
 5. Controller 保持薄，业务逻辑放到 Service、Manage、Master、Helper 等业务层
 6. 没有必要时不要做大范围框架改造或风格清洗
 7. 行为变更时同步补测试或更新测试
@@ -234,11 +234,14 @@ class UserServiceTest {
 
 - `if` 嵌套过深，本可使用守卫式返回
 - 新增类没有类注释
-- 新增方法没有方法注释
+- 新增 public/protected 方法、业务方法或复杂私有方法没有方法注释
+- Java 17+ 简单不可变数据载体仍用 Lombok class 堆 getter / setter
 - 在 Lombok 友好的模块里手写重复 constructor / getter / setter / logger
 - 使用字段注入 `@Autowired`
 - 生产代码里出现空 `catch` 或 `printStackTrace()`
 - SQL 通过字符串拼接构造
+- 新增业务表缺少审计字段或字段未声明 `NOT NULL`
+- 业务查询遗漏 `is_deleted = 0`
 - 外部输入未校验就直接使用
 - 同一文件里混用多套空值判断风格
 - 没有项目先例却额外引入新工具库
@@ -248,14 +251,15 @@ class UserServiceTest {
 需要更细规则时，继续阅读这些文档：
 
 - `./references/naming-conventions.md`：命名规范
+- `./references/record.md`：Java 17 record 使用规范
 - `./references/coding-standards.md`：格式、注释、Lombok、结构细节
 - `./references/exception-logging.md`：异常与日志
 - `./references/security.md`：参数校验与安全编码
-- `./references/testing.md`：Java 测试示例
+- `./references/testing.md`：Java 测试规范
 - `./references/database.md`：SQL 与数据库规范
 - `./references/concurrency.md`：并发与多线程注意事项
 - `./references/design.md`：分层、设计与模式示例
 
 ## 输出要求
 
-不要输出固定横幅或多余套话。默认安静应用这些规范，只在最终说明中提到真正影响本次修改的规则。生成新的 Java 类或方法时，把必须的注释直接写进代码；模块已使用 Lombok 时，优先输出基于 Lombok 的实现。
+不要输出固定横幅或多余套话。默认安静应用这些规范，只在最终说明中提到真正影响本次修改的规则。生成新的 Java 类或方法时，把必须的注释直接写进代码；先确认 Java 版本，Java 17+ 简单不可变数据载体优先输出 `record`，不适合 `record` 时再按项目约定使用普通 class 或 Lombok。
