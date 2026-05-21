@@ -16,6 +16,7 @@
 - 拒绝策略要匹配业务语义：可降级、可重试、可丢弃、还是必须失败
 - 应暴露活跃线程数、队列大小、拒绝次数、耗时等指标
 - 应在应用关闭时优雅 shutdown
+- Java 21+ 项目处理 IO 密集型任务时，可优先考虑虚拟线程替代传统线程池，降低线程创建成本
 
 ```java
 ThreadPoolExecutor executor = new ThreadPoolExecutor(
@@ -164,6 +165,7 @@ assertTrue(done.await(3, TimeUnit.SECONDS));
 - [ ] 没有裸线程或无边界 `Executors` 默认线程池
 - [ ] 队列有容量，线程有命名，拒绝策略明确
 - [ ] 有关闭逻辑和监控指标
+- [ ] Java 21+ 项目已评估虚拟线程适用场景
 
 ### 线程安全
 

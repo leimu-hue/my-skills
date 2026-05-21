@@ -222,8 +222,9 @@ class UserServiceTest {
 
 生成或修改 Java 代码时，按下面顺序思考：
 
-1. 先读附近 2-3 个类，跟随本地风格
-2. 优先保证名字清晰、方法简短、职责单一
+1. 先确认项目 Java 版本：检查 `pom.xml` 的 `maven-compiler-plugin`、`release`、`sourceCompatibility`、`targetCompatibility`，或 `build.gradle` 的 `sourceCompatibility` / `targetCompatibility`
+2. 先读附近 2-3 个类，跟随本地风格
+3. 优先保证名字清晰、方法简短、职责单一
 3. 新增类型和关键方法补齐解释业务意图的注释
 4. 先确认 Java 版本；Java 17+ 简单不可变数据载体优先用 record；不适合 record 时再用普通 class 或 Lombok 减少样板代码
 5. Controller 保持薄，业务逻辑放到 Service、Manage、Master、Helper 等业务层
@@ -248,7 +249,7 @@ class UserServiceTest {
 
 ## 参考文件
 
-需要更细规则时，继续阅读这些文档：
+深入某一领域时优先查阅对应文档：
 
 - `./references/naming-conventions.md`：命名规范
 - `./references/record.md`：Java 17 record 使用规范

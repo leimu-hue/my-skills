@@ -126,6 +126,7 @@ public class NotificationFactory {
 - 分页响应至少包含：`content`、`pageNumber`、`pageSize`、`totalElements`、`totalPages`、`hasNext`
 
 ```java
+// Java 8/11 项目中需要 Builder 的场景使用此写法（Java 17+ 优先使用 record）
 @Data
 @Builder
 public class UserCreateRequest {

@@ -79,7 +79,10 @@ public record AmountRange(BigDecimal minAmount, BigDecimal maxAmount) {
 - record 字段天然 `private final`，不要再加 Lombok 的 `@Data`、`@Getter`、`@Setter`
 - 访问器名称是组件名，如 `request.userName()`，不是 `getUserName()`
 - record 自动生成 `equals`、`hashCode`、`toString`，避免存放明文密码、token、密钥等敏感字段
-- 序列化、反序列化、参数绑定要先确认项目 Jackson、Spring、MyBatis 版本支持
+- 序列化、反序列化、参数绑定要确认框架版本支持：
+  - Spring Boot 3.x (Spring Framework 6)：完整支持 record 作为 HTTP 请求体
+  - Jackson 2.14+：支持 record 序列化/反序列化
+  - MyBatis 3.5.10+ 或 MyBatis-Plus 3.5.3+：支持 record 作为 Mapper 参数和返回值
 - record 可以实现接口，但不能继承 class
 - 不要为了少写 getter/setter 把本应可变的领域实体改成 record
 
@@ -91,3 +94,4 @@ public record AmountRange(BigDecimal minAmount, BigDecimal maxAmount) {
 - [ ] 组件数量适中，构造调用可读
 - [ ] 需要的校验已通过 Bean Validation 或 compact constructor 表达
 - [ ] 没有在 record 中保存会被 `toString()` 泄露的敏感明文字段
+- [ ] Spring Boot、Jackson、MyBatis 版本已确认支持 record

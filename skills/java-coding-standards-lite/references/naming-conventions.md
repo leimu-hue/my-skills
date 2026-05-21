@@ -16,7 +16,7 @@
 | 方法 | lowerCamelCase，动词或动宾短语 | `createUser`, `cancelOrder` | `userCreate`, `doIt` |
 | 变量 / 字段 | lowerCamelCase，表达业务含义 | `userName`, `maxRetryCount` | `s`, `usr`, `user_name` |
 | 常量 | UPPER_SNAKE_CASE | `MAX_RETRY_COUNT` | `maxRetryCount` |
-| 枚举值 | UPPER_SNAKE_CASE | `PENDING_PAYMENT` | `PendingPayment` |
+| 枚举值 | UPPER_SNAKE_CASE（与常量一致） | `PENDING_PAYMENT` | `PendingPayment` |
 | 测试类 | 被测类名 + `Test` | `UserServiceTest` | `TestUserService` |
 | 异常类 | 语义名 + `Exception` | `BusinessException` | `BusinessError` |
 
