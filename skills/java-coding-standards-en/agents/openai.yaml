@@ -1,0 +1,4 @@
+interface:
+  display_name: "Java Coding Standards EN"
+  short_description: "Practical Java and Spring coding standards (English)"
+  default_prompt: "Use $java-coding-standards-en when editing Java or Spring code."
