@@ -19,6 +19,17 @@
 - Java 21+ 项目处理 IO 密集型任务时，可优先考虑虚拟线程替代传统线程池，降低线程创建成本
 
 ```java
+// ✅ Java 21+ 虚拟线程：I/O 密集型任务高吞吐
+ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
+
+// Spring Boot 3.2+ 开启：spring.threads.virtual.enabled=true
+// 开启后 Tomcat、@Async、@Scheduled 等默认使用虚拟线程
+
+// ❌ 传统线程池处理大量 I/O 阻塞任务（资源耗尽）
+ExecutorService executor = Executors.newFixedThreadPool(100);
+```
+
+```java
 ThreadPoolExecutor executor = new ThreadPoolExecutor(
     8,
     16,
@@ -40,6 +51,8 @@ ThreadPoolExecutor executor = new ThreadPoolExecutor(
 | 可中断、可超时、尝试加锁 | `ReentrantLock` | `unlock()` 必须在 `finally` |
 | 读多写少共享 Map | `ConcurrentHashMap` | 复合操作用 `computeIfAbsent` 等原子方法 |
 | 读多写极少列表 | `CopyOnWriteArrayList` | 写多时成本高 |
+| 日期格式化 | `DateTimeFormatter` | `SimpleDateFormat` 线程不安全，禁止用 `static` 共享 |
+| 多线程 Map | `ConcurrentHashMap` | `HashMap` 非线程安全，并发环境会数据丢失 |
 
 ```java
 private final AtomicInteger counter = new AtomicInteger();

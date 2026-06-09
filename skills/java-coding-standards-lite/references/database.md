@@ -93,11 +93,24 @@ LIMIT ?, ?;
 
 ## 事务与锁
 
-- 事务边界放在 Service / ApplicationService 用例层
+- 事务边界放在 Service / ApplicationService 用例层，不在 Controller 层开启事务
+- `@Transactional` 只加在公共方法上；加在 `private` 方法上 AOP 不生效
+- 读操作显式标记 `@Transactional(readOnly = true)`，可触发只读优化
 - 事务内只放必须原子提交的数据库操作，避免远程调用、长时间计算、用户交互
 - 库存、余额等并发更新优先使用乐观锁、条件更新或数据库原子更新
 - 悲观锁 `SELECT ... FOR UPDATE` 必须在事务内使用，并控制锁范围和顺序
 - 事务传播级别要有明确理由，尤其是 `REQUIRES_NEW`
+
+```java
+@Service
+public class UserService {
+    @Transactional(readOnly = true)
+    public User getUser(Long id) { ... }
+
+    @Transactional
+    public void createUser(UserDto dto) { ... }
+}
+```
 
 ```sql
 UPDATE product
@@ -152,6 +165,8 @@ WHERE id = ?
 ### 事务与安全
 
 - [ ] 事务范围足够小
+- [ ] 读操作标记了 `@Transactional(readOnly = true)`
+- [ ] `@Transactional` 未加在 `private` 方法或 Controller 层
 - [ ] 并发更新有锁或条件保护
 - [ ] 应用数据库账号权限最小化
 - [ ] 高风险 DDL / 数据订正有备份和回滚方案
@@ -161,3 +176,57 @@ WHERE id = ?
 - [ ] 核心线程数、最大线程数、连接超时idleTimeout合理配置
 - [ ] 最小空闲连接数避免冷启动抖动
 - [ ] 没有在事务内做远程调用或长时间计算
+
+## JPA 与 ORM
+
+### N+1 查询问题
+
+- `FetchType.EAGER` 或在循环中触发懒加载会导致 N+1 查询，严重影响性能
+- 使用 `JOIN FETCH`、`@EntityGraph` 或批量查询解决
+
+```java
+// ❌ FetchType.EAGER 或循环触发懒加载
+@Entity
+public class User {
+    @OneToMany(fetch = FetchType.EAGER) // 危险！
+    private List<Order> orders;
+}
+
+List<User> users = userRepo.findAll(); // 1 条 SQL
+for (User user : users) {
+    user.getOrders().size(); // N 条 SQL
+}
+
+// ✅ 使用 JOIN FETCH
+@Query("SELECT u FROM User u JOIN FETCH u.orders")
+List<User> findAllWithOrders();
+```
+
+### Entity 设计
+
+- JPA Entity 不使用 Lombok `@Data`：`@Data` 生成的 `equals`/`hashCode` 包含所有字段，可能触发懒加载导致性能问题或异常
+- 使用 `@Getter`、`@Setter`，自定义 `equals`/`hashCode` 通常基于 ID
+- Entity 类使用 class，不使用 record
+
+```java
+@Entity
+@Getter
+@Setter
+public class User {
+    @Id
+    private Long id;
+    private String userName;
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof User)) return false;
+        return id != null && id.equals(((User) o).id);
+    }
+
+    @Override
+    public int hashCode() {
+        return getClass().hashCode();
+    }
+}
+```

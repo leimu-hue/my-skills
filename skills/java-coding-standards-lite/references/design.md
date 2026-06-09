@@ -146,6 +146,55 @@ public class UserCreateRequest {
 - Header 版本适合内部 API、网关统一路由或客户端可控场景：`X-API-Version=1`
 - 不要在同一业务域内混用多套版本策略，除非网关或兼容计划明确要求
 
+## 配置管理
+
+- 配置属性优先使用 `@ConfigurationProperties` 集中管理，类型安全且可验证
+- 避免将 `@Value` 散落在各个 Service 中，难以追踪和维护
+- 禁止在代码中硬编码配置值（API Key、URL、超时等）
+
+```java
+// ✅ 使用 @ConfigurationProperties 集中管理
+@ConfigurationProperties(prefix = "app.payment")
+public record PaymentProperties(String apiKey, int timeout, String url) {}
+
+// ❌ @Value 散落各处
+@Value("${app.payment.api-key}")
+private String apiKey;
+
+// ❌ 硬编码
+private String apiKey = "sk_live_12345";
+```
+
+## 全局异常处理
+
+- 默认由全局异常处理器统一转换 HTTP 响应，Controller 不手写重复 `try/catch`
+- Spring Boot 3 优先使用 `ProblemDetail`（RFC 7807）作为标准错误响应
+- 自定义异常 + `@RestControllerAdvice` 统一处理
+
+```java
+@RestControllerAdvice
+public class GlobalExceptionHandler {
+
+    @ExceptionHandler(UserNotFoundException.class)
+    public ProblemDetail handleNotFound(UserNotFoundException e) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, e.getMessage());
+    }
+
+    @ExceptionHandler(BusinessException.class)
+    public ProblemDetail handleBusiness(BusinessException e) {
+        ProblemDetail detail = ProblemDetail.forStatusAndDetail(HttpStatus.UNPROCESSABLE_ENTITY, e.getMessage());
+        detail.setProperty("errorCode", e.getErrorCode());
+        return detail;
+    }
+
+    @ExceptionHandler(Exception.class)
+    public ProblemDetail handleUnknown(Exception e) {
+        log.error("未预期系统异常", e);
+        return ProblemDetail.forStatusAndDetail(HttpStatus.INTERNAL_SERVER_ERROR, "系统繁忙，请稍后重试");
+    }
+}
+```
+
 ## 领域驱动设计
 
 ### 领域对象
@@ -218,6 +267,17 @@ public class OrderApplicationService {
 - [ ] HTTP 状态码准确
 - [ ] 请求、响应、错误格式在项目内一致
 - [ ] API 版本策略明确
+
+### 配置
+
+- [ ] 配置属性使用 `@ConfigurationProperties` 集中管理
+- [ ] 没有硬编码配置值或 `@Value` 散落各处
+
+### 异常处理
+
+- [ ] 全局异常处理使用 `@RestControllerAdvice`
+- [ ] Spring Boot 3 优先使用 `ProblemDetail`
+- [ ] Controller 未重复手写 `try/catch`
 
 ### 领域
 

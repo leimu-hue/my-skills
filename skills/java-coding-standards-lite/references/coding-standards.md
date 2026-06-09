@@ -100,6 +100,7 @@ public class UserRegisterService {
 - JPA Entity、需要 setter/无参构造、ORM 代理、复杂 Builder 的类型使用 class
 - 不适合 `record` 且项目已使用 Lombok 时，再用 `@Getter`、`@Setter`、`@Builder`、`@RequiredArgsConstructor` 减少样板
 - Spring Bean 使用 `@RequiredArgsConstructor`，日志使用 `@Slf4j`
+- `@Builder` 无法强制校验必填字段，关键业务对象建议手写 Builder 或构造函数，或在 `build()` 中补充校验
 
 ```java
 /**
@@ -128,11 +129,47 @@ ZonedDateTime beijingTime = now.atZone(ZoneId.of("Asia/Shanghai"));
 - 简单转换、过滤、聚合可用 Stream；复杂流程或需要调试的逻辑可用普通循环
 - 返回空集合优先用 `Collections.emptyList()`、`List.of()` 等不可变空集合
 - 对外返回集合时考虑是否需要不可变，避免调用方误改内部状态
+- 简单遍历不要用 Stream，for-each 更直接且性能更好
 
 ```java
-if (CollectionUtils.isEmpty(users)) {
-    return Collections.emptyList();
+// ✅ 简单遍历用 for-each
+for (var item : items) {
+    process(item);
 }
+
+// ❌ 简单遍历用 Stream：多余开销且可读性差
+items.stream().forEach(item -> process(item));
+
+// ❌ 过长的 Stream 链难以调试，拆分为有意义的步骤
+var filtered = list.stream().filter(...).toList();
+var result = filtered.stream().map(...).collect(...);
+```
+
+## Optional
+
+- `Optional` 仅用于方法返回值，不用于字段、方法参数或集合元素
+- 不要用 `isPresent()` + `get()`，使用函数式 API
+- 不要用 `Optional` 代替 null 检查做流程控制
+
+```java
+// ✅ Optional 仅用于返回值
+public Optional<User> findUser(Long id) { ... }
+
+// ✅ 使用函数式 API
+return findUser(id)
+    .map(User::getUserName)
+    .orElse("unknown");
+
+// ❌ 用作字段或参数（序列化问题，增加调用复杂度）
+public void process(Optional<String> name) { ... }
+private Optional<String> email; // 不推荐
+
+// ❌ 用了 Optional 还用 isPresent() + get()
+Optional<User> userOpt = findUser(id);
+if (userOpt.isPresent()) {
+    return userOpt.get().getUserName();
+}
+return "unknown";
 ```
 
 ## 控制语句
@@ -168,9 +205,12 @@ if (CollectionUtils.isEmpty(users)) {
 - [ ] 已确认 Java 版本；Java 17+ 简单不可变数据载体优先使用 `record`
 - [ ] 不适合 `record` 的场景才使用 Lombok class
 - [ ] Spring Bean 使用构造器注入
+- [ ] `@Builder` 未用于需要强制校验必填字段的关键业务对象
 
-### 集合与时间
+### 集合、Stream 与 Optional
 
 - [ ] 集合判空完整且风格一致
 - [ ] 对外集合没有泄露可变内部状态
+- [ ] 简单遍历未滥用 Stream
+- [ ] `Optional` 仅用于返回值，未用于字段或参数
 - [ ] 使用 `java.time`，时间逻辑有明确时区或 `Clock`

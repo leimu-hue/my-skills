@@ -4,24 +4,22 @@
 
 ## 目录结构
 
-- `spec/`：技能规范说明入口。
-- `template/`：新 Skill 的基础模板。
-- `skills/`：已实现的 Skill 示例。
-- `.claude/`、`.opencode/`：本地工具或运行环境相关配置目录。
+- `spec/`：技能规范说明入口
+- `template/`：新 Skill 的基础模板
+- `skills/`：已实现的 Skill 示例
+- `.claude/`：本地工具或运行环境相关配置目录
 
-## 当前内容
+## 当前 Skill 列表
 
-### 1. Skill 规范
-
-- `spec/agent-skills-spec.md`：指向官方规范说明地址 <https://agentskills.io/specification>
-
-### 2. Skill 模板
-
-- `template/SKILL.md`：用于创建新 Skill 的最小模板，包含 `name` 和 `description` 元信息。
-
-### 3. 示例 Skill
-
-- `skills/frontend-design/SKILL.md`：一个用于生成高质量前端界面的 Skill 示例。
+| Skill | 说明 |
+|---|---|
+| `doc-generator` | 文档生成器，支持需求规格、概要设计、详细设计、数据库设计、API 文档、测试计划、部署手册等多种文档模板 |
+| `frontend-design` | 前端界面设计 Skill，用于生成高质量前端界面 |
+| `java-coding-standards-lite` | Java 编码规范（中文版），面向企业 Java 项目的轻量规范，涵盖 Spring、MyBatis、JPA、并发等场景 |
+| `java-coding-standards-en` | Java 编码规范（英文版），与中文版结构对齐 |
+| `skill-creator` | Skill 创建辅助工具，包含评估、打包、改进描述等脚本 |
+| `rust-coding-guide` | Rust 编码与审查指南，编写和审查 Rust 代码时均适用，涵盖所有权/借用、unsafe、异步/并发、取消安全、错误处理、性能、Trait 设计 |
+| `vue-options-api-best-practices` | Vue Options API 最佳实践，涵盖 TypeScript 类型、响应式陷阱、生命周期等规范 |
 
 ## 如何新增一个 Skill
 
@@ -31,16 +29,18 @@
    - `name`：Skill 名称
    - `description`：Skill 用途与触发场景
 4. 在正文中补充具体使用说明、工作流程和约束
+5. 如需深入某一领域的详细内容，可在 `references/` 子目录下拆分独立文档
 
 ## 推荐编写格式
 
 一个典型的 `SKILL.md` 通常包含：
 
-- YAML 头部元信息
+- YAML 头部元信息（`name`、`description`、`license`）
 - Skill 的目标说明
-- 使用时机
-- 执行步骤或最佳实践
-- 注意事项、限制条件或示例
+- 核心规则摘要（详细内容拆分至 `references/` 目录）
+- 工作方式 / 执行步骤
+- 常见违规点或注意事项
+- 参考文件索引
 
 ## 适用场景
 
