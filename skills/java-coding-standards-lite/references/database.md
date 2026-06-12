@@ -101,6 +101,83 @@ LIMIT ?, ?;
 - 悲观锁 `SELECT ... FOR UPDATE` 必须在事务内使用，并控制锁范围和顺序
 - 事务传播级别要有明确理由，尤其是 `REQUIRES_NEW`
 
+## 批量操作
+
+- 插入、更新、删除应尽量使用批量操作，减少数据库往返次数
+- 批量大小必须通过配置项控制，不允许硬编码，默认值根据业务场景设定（常见 `500`–`1000`）
+- 超过批量上限的数据必须分批提交，避免大事务、长锁、内存溢出或超过 `max_allowed_packet`
+- 分批逻辑统一封装为工具方法或基类，所有模块复用，不要各自写死批次大小
+
+### 配置方式
+
+```yaml
+# application.yml
+app:
+  batch:
+    size: 500    # 批量插入/更新/删除的每批条数
+```
+
+```java
+@Data
+@ConfigurationProperties(prefix = "app.batch")
+public class BatchProperties {
+    /** 每批处理条数，默认 500 */
+    private int size = 500;
+}
+```
+
+### 批量插入
+
+```java
+// ❌ 循环单条插入，N 次网络往返
+for (Order order : orders) {
+    orderMapper.insert(order);
+}
+
+// ❌ 批量大小硬编码
+Lists.partition(orders, 500).forEach(batch -> orderMapper.batchInsert(batch));
+
+// ✅ 批量插入 + 配置化批次大小
+Lists.partition(orders, batchProperties.getSize())
+    .forEach(batch -> orderMapper.batchInsert(batch));
+```
+
+### 批量更新
+
+```java
+// ✅ 批量更新，统一使用配置化批次大小
+Lists.partition(updates, batchProperties.getSize())
+    .forEach(batch -> orderMapper.batchUpdate(batch));
+```
+
+### 批量删除
+
+```java
+// ✅ 按 ID 批量删除，分批执行
+Lists.partition(ids, batchProperties.getSize())
+    .forEach(batch -> orderMapper.batchDeleteByIds(batch));
+```
+
+### MyBatis 批量 SQL 示例
+
+```xml
+<!-- batchInsert -->
+<insert id="batchInsert">
+    INSERT INTO order_info (order_no, user_id, total_amount, status)
+    VALUES
+    <foreach collection="list" item="o" separator=",">
+        (#{o.orderNo}, #{o.userId}, #{o.totalAmount}, #{o.status})
+    </foreach>
+</insert>
+```
+
+### 注意事项
+
+- `foreach` 拼接的 `VALUES` 受 `max_allowed_packet` 限制，大批量时分批提交
+- JPA `saveAll()` 同样受批次配置影响，通过 `spring.jpa.properties.hibernate.jdbc.batch_size` 设置
+- 批量操作应在事务内执行，分批时每批单独提交，避免单事务过大
+- 批量查询同样适用：`WHERE id IN (...)` 中的 ID 列表也应分批，避免 SQL 过长
+
 ```java
 @Service
 public class UserService {
@@ -161,6 +238,14 @@ WHERE id = ?
 - [ ] MyBatis `${}` 使用了服务端白名单
 - [ ] UPDATE / DELETE 有 WHERE 条件
 - [ ] 业务查询默认过滤 `is_deleted = 0`
+
+### 批量操作
+
+- [ ] 批量大小通过配置项控制，未硬编码
+- [ ] 超过批次上限的数据已分批提交
+- [ ] 分批逻辑复用统一工具方法，未各自实现
+- [ ] 批量插入/更新/删除在事务内分批执行
+- [ ] `IN (...)` 查询的 ID 列表同样分批，避免 SQL 过长
 
 ### 事务与安全
 

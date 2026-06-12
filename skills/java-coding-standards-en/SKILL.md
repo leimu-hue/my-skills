@@ -38,6 +38,7 @@ A lightweight standard for enterprise Java projects. The goal is to produce stab
 - Error codes as inline string literals instead of referencing `ErrorCodes` constants class
 - Exception or log messages with hardcoded text instead of i18n message keys
 - SQL constructed via string concatenation
+- Batch operation size hardcoded instead of controlled via configuration
 - New business tables missing audit fields or fields not declared `NOT NULL`
 - Business queries missing `is_deleted = 0` filter
 - Using external input without validation
@@ -59,7 +60,7 @@ Consult the corresponding document for deeper coverage:
 - `./references/exception-logging.md` — Exceptions and logging (i18n error codes, `ErrorCodes` constants, English log text)
 - `./references/security.md` — Parameter validation and secure coding
 - `./references/testing.md` — Java testing standards
-- `./references/database.md` — SQL and database standards
+- `./references/database.md` — SQL and database standards (table design, indexes, transactions, batch operations, connection pool)
 - `./references/concurrency.md` — Concurrency and multithreading guidelines
 - `./references/design.md` — Layering, design patterns, and examples
 

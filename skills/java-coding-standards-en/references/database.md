@@ -99,6 +99,83 @@ LIMIT ?, ?;
 - Pessimistic locking (`SELECT ... FOR UPDATE`) must be used within transactions with controlled lock scope and ordering
 - Transaction propagation levels must have a clear reason, especially `REQUIRES_NEW`
 
+## Batch Operations
+
+- Inserts, updates, and deletes should use batch operations to reduce database round-trips
+- Batch size must be controlled via configuration, not hardcoded; default values depend on business scenario (commonly `500`–`1000`)
+- Data exceeding the batch limit must be committed in chunks to avoid large transactions, long locks, memory overflow, or exceeding `max_allowed_packet`
+- Chunking logic should be unified into a utility method or base class for all modules to reuse — never hardcode batch size in each module
+
+### Configuration
+
+```yaml
+# application.yml
+app:
+  batch:
+    size: 500    # Number of records per batch for insert/update/delete
+```
+
+```java
+@Data
+@ConfigurationProperties(prefix = "app.batch")
+public class BatchProperties {
+    /** Records per batch, default 500 */
+    private int size = 500;
+}
+```
+
+### Batch Insert
+
+```java
+// ❌ Single-row insert in loop — N network round-trips
+for (Order order : orders) {
+    orderMapper.insert(order);
+}
+
+// ❌ Hardcoded batch size
+Lists.partition(orders, 500).forEach(batch -> orderMapper.batchInsert(batch));
+
+// ✅ Batch insert with configurable batch size
+Lists.partition(orders, batchProperties.getSize())
+    .forEach(batch -> orderMapper.batchInsert(batch));
+```
+
+### Batch Update
+
+```java
+// ✅ Batch update using configurable batch size
+Lists.partition(updates, batchProperties.getSize())
+    .forEach(batch -> orderMapper.batchUpdate(batch));
+```
+
+### Batch Delete
+
+```java
+// ✅ Batch delete by IDs in chunks
+Lists.partition(ids, batchProperties.getSize())
+    .forEach(batch -> orderMapper.batchDeleteByIds(batch));
+```
+
+### MyBatis Batch SQL Example
+
+```xml
+<!-- batchInsert -->
+<insert id="batchInsert">
+    INSERT INTO order_info (order_no, user_id, total_amount, status)
+    VALUES
+    <foreach collection="list" item="o" separator=",">
+        (#{o.orderNo}, #{o.userId}, #{o.totalAmount}, #{o.status})
+    </foreach>
+</insert>
+```
+
+### Notes
+
+- `foreach`-generated `VALUES` are limited by `max_allowed_packet`; commit in chunks for large datasets
+- JPA `saveAll()` is also affected by batch configuration; set via `spring.jpa.properties.hibernate.jdbc.batch_size`
+- Batch operations should run inside transactions; commit each chunk separately to avoid oversized transactions
+- Batch queries also apply: `WHERE id IN (...)` ID lists should be chunked to avoid overly long SQL
+
 ```sql
 UPDATE product
 SET stock = stock - 1,
@@ -148,6 +225,14 @@ WHERE id = ?
 - [ ] MyBatis `${}` uses server-side whitelist
 - [ ] UPDATE / DELETE have WHERE clause
 - [ ] Business queries filter `is_deleted = 0` by default
+
+### Batch Operations
+
+- [ ] Batch size controlled via configuration, not hardcoded
+- [ ] Data exceeding batch limit is committed in chunks
+- [ ] Chunking logic reuses a unified utility method, not implemented per-module
+- [ ] Batch insert/update/delete runs inside transactions with per-chunk commits
+- [ ] `IN (...)` query ID lists are also chunked to avoid overly long SQL
 
 ### Transactions and Security
 

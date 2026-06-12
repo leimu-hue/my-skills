@@ -38,6 +38,7 @@ license: MIT
 - 错误码内联字符串字面量，未通过 `ErrorCodes` 常量类引用
 - 异常或日志消息硬编码中文，未使用 i18n message key
 - SQL 通过字符串拼接构造
+- 批量操作大小硬编码，未通过配置项控制
 - 新增业务表缺少审计字段或字段未声明 `NOT NULL`
 - 业务查询遗漏 `is_deleted = 0`
 - 外部输入未校验就直接使用
@@ -59,7 +60,7 @@ license: MIT
 - `./references/exception-logging.md`：异常与日志（i18n 错误码、`ErrorCodes` 常量、日志英文）
 - `./references/security.md`：参数校验与安全编码
 - `./references/testing.md`：Java 测试规范
-- `./references/database.md`：SQL 与数据库规范
+- `./references/database.md`：SQL 与数据库规范（表设计、索引、事务、批量操作、连接池）
 - `./references/concurrency.md`：并发与多线程注意事项
 - `./references/design.md`：分层、设计与模式示例
 
