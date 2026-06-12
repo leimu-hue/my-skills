@@ -35,6 +35,8 @@ A lightweight standard for enterprise Java projects. The goal is to produce stab
 - Java 17+ simple data carriers still using Lombok class with getter/setter boilerplate
 - Using field injection (`@Autowired`)
 - Empty `catch` blocks or `printStackTrace()` in production code
+- Error codes as inline string literals instead of referencing `ErrorCodes` constants class
+- Exception or log messages with hardcoded text instead of i18n message keys
 - SQL constructed via string concatenation
 - New business tables missing audit fields or fields not declared `NOT NULL`
 - Business queries missing `is_deleted = 0` filter
@@ -54,7 +56,7 @@ Consult the corresponding document for deeper coverage:
 - `./references/core-rules.md` — Core rules with detailed descriptions and code examples
 - `./references/naming-conventions.md` — Naming conventions
 - `./references/coding-standards.md` — Formatting, comments, Lombok, structural details
-- `./references/exception-logging.md` — Exceptions and logging
+- `./references/exception-logging.md` — Exceptions and logging (i18n error codes, `ErrorCodes` constants, English log text)
 - `./references/security.md` — Parameter validation and secure coding
 - `./references/testing.md` — Java testing standards
 - `./references/database.md` — SQL and database standards

@@ -8,6 +8,9 @@
 - When transforming exceptions, preserve the original exception as the `cause`
 - By default, a global exception handler should uniformly convert to HTTP responses; Controllers should not write repetitive `try/catch`
 - Don't log the same exception at ERROR level across multiple layers; log primarily at the final handling boundary
+- Exception messages use i18n message keys (errorCode doubles as message key); no hardcoded text in code. User-visible messages are resolved by `MessageSource` per locale
+- Error codes must be declared as constants in a centralized `ErrorCodes` class; reference them by class name in business code — inline string literals are forbidden
+- Log text must be in English for international team searchability and log-platform alerting rules
 
 ## Exception Classification
 
@@ -15,25 +18,66 @@
 | --- | --- | --- |
 | Checked Exception | External failures that callers can recover from and must explicitly handle: files, network, IO | Use only when the caller truly needs to handle it |
 | Runtime Exception | Illegal parameters, business rule failures, unrecoverable system errors | Default choice for business code |
-| BusinessException | Expected business failures: user not found, insufficient balance, duplicate submission | Include a stable error code and user-understandable message |
+| BusinessException | Expected business failures: user not found, insufficient balance, duplicate submission | Carry a stable error code (i18n message key) and interpolation args; message text resolved by MessageSource |
 | SystemException | Database, cache, RPC, unknown system failures | Return generic message externally; preserve cause in logs |
 
-Business exception example:
+Business exception definition (carries i18n interpolation args; message text delegated to `MessageSource`):
 
 ```java
 public class BusinessException extends RuntimeException {
-    private final String errorCode;
+    private final String errorCode;   // also serves as i18n message key
+    private final Object[] args;      // interpolation arguments
 
-    public BusinessException(String errorCode, String message) {
-        super(message);
+    public BusinessException(String errorCode, Object... args) {
+        super(errorCode);
         this.errorCode = errorCode;
+        this.args = args;
     }
 
-    public BusinessException(String errorCode, String message, Throwable cause) {
-        super(message, cause);
+    public BusinessException(String errorCode, Throwable cause, Object... args) {
+        super(errorCode, cause);
         this.errorCode = errorCode;
+        this.args = args;
     }
+
+    public String getErrorCode() { return errorCode; }
+    public Object[] getArgs()    { return args; }
 }
+```
+
+Centralized `ErrorCodes` constants class (error codes declared once, referenced by class name everywhere — change one place, update everywhere):
+
+```java
+public final class ErrorCodes {
+    private ErrorCodes() {}
+
+    // --- User module ---
+    public static final String USER_ID_INVALID    = "USER_ID_INVALID";
+    public static final String USER_NOT_FOUND     = "USER_NOT_FOUND";
+    public static final String USER_EXISTS        = "USER_EXISTS";
+    public static final String USER_CREATE_FAILED = "USER_CREATE_FAILED";
+
+    // --- General ---
+    public static final String INTERNAL_ERROR = "INTERNAL_ERROR";
+}
+```
+
+Corresponding `messages.properties` resource files (keys match `ErrorCodes` constants one-to-one):
+
+```properties
+# messages.properties (default / English)
+USER_ID_INVALID=User ID must be greater than 0, actual: {0}
+USER_NOT_FOUND=User not found: {0}
+USER_EXISTS=Username already exists: {0}
+USER_CREATE_FAILED=Failed to create user, please try again later
+INTERNAL_ERROR=Internal server error
+
+# messages_zh_CN.properties (Chinese)
+USER_ID_INVALID=用户ID必须大于0，实际值：{0}
+USER_NOT_FOUND=用户不存在：{0}
+USER_EXISTS=用户名已存在：{0}
+USER_CREATE_FAILED=用户创建失败，请稍后重试
+INTERNAL_ERROR=系统繁忙，请稍后重试
 ```
 
 ## Throwing and Transformation
@@ -47,10 +91,10 @@ public class BusinessException extends RuntimeException {
 ```java
 public User getUserById(Long id) {
     if (id == null || id <= 0) {
-        throw new IllegalArgumentException("User ID must be greater than 0");
+        throw new ValidationException(ErrorCodes.USER_ID_INVALID, id);
     }
     return userRepository.findById(id)
-        .orElseThrow(() -> new UserNotFoundException(id));
+        .orElseThrow(() -> new BusinessException(ErrorCodes.USER_NOT_FOUND, id));
 }
 ```
 
@@ -65,9 +109,9 @@ public User createUser(UserCreateRequest request) {
     try {
         return userRepository.save(request.toUser());
     } catch (DuplicateKeyException e) {
-        throw new BusinessException("USER_EXISTS", "Username already exists", e);
+        throw new BusinessException(ErrorCodes.USER_EXISTS, e, request.getUsername());
     } catch (DataAccessException e) {
-        throw new SystemException("USER_CREATE_FAILED", "User creation failed", e);
+        throw new SystemException(ErrorCodes.USER_CREATE_FAILED, e);
     }
 }
 ```
@@ -83,20 +127,29 @@ Recommended handling locations:
 
 ```java
 @RestControllerAdvice
+@RequiredArgsConstructor
 public class GlobalExceptionHandler {
 
+    private final MessageSource messageSource;
+
     @ExceptionHandler(BusinessException.class)
-    public ResponseEntity<ErrorResponse> handleBusiness(BusinessException e) {
-        log.warn("Business failure code={} message={}", e.getErrorCode(), e.getMessage());
+    public ResponseEntity<ErrorResponse> handleBusiness(BusinessException e, Locale locale) {
+        // Resolve user-visible message via MessageSource per locale
+        String userMessage = messageSource.getMessage(
+            e.getErrorCode(), e.getArgs(), e.getErrorCode(), locale);
+        // Log in English + structured fields; do not log resolved locale-specific text
+        log.warn("Business error code={} args={}", e.getErrorCode(), e.getArgs());
         return ResponseEntity.unprocessableEntity()
-            .body(ErrorResponse.of(e.getErrorCode(), e.getMessage()));
+            .body(ErrorResponse.of(e.getErrorCode(), userMessage));
     }
 
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<ErrorResponse> handleUnknown(Exception e) {
+    public ResponseEntity<ErrorResponse> handleUnknown(Exception e, Locale locale) {
         log.error("Unexpected system error", e);
+        String userMessage = messageSource.getMessage(
+            ErrorCodes.INTERNAL_ERROR, null, "Internal server error", locale);
         return ResponseEntity.internalServerError()
-            .body(ErrorResponse.of("INTERNAL_ERROR", "System busy, please retry later"));
+            .body(ErrorResponse.of(ErrorCodes.INTERNAL_ERROR, userMessage));
     }
 }
 ```
@@ -119,7 +172,7 @@ public class GlobalExceptionHandler {
 - Put the exception object as the last parameter to preserve the full stack trace
 
 ```java
-log.info("Order created successfully orderNo={} userId={} amount={}",
+log.info("Order created orderNo={} userId={} amount={}",
     orderNo, userId, amount);
 
 log.error("Payment processing failed orderNo={} gateway={} errorCode={}",
@@ -139,6 +192,24 @@ When logging is necessary, mask the data:
 ```java
 log.info("User login username={} phone={} ip={}",
     username, maskPhone(phone), clientIp);
+```
+
+### Internationalization and Log Text
+
+- Log text must be in English for log-platform keyword search, alerting rule configuration, and international team collaboration
+- User-facing error messages are resolved by `MessageSource` per locale; never hardcoded in log or exception messages
+- Logs record errorCode + args, not resolved locale-specific text (avoids inconsistency across locales, which hinders search)
+
+```java
+// ✅ Log: English + structured fields
+log.warn("Business rule violation ruleCode={} userId={} errorCode={}",
+    ruleCode, userId, e.getErrorCode());
+
+// ❌ Forbidden: hardcoded non-English text in logs
+log.error("处理用户订单失败 userId={}", userId, e);
+
+// ❌ Forbidden: writing resolved locale message to log (content differs across environments)
+log.error(messageSource.getMessage("ORDER_FAILED", null, locale), e);
 ```
 
 ### Performance
@@ -166,7 +237,14 @@ catch (Exception e) {
 
 log.error("Processing failed: " + e.getMessage()); // FORBIDDEN: loses stack trace and uses string concatenation
 
-throw new BusinessException("DB_ERROR", "Database failure"); // AVOID: loses the cause
+// FORBIDDEN: hardcoded message text, loses cause and i18n support
+throw new BusinessException("DB_ERROR", "Database failure");
+
+// FORBIDDEN: inline string literal error code — cannot track usage, easy to typo
+throw new BusinessException("DB_ERROR", e, tableName);
+
+// ✅ Correct: reference ErrorCodes constant, pass args, preserve cause
+throw new BusinessException(ErrorCodes.DB_ERROR, e, tableName);
 ```
 
 ## Checklist
@@ -177,14 +255,23 @@ throw new BusinessException("DB_ERROR", "Database failure"); // AVOID: loses the
 - [ ] Specific exceptions are caught, not blanket `Exception`
 - [ ] After catching, the exception is handled, transformed, or rethrown
 - [ ] Exception transformation preserves the original `cause`
+- [ ] Exceptions use error codes (i18n message key) + interpolation args; no hardcoded text
+- [ ] Error codes referenced via `ErrorCodes` constants class; no inline string literals
 - [ ] Controller does not duplicate global exception handling logic
-- [ ] External messages are safe, stable, and understandable
+- [ ] External messages resolved by `MessageSource` per locale; safe, stable, and understandable
 
 ### Logging
 
+- [ ] Log text is in English
 - [ ] Log level matches the impact scope
 - [ ] Uses parameterized logging
 - [ ] Exception logs include full stack trace
-- [ ] Logs contain troubleshooting context
+- [ ] Logs contain troubleshooting context (errorCode + args, not resolved locale-specific text)
 - [ ] No sensitive information in plaintext
 - [ ] High-frequency or complex logging considers performance impact
+
+### Internationalization
+
+- [ ] `messages.properties` provides a translation for every `ErrorCodes` constant; keys match constant values exactly
+- [ ] Locale-specific resource files (`messages_zh_CN.properties`, etc.) stay in sync with the default file's keys
+- [ ] `MessageSource` configured with a sensible default locale and fallback strategy

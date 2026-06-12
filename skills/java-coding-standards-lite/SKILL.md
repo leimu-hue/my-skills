@@ -35,6 +35,8 @@ license: MIT
 - Java 17+ 简单数据载体仍用 Lombok class 堆 getter / setter
 - 使用字段注入 `@Autowired`
 - 生产代码出现空 `catch` 或 `printStackTrace()`
+- 错误码内联字符串字面量，未通过 `ErrorCodes` 常量类引用
+- 异常或日志消息硬编码中文，未使用 i18n message key
 - SQL 通过字符串拼接构造
 - 新增业务表缺少审计字段或字段未声明 `NOT NULL`
 - 业务查询遗漏 `is_deleted = 0`
@@ -54,7 +56,7 @@ license: MIT
 - `./references/core-rules.md`：核心规则详细说明与代码示例
 - `./references/naming-conventions.md`：命名规范
 - `./references/coding-standards.md`：格式、注释、Lombok、结构细节
-- `./references/exception-logging.md`：异常与日志
+- `./references/exception-logging.md`：异常与日志（i18n 错误码、`ErrorCodes` 常量、日志英文）
 - `./references/security.md`：参数校验与安全编码
 - `./references/testing.md`：Java 测试规范
 - `./references/database.md`：SQL 与数据库规范

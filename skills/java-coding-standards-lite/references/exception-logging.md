@@ -8,6 +8,9 @@
 - 转换异常时保留原始异常作为 `cause`
 - 默认由全局异常处理器统一转换 HTTP 响应，Controller 不手写重复 `try/catch`
 - 同一个异常不要在多层重复打 ERROR 日志；优先在最终处理边界记录
+- 异常消息使用国际化消息 key（errorCode 即 message key），不在代码中硬编码中文；用户可见消息通过 `MessageSource` 按 locale 解析
+- 错误码必须以常量形式集中声明在 `ErrorCodes` 类中，业务代码通过类名引用，禁止内联字符串字面量
+- 日志文本统一使用英文，便于国际化团队检索和日志平台关键词告警
 
 ## 异常分类
 
@@ -15,25 +18,66 @@
 | --- | --- | --- |
 | Checked Exception | 调用方可恢复且必须显式处理的外部失败，如文件、网络、IO | 只在确实需要调用方处理时使用 |
 | Runtime Exception | 参数非法、业务规则失败、不可恢复系统错误 | 业务代码默认使用 |
-| BusinessException | 业务可预期失败，如用户不存在、余额不足、重复提交 | 带稳定错误码和用户可理解消息 |
+| BusinessException | 业务可预期失败，如用户不存在、余额不足、重复提交 | 携带稳定错误码（即 i18n message key）和插值参数，消息文本由 MessageSource 解析 |
 | SystemException | 数据库、缓存、RPC、未知系统失败 | 对外返回泛化消息，日志保留 cause |
 
-业务异常示例：
+业务异常定义（携带 i18n 插值参数，消息文本交给 `MessageSource` 解析）：
 
 ```java
 public class BusinessException extends RuntimeException {
-    private final String errorCode;
+    private final String errorCode;   // 同时作为 i18n message key
+    private final Object[] args;      // 消息插值参数
 
-    public BusinessException(String errorCode, String message) {
-        super(message);
+    public BusinessException(String errorCode, Object... args) {
+        super(errorCode);
         this.errorCode = errorCode;
+        this.args = args;
     }
 
-    public BusinessException(String errorCode, String message, Throwable cause) {
-        super(message, cause);
+    public BusinessException(String errorCode, Throwable cause, Object... args) {
+        super(errorCode, cause);
         this.errorCode = errorCode;
+        this.args = args;
     }
+
+    public String getErrorCode() { return errorCode; }
+    public Object[] getArgs()    { return args; }
 }
+```
+
+对应的 `ErrorCodes` 常量类（错误码集中声明，业务代码通过类名引用，修改只需改一处）：
+
+```java
+public final class ErrorCodes {
+    private ErrorCodes() {}
+
+    // --- 用户模块 ---
+    public static final String USER_ID_INVALID    = "USER_ID_INVALID";
+    public static final String USER_NOT_FOUND     = "USER_NOT_FOUND";
+    public static final String USER_EXISTS        = "USER_EXISTS";
+    public static final String USER_CREATE_FAILED = "USER_CREATE_FAILED";
+
+    // --- 通用 ---
+    public static final String INTERNAL_ERROR = "INTERNAL_ERROR";
+}
+```
+
+对应的 `messages.properties` 资源文件（key 与 `ErrorCodes` 常量一一对应）：
+
+```properties
+# messages.properties（默认 / 英文）
+USER_ID_INVALID=User ID must be greater than 0, actual: {0}
+USER_NOT_FOUND=User not found: {0}
+USER_EXISTS=Username already exists: {0}
+USER_CREATE_FAILED=Failed to create user, please try again later
+INTERNAL_ERROR=Internal server error
+
+# messages_zh_CN.properties（中文）
+USER_ID_INVALID=用户ID必须大于0，实际值：{0}
+USER_NOT_FOUND=用户不存在：{0}
+USER_EXISTS=用户名已存在：{0}
+USER_CREATE_FAILED=用户创建失败，请稍后重试
+INTERNAL_ERROR=系统繁忙，请稍后重试
 ```
 
 ## 抛出与转换
@@ -47,10 +91,10 @@ public class BusinessException extends RuntimeException {
 ```java
 public User getUserById(Long id) {
     if (id == null || id <= 0) {
-        throw new IllegalArgumentException("用户ID必须大于0");
+        throw new ValidationException(ErrorCodes.USER_ID_INVALID, id);
     }
     return userRepository.findById(id)
-        .orElseThrow(() -> new UserNotFoundException(id));
+        .orElseThrow(() -> new BusinessException(ErrorCodes.USER_NOT_FOUND, id));
 }
 ```
 
@@ -65,9 +109,9 @@ public User createUser(UserCreateRequest request) {
     try {
         return userRepository.save(request.toUser());
     } catch (DuplicateKeyException e) {
-        throw new BusinessException("USER_EXISTS", "用户名已存在", e);
+        throw new BusinessException(ErrorCodes.USER_EXISTS, e, request.getUsername());
     } catch (DataAccessException e) {
-        throw new SystemException("USER_CREATE_FAILED", "用户创建失败", e);
+        throw new SystemException(ErrorCodes.USER_CREATE_FAILED, e);
     }
 }
 ```
@@ -83,20 +127,29 @@ public User createUser(UserCreateRequest request) {
 
 ```java
 @RestControllerAdvice
+@RequiredArgsConstructor
 public class GlobalExceptionHandler {
 
+    private final MessageSource messageSource;
+
     @ExceptionHandler(BusinessException.class)
-    public ResponseEntity<ErrorResponse> handleBusiness(BusinessException e) {
-        log.warn("业务处理失败 code={} message={}", e.getErrorCode(), e.getMessage());
+    public ResponseEntity<ErrorResponse> handleBusiness(BusinessException e, Locale locale) {
+        // 通过 MessageSource 按 locale 解析用户可见消息
+        String userMessage = messageSource.getMessage(
+            e.getErrorCode(), e.getArgs(), e.getErrorCode(), locale);
+        // 日志使用英文 + 结构化字段，不记录解析后的本地化文本
+        log.warn("Business error code={} args={}", e.getErrorCode(), e.getArgs());
         return ResponseEntity.unprocessableEntity()
-            .body(ErrorResponse.of(e.getErrorCode(), e.getMessage()));
+            .body(ErrorResponse.of(e.getErrorCode(), userMessage));
     }
 
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<ErrorResponse> handleUnknown(Exception e) {
-        log.error("未预期系统异常", e);
+    public ResponseEntity<ErrorResponse> handleUnknown(Exception e, Locale locale) {
+        log.error("Unexpected system error", e);
+        String userMessage = messageSource.getMessage(
+            ErrorCodes.INTERNAL_ERROR, null, "Internal server error", locale);
         return ResponseEntity.internalServerError()
-            .body(ErrorResponse.of("INTERNAL_ERROR", "系统繁忙，请稍后重试"));
+            .body(ErrorResponse.of(ErrorCodes.INTERNAL_ERROR, userMessage));
     }
 }
 ```
@@ -119,10 +172,10 @@ public class GlobalExceptionHandler {
 - 异常对象放在最后一个参数，保留完整堆栈
 
 ```java
-log.info("订单创建成功 orderNo={} userId={} amount={}",
+log.info("Order created orderNo={} userId={} amount={}",
     orderNo, userId, amount);
 
-log.error("支付处理失败 orderNo={} gateway={} errorCode={}",
+log.error("Payment processing failed orderNo={} gateway={} errorCode={}",
     orderNo, gateway, errorCode, exception);
 ```
 
@@ -137,8 +190,26 @@ log.error("支付处理失败 orderNo={} gateway={} errorCode={}",
 需要记录时必须脱敏：
 
 ```java
-log.info("用户登录 username={} phone={} ip={}",
+log.info("User login username={} phone={} ip={}",
     username, maskPhone(phone), clientIp);
+```
+
+### 国际化与日志文本
+
+- 日志文本统一使用英文，便于日志平台关键词检索、告警规则配置和国际化团队协作
+- 面向用户的错误提示通过 `MessageSource` 按 locale 解析，不写死在日志或异常消息中
+- 日志中记录 errorCode + args，不记录解析后的本地化文本（避免同一条日志在不同 locale 下内容不一致，影响检索）
+
+```java
+// ✅ 日志：英文 + 结构化字段
+log.warn("Business rule violation ruleCode={} userId={} errorCode={}",
+    ruleCode, userId, e.getErrorCode());
+
+// ❌ 禁止：日志中硬编码中文
+log.error("处理用户订单失败 userId={}", userId, e);
+
+// ❌ 禁止：将解析后的 locale 消息写入日志（不同环境下内容不一致）
+log.error(messageSource.getMessage("ORDER_FAILED", null, locale), e);
 ```
 
 ### 性能
@@ -149,7 +220,7 @@ log.info("用户登录 username={} phone={} ip={}",
 
 ```java
 if (log.isDebugEnabled()) {
-    log.debug("复杂规则计算结果 result={}", buildDebugSummary(result));
+    log.debug("Complex rule evaluation result={}", buildDebugSummary(result));
 }
 ```
 
@@ -157,16 +228,23 @@ if (log.isDebugEnabled()) {
 
 ```java
 catch (Exception e) {
-    // 禁止：静默吞掉异常
+    // Forbidden: silently swallowing exceptions
 }
 
 catch (Exception e) {
-    e.printStackTrace(); // 禁止：绕过日志框架
+    e.printStackTrace(); // Forbidden: bypasses logging framework
 }
 
-log.error("处理失败: " + e.getMessage()); // 禁止：丢堆栈且字符串拼接
+log.error("Processing failed: " + e.getMessage()); // Forbidden: loses stack trace + string concat
 
-throw new BusinessException("DB_ERROR", "数据库失败"); // 避免：丢失 cause
+// Forbidden: hardcoded Chinese message, loses cause and i18n support
+throw new BusinessException("DB_ERROR", "数据库失败");
+
+// Forbidden: inline string literal error code — cannot track usage, easy to typo
+throw new BusinessException("DB_ERROR", e, tableName);
+
+// ✅ Correct: reference ErrorCodes constant, pass args, preserve cause
+throw new BusinessException(ErrorCodes.DB_ERROR, e, tableName);
 ```
 
 ## 检查清单
@@ -177,14 +255,23 @@ throw new BusinessException("DB_ERROR", "数据库失败"); // 避免：丢失 c
 - [ ] 捕获的是具体异常，不是无理由捕获 `Exception`
 - [ ] 捕获后有处理、转换或继续抛出
 - [ ] 异常转换保留原始 `cause`
+- [ ] 异常使用错误码（i18n message key）+ 插值参数，不硬编码中文
+- [ ] 错误码通过 `ErrorCodes` 常量类引用，不内联字符串字面量
 - [ ] Controller 未重复手写全局异常处理逻辑
-- [ ] 对外消息安全、稳定、可理解
+- [ ] 对外消息通过 `MessageSource` 按 locale 解析，安全、稳定、可理解
 
 ### 日志
 
+- [ ] 日志文本统一使用英文
 - [ ] 日志级别符合影响范围
 - [ ] 使用参数化日志
 - [ ] 异常日志带完整堆栈
-- [ ] 日志包含排查上下文
+- [ ] 日志包含排查上下文（errorCode + args，而非解析后的本地化文本）
 - [ ] 没有敏感信息明文
 - [ ] 高频或复杂日志考虑性能影响
+
+### 国际化
+
+- [ ] `messages.properties` 为每个 `ErrorCodes` 常量提供对应翻译，key 与常量值严格一致
+- [ ] 多语言资源文件（`messages_zh_CN.properties` 等）与默认文件 key 保持同步
+- [ ] `MessageSource` 配置了合理的 default locale 和 fallback 策略
