@@ -157,31 +157,3 @@ for (int i = 0; i < threadCount; i++) {
 start.countDown();
 assertTrue(done.await(3, TimeUnit.SECONDS));
 ```
-
-## Checklist
-
-### Thread Pools
-
-- [ ] No bare threads or unbounded `Executors` default thread pools
-- [ ] Queue has capacity; threads have names; rejection policy is explicit
-- [ ] Shutdown logic and monitoring metrics exist
-- [ ] Java 21+ projects have evaluated virtual thread applicability
-
-### Thread Safety
-
-- [ ] Shared mutable state has been identified
-- [ ] `volatile` not used for compound atomic operations
-- [ ] Lock objects are private and stable; no slow operations inside locks
-- [ ] Multiple lock acquisition order is fixed
-
-### Context and Async
-
-- [ ] `ThreadLocal` always cleaned up after use
-- [ ] Async tasks have exception handling and timeouts
-- [ ] Cross-thread context propagation mechanism is clear
-
-### Testing
-
-- [ ] Concurrency tests have synchronized start and timeout
-- [ ] No fixed `sleep` to verify async results
-- [ ] Critical concurrent paths have runtime metrics or stress test evidence

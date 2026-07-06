@@ -195,33 +195,3 @@ public class OrderApplicationService {
     }
 }
 ```
-
-## Design Checklist
-
-### Architecture
-
-- [ ] Responsibility boundaries are clear; Controller, Service, Repository, Model don't cross into each other's territory
-- [ ] New abstractions correspond to real variation points, not "looking well-designed"
-- [ ] High-level modules depend on interfaces or stable abstractions
-- [ ] Business flows are readable; extension points are centralized
-
-### Patterns
-
-- [ ] Pattern fits the current scenario
-- [ ] No over-engineering
-- [ ] Multiple implementations or clear variation point exists
-- [ ] New pattern hasn't reduced readability
-
-### API
-
-- [ ] Resource naming follows RESTful conventions
-- [ ] HTTP status codes are accurate
-- [ ] Request, response, and error formats are consistent within the project
-- [ ] API versioning strategy is clear
-
-### Domain
-
-- [ ] Entity, Value Object, and Aggregate Root boundaries are clear
-- [ ] Application Service and Domain Service responsibilities are distinct
-- [ ] Business rules are cohesive within domain objects or domain services
-- [ ] Data consistency is guaranteed by aggregate roots or transaction boundaries

@@ -246,32 +246,3 @@ throw new BusinessException("DB_ERROR", e, tableName);
 // ✅ Correct: reference ErrorCodes constant, pass args, preserve cause
 throw new BusinessException(ErrorCodes.DB_ERROR, e, tableName);
 ```
-
-## 检查清单
-
-### 异常
-
-- [ ] 参数和业务校验尽早失败
-- [ ] 捕获的是具体异常，不是无理由捕获 `Exception`
-- [ ] 捕获后有处理、转换或继续抛出
-- [ ] 异常转换保留原始 `cause`
-- [ ] 异常使用错误码（i18n message key）+ 插值参数，不硬编码中文
-- [ ] 错误码通过 `ErrorCodes` 常量类引用，不内联字符串字面量
-- [ ] Controller 未重复手写全局异常处理逻辑
-- [ ] 对外消息通过 `MessageSource` 按 locale 解析，安全、稳定、可理解
-
-### 日志
-
-- [ ] 日志文本统一使用英文
-- [ ] 日志级别符合影响范围
-- [ ] 使用参数化日志
-- [ ] 异常日志带完整堆栈
-- [ ] 日志包含排查上下文（errorCode + args，而非解析后的本地化文本）
-- [ ] 没有敏感信息明文
-- [ ] 高频或复杂日志考虑性能影响
-
-### 国际化
-
-- [ ] `messages.properties` 为每个 `ErrorCodes` 常量提供对应翻译，key 与常量值严格一致
-- [ ] 多语言资源文件（`messages_zh_CN.properties` 等）与默认文件 key 保持同步
-- [ ] `MessageSource` 配置了合理的 default locale 和 fallback 策略

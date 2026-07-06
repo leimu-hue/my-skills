@@ -38,6 +38,7 @@ private static final String ERROR_USER_NOT_FOUND = "USER_NOT_FOUND";
 - Be cautious when exposing mutable collections externally; return immutable views or copies when needed
 - Prefer composition over inheritance; use inheritance only when there is a stable `is-a` relationship and reusable template flow
 - Use `protected` only when explicitly designing for inheritance-based extension
+- Do not accumulate excessive inner classes in a single file; types with independent business responsibilities should be placed in their own packages, following existing project conventions
 
 ## Method Design
 
@@ -142,36 +143,3 @@ if (CollectionUtils.isEmpty(users)) {
 - Loops must have clear exit conditions; retry loops must limit attempts
 - No empty `catch` blocks; don't swallow exceptions
 - Use `while (true)` only when the exit condition is crystal clear, and add a comment
-
-## Checklist
-
-### Formatting
-
-- [ ] Indentation, line wrapping, blank lines match project formatter
-- [ ] No unrelated formatting churn
-- [ ] No unused imports
-
-### Design
-
-- [ ] Methods have single responsibility; parameter count is manageable
-- [ ] Parameter validation happens at boundaries
-- [ ] Composition preferred over inheritance
-- [ ] Constants and enums replace business-meaningful magic values
-
-### Comments
-
-- [ ] New classes have responsibility documentation
-- [ ] New public/protected methods, business methods, interface methods, and complex private methods document purpose, parameters, return values, exceptions, and side effects
-- [ ] Comments explain intent, not restate code
-
-### Record / Lombok
-
-- [ ] Java version confirmed; Java 17+ simple immutable data carriers use `record`
-- [ ] Lombok class used only when record is unsuitable
-- [ ] Spring Beans use constructor injection
-
-### Collections and Time
-
-- [ ] Collection emptiness checks are complete and consistent in style
-- [ ] Exposed collections don't leak mutable internal state
-- [ ] Uses `java.time`; time logic has explicit timezone or `Clock`

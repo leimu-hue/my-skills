@@ -91,13 +91,3 @@ String user_name;      // Java variables don't use underscores
 boolean notDeleted;    // negated names increase cognitive load
 Map<Long, User> map;   // missing key/value semantics
 ```
-
-## Checklist
-
-- [ ] Follows existing project naming style
-- [ ] Uses English with no pinyin
-- [ ] Avoids non-standard abbreviations
-- [ ] Class, method, and variable names follow casing rules
-- [ ] Boolean fields and methods avoid ambiguity
-- [ ] Collections and Maps express business meaning
-- [ ] Database naming avoids keywords and maintains singular/plural consistency

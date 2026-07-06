@@ -1,0 +1,104 @@
+{
+  "skill_name": "java-coding-standards-en",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Create a user creation request DTO in a Java 17 Spring Boot project. Fields: userName (3-50 chars, required), email (required, valid email), phone (optional, 11 digits). The project already uses Lombok.",
+      "expected_output": "Use record to define the DTO with Bean Validation annotations, avoid Lombok @Data or @Builder",
+      "expectations": [
+        "Uses record instead of Lombok class to define the DTO",
+        "userName field has @NotBlank and @Size annotations",
+        "email field has @NotBlank and @Email annotations",
+        "phone field has @Size or @Pattern annotation for 11-digit validation",
+        "Does not use @Data, @Getter, @Setter or other Lombok annotations"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Write a getUserById method for UserService that validates the id parameter, queries the Repository, and throws a business exception when not found. Use error code constants and support i18n. The project already has an ErrorCodes constants class and MessageSource.",
+      "expected_output": "Use guard clause validation, reference error codes via ErrorCodes constants, exception carries i18n message key and interpolation args",
+      "expectations": [
+        "Method starts with guard clause validating id parameter (null and <= 0 check)",
+        "Validation failure throws ValidationException or IllegalArgumentException",
+        "User not found throws BusinessException",
+        "BusinessException error code referenced via ErrorCodes constants class, not inline string literal",
+        "Error code doubles as i18n message key; exception carries interpolation args",
+        "Exception message does not hardcode localized text"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Write a batch query method for an order service that retrieves orders by a list of user IDs. An existing single-query method selectByUserId(Long userId) exists. This method will be called in batch scenarios.",
+      "expected_output": "Provide a batch query method such as selectByUserIdIn, avoiding callers looping through single queries",
+      "expectations": [
+        "Provides a batch query method instead of forcing callers to loop single queries",
+        "Method signature accepts Collection or List parameter",
+        "IN query ID list considers chunking or mentions chunking strategy",
+        "Returns List or Map rather than a single object",
+        "Query filters is_deleted = 0 by default"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Review the following Java code and identify all violations:\n\n```java\n@RestController\npublic class OrderController {\n    @Autowired\n    private OrderService orderService;\n\n    @PostMapping(\"/create\")\n    public ResponseEntity createOrder(@RequestBody Map<String, Object> body) {\n        try {\n            Order order = orderService.createOrder(body);\n            return ResponseEntity.ok(order);\n        } catch (Exception e) {\n            e.printStackTrace();\n            return ResponseEntity.status(500).body(\"Database failure\");\n        }\n    }\n}\n```\n\nThe project uses Java 17 Spring Boot 3.",
+      "expected_output": "Identify field injection, printStackTrace, hardcoded error message, missing DTO validation, returning Entity directly, Controller try/catch, missing Javadoc",
+      "expectations": [
+        "Identifies field injection @Autowired instead of constructor injection",
+        "Identifies e.printStackTrace() instead of using a logging framework",
+        "Identifies hardcoded error message in response body",
+        "Identifies Controller hand-writing try/catch instead of delegating to global exception handler",
+        "Identifies missing Request DTO and Bean Validation",
+        "Identifies returning Entity directly instead of Response DTO",
+        "Identifies missing class and method Javadoc"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "In a Java 17 project, refactor the following if-else chain into a switch expression:\n\n```java\npublic String getAction(OrderStatus status) {\n    String action;\n    if (status == OrderStatus.PENDING) {\n        action = \"Awaiting payment\";\n    } else if (status == OrderStatus.PAID) {\n        action = \"Preparing shipment\";\n    } else if (status == OrderStatus.SHIPPED) {\n        action = \"In transit\";\n    } else if (status == OrderStatus.DELIVERED) {\n        action = \"Completed\";\n    } else {\n        action = \"Unknown status\";\n    }\n    return action;\n}\n```",
+      "expected_output": "Rewrite using switch expression with arrow syntax, no fall-through risk, all branches covered",
+      "expectations": [
+        "Uses switch expression (-> arrow syntax) instead of traditional switch statement",
+        "Each branch directly returns a value with no break statements",
+        "Covers default branch for unknown status",
+        "Method body is concise, leveraging switch expression for direct return"
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "Design a user shipping address table named address. Include address information fields and follow the project database standards.",
+      "expected_output": "CREATE TABLE statement with standard audit fields, NOT NULL constraints, utf8mb4 charset, logical deletion field",
+      "expectations": [
+        "Includes id primary key BIGINT UNSIGNED",
+        "Includes create_user_id, update_user_id, create_time, update_time, is_deleted audit fields",
+        "All columns declared NOT NULL with sensible DEFAULT",
+        "Character set is utf8mb4",
+        "Business columns such as user_id have indexes",
+        "Table and column names use lowercase snake_case"
+      ]
+    },
+    {
+      "id": 7,
+      "prompt": "Write a batch order insertion Service method. An OrderMapper.batchInsert(List<Order>) method already exists. The project uses Spring Boot and needs configurable batch size support.",
+      "expected_output": "Use @ConfigurationProperties for batch size, partition and commit in chunks, execute within transaction",
+      "expectations": [
+        "Batch size injected via configuration rather than hardcoded",
+        "Uses Lists.partition or equivalent to chunk data",
+        "Method annotated with @Transactional",
+        "Calls batchInsert instead of looping single inserts",
+        "Configuration properties class uses @ConfigurationProperties instead of @Value"
+      ]
+    },
+    {
+      "id": 8,
+      "prompt": "The following OrderService defines three inner classes — AddressDto, PaymentInfo, LogisticsDetail — each with independent responsibilities. Refactor to comply with standards:\n\n```java\n@Service\npublic class OrderService {\n    @Data\n    public static class AddressDto { ... }\n    @Data\n    public static class PaymentInfo { ... }\n    @Data\n    public static class LogisticsDetail { ... }\n    // ... order business methods\n}\n```",
+      "expected_output": "Extract inner classes into separate files in appropriate packages, OrderService retains only business logic",
+      "expectations": [
+        "Identifies that excessive inner classes should not accumulate in a single file",
+        "Recommends extracting AddressDto, PaymentInfo, LogisticsDetail into independent class files",
+        "Extracted classes placed in appropriate packages (e.g., dto, domain packages)",
+        "OrderService retains only business logic methods",
+        "Java 17+ simple data carriers suggested as record instead of @Data class"
+      ]
+    }
+  ]
+}

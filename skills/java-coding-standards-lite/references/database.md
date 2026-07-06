@@ -158,6 +158,35 @@ Lists.partition(ids, batchProperties.getSize())
     .forEach(batch -> orderMapper.batchDeleteByIds(batch));
 ```
 
+### 批量查询
+
+- 当一个查询单条数据的方法存在被批量调用的场景时，必须同时提供批量查询版本，避免调用方在循环中逐条查询产生 N+1 问题
+- 批量查询同样适用于缓存：如果缓存提供了单条 `get`，在存在批量调用场景时必须提供 `multiGet` 或等价批量接口
+
+```java
+// ❌ 调用方在循环中逐条查询
+List<Long> userIds = request.getUserIds();
+List<User> users = userIds.stream()
+    .map(userMapper::selectById)
+    .filter(Objects::nonNull)
+    .toList();
+
+// ✅ 提供批量查询方法，一次往返
+List<User> users = userMapper.selectByIds(userIds);
+```
+
+```java
+// ❌ 循环逐条查缓存
+Map<Long, User> userMap = userIds.stream()
+    .collect(Collectors.toMap(
+        id -> id,
+        id -> userCache.get(id)  // N 次网络往返
+    ));
+
+// ✅ 批量获取
+Map<Long, User> userMap = userCache.multiGet(userIds);
+```
+
 ### MyBatis 批量 SQL 示例
 
 ```xml
@@ -212,55 +241,6 @@ WHERE id = ?
 - 读写分离账号按职责授权，管理权限仅限运维或迁移流程
 - 敏感字段按项目安全方案加密或脱敏，日志和异常不输出明文
 - 生产 DDL、批量 UPDATE/DELETE、数据订正必须有评审、备份和回滚方案
-
-## 检查清单
-
-### 表结构
-
-- [ ] 表名、字段名为小写下划线且避开关键字
-- [ ] 包含 `id`、`create_user_id`、`update_user_id`、`create_time`、`update_time`、`is_deleted`
-- [ ] 所有字段均为 `NOT NULL`，例外字段有明确业务说明
-- [ ] 金额使用 `DECIMAL`
-- [ ] 字符集使用 `utf8mb4`
-
-### 索引
-
-- [ ] 主键稳定且合理
-- [ ] 业务唯一约束有唯一索引
-- [ ] 高频查询、关联、排序字段有合适索引
-- [ ] 复合索引顺序符合查询模式
-- [ ] 无明显冗余索引
-
-### SQL
-
-- [ ] 没有 `SELECT *`
-- [ ] 外部输入全部参数化绑定
-- [ ] MyBatis `${}` 使用了服务端白名单
-- [ ] UPDATE / DELETE 有 WHERE 条件
-- [ ] 业务查询默认过滤 `is_deleted = 0`
-
-### 批量操作
-
-- [ ] 批量大小通过配置项控制，未硬编码
-- [ ] 超过批次上限的数据已分批提交
-- [ ] 分批逻辑复用统一工具方法，未各自实现
-- [ ] 批量插入/更新/删除在事务内分批执行
-- [ ] `IN (...)` 查询的 ID 列表同样分批，避免 SQL 过长
-
-### 事务与安全
-
-- [ ] 事务范围足够小
-- [ ] 读操作标记了 `@Transactional(readOnly = true)`
-- [ ] `@Transactional` 未加在 `private` 方法或 Controller 层
-- [ ] 并发更新有锁或条件保护
-- [ ] 应用数据库账号权限最小化
-- [ ] 高风险 DDL / 数据订正有备份和回滚方案
-
-### 连接池
-
-- [ ] 核心线程数、最大线程数、连接超时idleTimeout合理配置
-- [ ] 最小空闲连接数避免冷启动抖动
-- [ ] 没有在事务内做远程调用或长时间计算
 
 ## JPA 与 ORM
 

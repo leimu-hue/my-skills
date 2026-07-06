@@ -156,6 +156,35 @@ Lists.partition(ids, batchProperties.getSize())
     .forEach(batch -> orderMapper.batchDeleteByIds(batch));
 ```
 
+### Batch Query
+
+- When a single-item query method has batch-calling scenarios, a batch query version must also be provided to avoid N+1 problems from callers looping through single queries
+- Batch query also applies to cache: if the cache provides a single `get`, a `multiGet` or equivalent batch interface must be provided when batch calling is expected
+
+```java
+// ❌ Caller loops through single queries
+List<Long> userIds = request.getUserIds();
+List<User> users = userIds.stream()
+    .map(userMapper::selectById)
+    .filter(Objects::nonNull)
+    .toList();
+
+// ✅ Provide a batch query method — one round-trip
+List<User> users = userMapper.selectByIds(userIds);
+```
+
+```java
+// ❌ Loop through single cache lookups
+Map<Long, User> userMap = userIds.stream()
+    .collect(Collectors.toMap(
+        id -> id,
+        id -> userCache.get(id)  // N network round-trips
+    ));
+
+// ✅ Batch retrieval
+Map<Long, User> userMap = userCache.multiGet(userIds);
+```
+
 ### MyBatis Batch SQL Example
 
 ```xml
@@ -199,50 +228,3 @@ WHERE id = ?
 - Read/write split accounts should be authorized by responsibility; admin permissions limited to ops or migration processes
 - Sensitive columns should be encrypted or masked per project security policy; don't output plaintext in logs or exceptions
 - Production DDL, batch UPDATE/DELETE, and data fixes must have review, backup, and rollback plans
-
-## Checklist
-
-### Table Structure
-
-- [ ] Table and column names use lowercase snake_case and avoid keywords
-- [ ] Includes `id`, `create_user_id`, `update_user_id`, `create_time`, `update_time`, `is_deleted`
-- [ ] All columns are `NOT NULL`; exceptions have documented business reasons
-- [ ] Monetary amounts use `DECIMAL`
-- [ ] Character set is `utf8mb4`
-
-### Indexes
-
-- [ ] Primary key is stable and appropriate
-- [ ] Business unique constraints have unique indexes
-- [ ] High-frequency query, join, and sort columns have appropriate indexes
-- [ ] Composite index column order matches query patterns
-- [ ] No obvious redundant indexes
-
-### SQL
-
-- [ ] No `SELECT *`
-- [ ] All external input is parameterized
-- [ ] MyBatis `${}` uses server-side whitelist
-- [ ] UPDATE / DELETE have WHERE clause
-- [ ] Business queries filter `is_deleted = 0` by default
-
-### Batch Operations
-
-- [ ] Batch size controlled via configuration, not hardcoded
-- [ ] Data exceeding batch limit is committed in chunks
-- [ ] Chunking logic reuses a unified utility method, not implemented per-module
-- [ ] Batch insert/update/delete runs inside transactions with per-chunk commits
-- [ ] `IN (...)` query ID lists are also chunked to avoid overly long SQL
-
-### Transactions and Security
-
-- [ ] Transaction scope is sufficiently small
-- [ ] Concurrent updates have lock or condition protection
-- [ ] Application database account has least privilege
-- [ ] High-risk DDL / data fixes have backup and rollback plans
-
-### Connection Pool
-
-- [ ] Core threads, max threads, connection timeout, and idle timeout are properly configured
-- [ ] Minimum idle connections avoid cold-start thrashing
-- [ ] No remote calls or long computations inside transactions

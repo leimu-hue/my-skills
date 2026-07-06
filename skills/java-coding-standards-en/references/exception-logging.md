@@ -246,32 +246,3 @@ throw new BusinessException("DB_ERROR", e, tableName);
 // ✅ Correct: reference ErrorCodes constant, pass args, preserve cause
 throw new BusinessException(ErrorCodes.DB_ERROR, e, tableName);
 ```
-
-## Checklist
-
-### Exceptions
-
-- [ ] Parameter and business validation fails early
-- [ ] Specific exceptions are caught, not blanket `Exception`
-- [ ] After catching, the exception is handled, transformed, or rethrown
-- [ ] Exception transformation preserves the original `cause`
-- [ ] Exceptions use error codes (i18n message key) + interpolation args; no hardcoded text
-- [ ] Error codes referenced via `ErrorCodes` constants class; no inline string literals
-- [ ] Controller does not duplicate global exception handling logic
-- [ ] External messages resolved by `MessageSource` per locale; safe, stable, and understandable
-
-### Logging
-
-- [ ] Log text is in English
-- [ ] Log level matches the impact scope
-- [ ] Uses parameterized logging
-- [ ] Exception logs include full stack trace
-- [ ] Logs contain troubleshooting context (errorCode + args, not resolved locale-specific text)
-- [ ] No sensitive information in plaintext
-- [ ] High-frequency or complex logging considers performance impact
-
-### Internationalization
-
-- [ ] `messages.properties` provides a translation for every `ErrorCodes` constant; keys match constant values exactly
-- [ ] Locale-specific resource files (`messages_zh_CN.properties`, etc.) stay in sync with the default file's keys
-- [ ] `MessageSource` configured with a sensible default locale and fallback strategy
