@@ -20,6 +20,7 @@
 | `skill-creator` | Skill 创建辅助工具，包含评估、打包、改进描述等脚本 |
 | `rust-coding-guide` | Rust 编码与审查指南，编写和审查 Rust 代码时均适用，涵盖所有权/借用、unsafe、异步/并发、取消安全、错误处理、性能、Trait 设计 |
 | `vue-options-api-best-practices` | Vue Options API 最佳实践，涵盖 TypeScript 类型、响应式陷阱、生命周期等规范 |
+| `apifox-cli` | Apifox CLI 工作流引导，用于 API 测试自动化、文档管理、CI/CD 集成，覆盖认证、项目管理、接口设计、测试运行等核心场景 |
 
 ## 如何新增一个 Skill
 

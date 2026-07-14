@@ -1,0 +1,89 @@
+{
+  "skill_name": "apifox-cli",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I need to set up Apifox CLI for the first time. How do I authenticate and verify my connection?",
+      "expected_output": "Step-by-step instructions for getting access token, logging in with apifox login --with-token, and verifying with apifox whoami. Should mention storing token in environment variable for CI/CD.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Mentions apifox login --with-token command",
+          "passed": false,
+          "evidence": ""
+        },
+        {
+          "text": "Includes apifox whoami verification step",
+          "passed": false,
+          "evidence": ""
+        },
+        {
+          "text": "Recommends storing token in environment variable",
+          "passed": false,
+          "evidence": ""
+        },
+        {
+          "text": "Provides clear step-by-step instructions",
+          "passed": false,
+          "evidence": ""
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "How do I run my API tests in a GitHub Actions workflow? I have a test scenario ID and environment ID.",
+      "expected_output": "Complete GitHub Actions YAML example using apifox run with --access-token from secrets, specifying scenario ID with -t, environment ID with -e, report formats, and --upload-report. Should include artifact collection.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Provides complete GitHub Actions YAML workflow",
+          "passed": false,
+          "evidence": ""
+        },
+        {
+          "text": "Includes proper secret management (secrets.APIFOX_ACCESS_TOKEN)",
+          "passed": false,
+          "evidence": ""
+        },
+        {
+          "text": "Shows test execution with -t and -e flags",
+          "passed": false,
+          "evidence": ""
+        },
+        {
+          "text": "Includes report generation and artifact upload",
+          "passed": false,
+          "evidence": ""
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "I want to import my Postman collection into Apifox and then export it as OpenAPI format. What are the commands?",
+      "expected_output": "Two commands: 1) apifox import --project <id> --format postman --file ./collection.json, 2) apifox export --project <id> --format openapi --output ./openapi.json. Should mention validating the import first.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Provides correct import command with --format postman",
+          "passed": false,
+          "evidence": ""
+        },
+        {
+          "text": "Provides correct export command with --format openapi",
+          "passed": false,
+          "evidence": ""
+        },
+        {
+          "text": "Mentions validation step after import",
+          "passed": false,
+          "evidence": ""
+        },
+        {
+          "text": "Lists supported import/export formats",
+          "passed": false,
+          "evidence": ""
+        }
+      ]
+    }
+  ]
+}

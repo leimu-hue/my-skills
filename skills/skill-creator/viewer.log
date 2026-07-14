@@ -1,0 +1,11 @@
+Note: lsof not found, cannot check if port is in use
+
+  Eval Viewer
+  ─────────────────────────────────
+  URL:       http://localhost:3117
+  Workspace: D:\custom_project\ai-project\my-skills\apifox-cli-workspace\iteration-1
+  Feedback:  D:\custom_project\ai-project\my-skills\apifox-cli-workspace\iteration-1\feedback.json
+  Benchmark: D:\custom_project\ai-project\my-skills\apifox-cli-workspace\iteration-1\benchmark.json
+
+  Press Ctrl+C to stop.
+
