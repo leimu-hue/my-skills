@@ -126,7 +126,18 @@ public class NotificationFactory {
 - 分页响应至少包含：`content`、`pageNumber`、`pageSize`、`totalElements`、`totalPages`、`hasNext`
 
 ```java
-// Java 8/11 项目中需要 Builder 的场景使用此写法（Java 17+ 优先使用 record）
+// Java 17+ 优先 record
+public record UserCreateRequest(
+    @NotBlank
+    @Size(min = 3, max = 50)
+    String userName,
+
+    @NotBlank
+    @Email
+    String email
+) {}
+
+// Java 8/11 备选
 @Data
 @Builder
 public class UserCreateRequest {
@@ -167,9 +178,18 @@ private String apiKey = "sk_live_12345";
 
 ## 全局异常处理
 
-- 默认由全局异常处理器统一转换 HTTP 响应，Controller 不手写重复 `try/catch`
-- Spring Boot 3 优先使用 `ProblemDetail`（RFC 7807）作为标准错误响应
-- 自定义异常 + `@RestControllerAdvice` 统一处理
+两种方案按场景选用，同一项目内保持统一：
+
+| 方案 | 适用场景 | 优势 |
+| --- | --- | --- |
+| `ErrorResponse` + `MessageSource` | 内部管理系统、多语言企业项目 | i18n 完整支持，errorCode 即 message key |
+| `ProblemDetail`（RFC 7807） | 开放平台、微服务间 REST API | Spring Boot 3 标准，结构化错误体 |
+
+### 方案一：ErrorResponse + MessageSource（i18n 优先）
+
+详细实现见 `./exception-logging.md` 异常处理章节。
+
+### 方案二：ProblemDetail（RFC 7807）
 
 ```java
 @RestControllerAdvice
@@ -182,15 +202,17 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(BusinessException.class)
     public ProblemDetail handleBusiness(BusinessException e) {
-        ProblemDetail detail = ProblemDetail.forStatusAndDetail(HttpStatus.UNPROCESSABLE_ENTITY, e.getMessage());
+        ProblemDetail detail = ProblemDetail.forStatusAndDetail(
+            HttpStatus.UNPROCESSABLE_ENTITY, e.getMessage());
         detail.setProperty("errorCode", e.getErrorCode());
         return detail;
     }
 
     @ExceptionHandler(Exception.class)
     public ProblemDetail handleUnknown(Exception e) {
-        log.error("未预期系统异常", e);
-        return ProblemDetail.forStatusAndDetail(HttpStatus.INTERNAL_SERVER_ERROR, "系统繁忙，请稍后重试");
+        log.error("Unexpected system error", e);
+        return ProblemDetail.forStatusAndDetail(
+            HttpStatus.INTERNAL_SERVER_ERROR, "Internal server error");
     }
 }
 ```

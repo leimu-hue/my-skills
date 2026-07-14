@@ -126,7 +126,18 @@ public class NotificationFactory {
 - Paginated responses must include at minimum: `content`, `pageNumber`, `pageSize`, `totalElements`, `totalPages`, `hasNext`
 
 ```java
-// For Java 8/11 projects needing Builder pattern (Java 17+ prefer record)
+// Java 17+ prefer record
+public record UserCreateRequest(
+    @NotBlank
+    @Size(min = 3, max = 50)
+    String userName,
+
+    @NotBlank
+    @Email
+    String email
+) {}
+
+// Java 8/11 fallback
 @Data
 @Builder
 public class UserCreateRequest {
@@ -145,6 +156,47 @@ public class UserCreateRequest {
 - Public APIs default to URL versioning: `/api/v1/users`
 - Header versioning suits internal APIs, gateway-based routing, or client-controllable scenarios: `X-API-Version=1`
 - Don't mix multiple versioning strategies within the same business domain unless the gateway or compatibility plan explicitly requires it
+
+## Global Exception Handling
+
+Choose by scenario; stay consistent within a project:
+
+| Solution | Applicable Scenario | Advantage |
+| --- | --- | --- |
+| `ErrorResponse` + `MessageSource` | Internal management systems, multi-language enterprise projects | Full i18n support, errorCode as message key |
+| `ProblemDetail` (RFC 7807) | Open platforms, inter-microservice REST APIs | Spring Boot 3 standard, structured error body |
+
+### Solution 1: ErrorResponse + MessageSource (i18n-first)
+
+Detailed implementation in `./exception-logging.md` Exception Handling section.
+
+### Solution 2: ProblemDetail (RFC 7807)
+
+```java
+@RestControllerAdvice
+public class GlobalExceptionHandler {
+
+    @ExceptionHandler(UserNotFoundException.class)
+    public ProblemDetail handleNotFound(UserNotFoundException e) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, e.getMessage());
+    }
+
+    @ExceptionHandler(BusinessException.class)
+    public ProblemDetail handleBusiness(BusinessException e) {
+        ProblemDetail detail = ProblemDetail.forStatusAndDetail(
+            HttpStatus.UNPROCESSABLE_ENTITY, e.getMessage());
+        detail.setProperty("errorCode", e.getErrorCode());
+        return detail;
+    }
+
+    @ExceptionHandler(Exception.class)
+    public ProblemDetail handleUnknown(Exception e) {
+        log.error("Unexpected system error", e);
+        return ProblemDetail.forStatusAndDetail(
+            HttpStatus.INTERNAL_SERVER_ERROR, "Internal server error");
+    }
+}
+```
 
 ## Domain-Driven Design
 

@@ -12,6 +12,17 @@
 - 错误码必须以常量形式集中声明在 `ErrorCodes` 类中，业务代码通过类名引用，禁止内联字符串字面量
 - 日志文本统一使用英文，便于国际化团队检索和日志平台关键词告警
 
+## 全局异常处理方案选择
+
+两种方案按场景选用，同一项目内保持统一：
+
+| 方案 | 适用场景 | 优势 |
+| --- | --- | --- |
+| `ErrorResponse` + `MessageSource` | 内部管理系统、多语言企业项目 | i18n 完整支持，errorCode 即 message key，按 locale 解析 |
+| `ProblemDetail`（RFC 7807） | 开放平台、微服务间 REST API | Spring Boot 3 标准，结构化错误体，跨语言通用 |
+
+本文示例采用 `ErrorResponse` + `MessageSource` 方案。`ProblemDetail` 示例见 `./design.md` 全局异常处理章节。
+
 ## 异常分类
 
 | 类型 | 适用场景 | 建议 |
@@ -59,6 +70,7 @@ public final class ErrorCodes {
 
     // --- 通用 ---
     public static final String INTERNAL_ERROR = "INTERNAL_ERROR";
+    public static final String DB_ERROR       = "DB_ERROR";
 }
 ```
 
@@ -71,6 +83,7 @@ USER_NOT_FOUND=User not found: {0}
 USER_EXISTS=Username already exists: {0}
 USER_CREATE_FAILED=Failed to create user, please try again later
 INTERNAL_ERROR=Internal server error
+DB_ERROR=Database operation failed, please try again later
 
 # messages_zh_CN.properties（中文）
 USER_ID_INVALID=用户ID必须大于0，实际值：{0}
@@ -78,6 +91,7 @@ USER_NOT_FOUND=用户不存在：{0}
 USER_EXISTS=用户名已存在：{0}
 USER_CREATE_FAILED=用户创建失败，请稍后重试
 INTERNAL_ERROR=系统繁忙，请稍后重试
+DB_ERROR=数据库操作失败，请稍后重试
 ```
 
 ## 抛出与转换

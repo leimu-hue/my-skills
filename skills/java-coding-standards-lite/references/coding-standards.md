@@ -28,7 +28,7 @@ List<User> users = userList.stream()
 
 ```java
 private static final int MAX_RETRY_COUNT = 3;
-private static final String ERROR_USER_NOT_FOUND = "USER_NOT_FOUND";
+private static final String USER_NOT_FOUND = "USER_NOT_FOUND";
 ```
 
 ## 类与封装

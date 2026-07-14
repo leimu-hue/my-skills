@@ -37,8 +37,8 @@ class UserServiceTest {
     @Test
     @DisplayName("创建用户 - 邮箱为空时抛出校验异常")
     void createUser_blankEmail_throwsValidationException() {
-        UserCreateRequest request = TestDataFactory.userCreateRequest();
-        request.setEmail("");
+        // record 不可变，通过构造器传入非法值
+        UserCreateRequest request = new UserCreateRequest("alice", "", null);
 
         assertThatThrownBy(() -> userService.createUser(request))
             .isInstanceOf(ValidationException.class);
@@ -56,8 +56,8 @@ class UserServiceTest {
 - 不要把测试数据藏得过深，导致断言看不出业务含义
 
 ```java
-UserCreateRequest request = TestDataFactory.userCreateRequest();
-request.setUserName("alice");
+// record 通过构造器创建；工厂方法返回新实例
+UserCreateRequest request = TestDataFactory.userCreateRequest("alice", "alice@example.com");
 ```
 
 ## Mock 规则

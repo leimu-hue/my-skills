@@ -12,6 +12,17 @@
 - Error codes must be declared as constants in a centralized `ErrorCodes` class; reference them by class name in business code — inline string literals are forbidden
 - Log text must be in English for international team searchability and log-platform alerting rules
 
+## Global Exception Handling Solution Selection
+
+Choose by scenario; stay consistent within a project:
+
+| Solution | Applicable Scenario | Advantage |
+| --- | --- | --- |
+| `ErrorResponse` + `MessageSource` | Internal management systems, multi-language enterprise projects | Full i18n support, errorCode as message key, resolved per locale |
+| `ProblemDetail` (RFC 7807) | Open platforms, inter-microservice REST APIs | Spring Boot 3 standard, structured error body, cross-language |
+
+This document uses `ErrorResponse` + `MessageSource`. `ProblemDetail` examples in `./design.md` Global Exception Handling section.
+
 ## Exception Classification
 
 | Type | Applicable Scenario | Recommendation |
@@ -59,7 +70,7 @@ public final class ErrorCodes {
 
     // --- General ---
     public static final String INTERNAL_ERROR = "INTERNAL_ERROR";
-}
+    public static final String DB_ERROR       = "DB_ERROR";
 ```
 
 Corresponding `messages.properties` resource files (keys match `ErrorCodes` constants one-to-one):
@@ -71,6 +82,7 @@ USER_NOT_FOUND=User not found: {0}
 USER_EXISTS=Username already exists: {0}
 USER_CREATE_FAILED=Failed to create user, please try again later
 INTERNAL_ERROR=Internal server error
+DB_ERROR=Database operation failed, please try again later
 
 # messages_zh_CN.properties (Chinese)
 USER_ID_INVALID=用户ID必须大于0，实际值：{0}
@@ -78,6 +90,7 @@ USER_NOT_FOUND=用户不存在：{0}
 USER_EXISTS=用户名已存在：{0}
 USER_CREATE_FAILED=用户创建失败，请稍后重试
 INTERNAL_ERROR=系统繁忙，请稍后重试
+DB_ERROR=数据库操作失败，请稍后重试
 ```
 
 ## Throwing and Transformation

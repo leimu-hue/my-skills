@@ -22,10 +22,10 @@
 ```java
 public void createUser(UserCreateRequest request) {
     if (request == null || StringUtils.isBlank(request.getUserName())) {
-        throw new ValidationException("用户名不能为空");
+        throw new ValidationException(ErrorCodes.USER_NAME_BLANK);
     }
     if (!USERNAME_PATTERN.matcher(request.getUserName()).matches()) {
-        throw new ValidationException("用户名格式不正确");
+        throw new ValidationException(ErrorCodes.USER_NAME_INVALID_FORMAT);
     }
 }
 ```
@@ -48,7 +48,7 @@ private static final Map<String, String> SORT_FIELD = Map.of(
 );
 
 public String resolveSortField(String field) {
-    return Optional.ofNullable(SORT_FIELD.get(field)).orElse("create_time");
+    return SORT_FIELD.getOrDefault(field, "create_time");
 }
 ```
 

@@ -217,7 +217,7 @@ WHERE id = ?
 
 ## Connection Pool
 
-- Thread pools should explicitly configure core threads, max threads, connection timeout, and idle timeout
+- Connection pool should explicitly configure max connections, min idle connections, connection timeout, and idle timeout
 - Minimum idle connections should avoid cold-start thrashing
 - No remote calls, long computations, or user interaction inside transactions; avoid holding connections for extended periods
 - Monitor active connections, wait queues, and connection acquisition latency; alert on anomalies

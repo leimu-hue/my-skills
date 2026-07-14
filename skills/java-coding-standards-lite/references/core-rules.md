@@ -82,33 +82,36 @@ new com.alibaba.fastjson.TypeReference<List<User>>() {};
 
 ```java
 // ✅ Switch 表达式：无穿透风险，强制返回值（Java 14+ 稳定，Java 17+ 推荐）
-String type = switch (obj) {
-    case Integer i -> "int %d".formatted(i);
-    case String s  -> "string %s".formatted(s);
-    default        -> "unknown";
+String description = switch (status) {
+    case PENDING   -> "等待支付";
+    case PAID      -> "准备发货";
+    case SHIPPED   -> "运输中";
+    case DELIVERED -> "已完成";
+    case CANCELLED -> "已取消";
 };
 
-// ✅ Java 21 起支持 case null
-String type = switch (obj) {
-    case Integer i -> "int %d".formatted(i);
-    case String s  -> "string %s".formatted(s);
-    case null      -> "null value";
-    default        -> "unknown";
+// ✅ default 分支处理未知枚举值（Java 17+ switch 表达式）
+String fallback = switch (unknownStatus) {
+    case PENDING   -> "等待支付";
+    case PAID      -> "准备发货";
+    default        -> "未知状态";
 };
 
 // ❌ 传统 switch：容易漏掉 break，冗长且易错
-String type = "";
-switch (obj) {
-    case Integer i:
-        type = String.format("int %d", i);
+String description = "";
+switch (status) {
+    case PENDING:
+        description = "等待支付";
         break;
-    case String s:
-        type = String.format("string %s", s);
+    case PAID:
+        description = "准备发货";
         break;
     default:
-        type = "unknown";
+        description = "未知状态";
 }
 ```
+
+> **注意**：模式匹配（`case Integer i`）在 Java 21 才正式稳定。Java 17 项目中仅对枚举和已知类型使用 switch 表达式；跨类型模式匹配以项目实际版本为准。
 
 ## 6. Java 17+ 优先使用文本块
 

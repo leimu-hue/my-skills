@@ -83,33 +83,36 @@ new com.alibaba.fastjson.TypeReference<List<User>>() {};
 
 ```java
 // ✅ Switch expression: no fall-through risk, forced return value (stable since Java 14, recommended for Java 17+)
-String type = switch (obj) {
-    case Integer i -> "int %d".formatted(i);
-    case String s  -> "string %s".formatted(s);
-    default        -> "unknown";
+String description = switch (status) {
+    case PENDING   -> "Awaiting payment";
+    case PAID      -> "Preparing shipment";
+    case SHIPPED   -> "In transit";
+    case DELIVERED -> "Completed";
+    case CANCELLED -> "Cancelled";
 };
 
-// ✅ case null supported since Java 21
-String type = switch (obj) {
-    case Integer i -> "int %d".formatted(i);
-    case String s  -> "string %s".formatted(s);
-    case null      -> "null value";
-    default        -> "unknown";
+// ✅ default branch for unknown enum values (Java 17+ switch expression)
+String fallback = switch (unknownStatus) {
+    case PENDING   -> "Awaiting payment";
+    case PAID      -> "Preparing shipment";
+    default        -> "Unknown status";
 };
 
 // ❌ Traditional switch: easy to miss break, verbose and error-prone
-String type = "";
-switch (obj) {
-    case Integer i:
-        type = String.format("int %d", i);
+String description = "";
+switch (status) {
+    case PENDING:
+        description = "Awaiting payment";
         break;
-    case String s:
-        type = String.format("string %s", s);
+    case PAID:
+        description = "Preparing shipment";
         break;
     default:
-        type = "unknown";
+        description = "Unknown status";
 }
 ```
+
+> **Note**: Pattern matching (`case Integer i`) is only stable in Java 21+. In Java 17 projects, use switch expressions only with enums and known types; cross-type pattern matching depends on actual project version.
 
 ## 6. Java 17+ Prefer Text Blocks
 

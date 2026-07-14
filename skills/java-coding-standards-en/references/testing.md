@@ -37,8 +37,8 @@ class UserServiceTest {
     @Test
     @DisplayName("Create user - blank email throws validation exception")
     void createUser_blankEmail_throwsValidationException() {
-        UserCreateRequest request = TestDataFactory.userCreateRequest();
-        request.setEmail("");
+        // record is immutable; pass invalid values via constructor
+        UserCreateRequest request = new UserCreateRequest("alice", "", null);
 
         assertThatThrownBy(() -> userService.createUser(request))
             .isInstanceOf(ValidationException.class);
@@ -56,8 +56,8 @@ class UserServiceTest {
 - Don't bury test data so deep that assertions lose business meaning
 
 ```java
-UserCreateRequest request = TestDataFactory.userCreateRequest();
-request.setUserName("alice");
+// record created via constructor; factory returns new instance
+UserCreateRequest request = TestDataFactory.userCreateRequest("alice", "alice@example.com");
 ```
 
 ## Mocking Rules
