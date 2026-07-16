@@ -1,0 +1,12 @@
+{
+  "eval_id": 2,
+  "eval_name": "endpoint-review",
+  "prompt": "I have this API endpoint: GET /api/v1/getUserById?id=123 and POST /api/v1/createNewUser. Review it and suggest improvements following best practices.",
+  "assertions": [
+    {"name": "identifies_verb_in_url", "description": "Identifies verbs in URL as anti-pattern (getUserById should be noun)"},
+    {"name": "suggests_path_param", "description": "Suggests path parameter over query param for resource ID (/users/{id})"},
+    {"name": "identifies_camelcase", "description": "Identifies camelCase URLs as anti-pattern (should be lowercase-hyphen)"},
+    {"name": "suggests_plural_nouns", "description": "Suggests plural nouns (/users not /user)"},
+    {"name": "consistent_naming", "description": "Points out inconsistent naming between endpoints"}
+  ]
+}

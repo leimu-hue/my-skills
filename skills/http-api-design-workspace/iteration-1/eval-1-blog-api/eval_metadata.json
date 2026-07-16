@@ -1,0 +1,14 @@
+{
+  "eval_id": 1,
+  "eval_name": "blog-api-design",
+  "prompt": "Design REST API endpoints for a blog platform with users, posts, and comments. Show the URL structure, HTTP methods, and example request/response for creating a new post.",
+  "assertions": [
+    {"name": "plural_resource_names", "description": "Uses plural nouns for resources (/users, /posts, /comments)"},
+    {"name": "proper_http_methods", "description": "GET for read, POST for create, PUT/PATCH for update, DELETE for delete"},
+    {"name": "uuid_ids", "description": "Uses UUID format for resource IDs"},
+    {"name": "iso8601_timestamps", "description": "Includes created_at/updated_at in ISO8601 UTC format"},
+    {"name": "status_201_on_create", "description": "Returns 201 status code for resource creation"},
+    {"name": "nested_foreign_keys", "description": "Uses nested objects for foreign key relations (e.g. author: {id} not author_id)"},
+    {"name": "structured_error_format", "description": "Error responses include id, message, and optional url fields"}
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "eval_id": 3,
+  "run": "without_skill",
+  "expectations": [
+    {"text": "Flat id/message/url error structure", "passed": false, "evidence": "Uses nested {error: {type, code, message, details[], request_id, timestamp}} — no url field"},
+    {"text": "Correct status codes for each error", "passed": false, "evidence": "Uses 402 for insufficient funds (skill recommends 422)"},
+    {"text": "Machine-readable error IDs", "passed": true, "evidence": "VALIDATION_ERROR, INSUFFICIENT_FUNDS, RATE_LIMIT_EXCEEDED"},
+    {"text": "Example responses for each error type", "passed": true, "evidence": "Complete HTTP examples for all three error types"}
+  ],
+  "summary": {"passed": 2, "failed": 2, "total": 4, "pass_rate": 0.50}
+}

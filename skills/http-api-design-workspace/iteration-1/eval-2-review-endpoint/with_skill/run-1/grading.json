@@ -1,0 +1,12 @@
+{
+  "eval_id": 2,
+  "run": "with_skill",
+  "expectations": [
+    {"text": "Identifies verbs in URL", "passed": true, "evidence": "Issue #1: URL encodes actions instead of resource identity"},
+    {"text": "Suggests path param over query param", "passed": true, "evidence": "Issue #4: User ID in query string instead of path segment"},
+    {"text": "Identifies camelCase as anti-pattern", "passed": true, "evidence": "Issue #3: Path not lowercase with hyphens"},
+    {"text": "Suggests plural nouns", "passed": true, "evidence": "Issue #2: Resource name is singular, use /users"},
+    {"text": "Points out naming inconsistencies", "passed": true, "evidence": "9 issues found covering versioning, headers, TLS, error format"}
+  ],
+  "summary": {"passed": 5, "failed": 0, "total": 5, "pass_rate": 1.0}
+}

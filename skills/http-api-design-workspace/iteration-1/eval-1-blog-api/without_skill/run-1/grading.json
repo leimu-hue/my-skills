@@ -1,0 +1,14 @@
+{
+  "eval_id": 1,
+  "run": "without_skill",
+  "expectations": [
+    {"text": "Uses plural nouns for resources", "passed": true, "evidence": "/users, /posts, /comments"},
+    {"text": "Proper HTTP methods", "passed": true, "evidence": "GET/POST/PATCH/DELETE used correctly"},
+    {"text": "Uses UUID format for IDs", "passed": true, "evidence": "UUIDs like 550e8400-e29b-41d4-a716-446655440000"},
+    {"text": "ISO8601 UTC timestamps", "passed": true, "evidence": "created_at/updated_at in ISO8601"},
+    {"text": "Returns 201 for creation", "passed": true, "evidence": "POST returns 201 Created with Location header"},
+    {"text": "Nested foreign keys", "passed": true, "evidence": "JSON:API relationships pattern with {data: {type, id}}"},
+    {"text": "Structured error format with id/message/url", "passed": false, "evidence": "Uses {error: {status, title, detail, errors[]}} wrapper"}
+  ],
+  "summary": {"passed": 6, "failed": 1, "total": 7, "pass_rate": 0.86}
+}

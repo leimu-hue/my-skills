@@ -1,0 +1,11 @@
+{
+  "eval_id": 3,
+  "eval_name": "error-format-design",
+  "prompt": "Design error response format for a payment API that handles validation errors, insufficient funds, and rate limiting.",
+  "assertions": [
+    {"name": "structured_error_fields", "description": "Error format includes machine-readable id, human-readable message, and optional url"},
+    {"name": "appropriate_status_codes", "description": "Uses 422 for validation, 402 for insufficient funds, 429 for rate limiting"},
+    {"name": "machine_readable_ids", "description": "Error IDs are machine-readable (e.g. validation_error, insufficient_funds, rate_limit)"},
+    {"name": "example_responses", "description": "Provides example JSON responses for each error type"}
+  ]
+}

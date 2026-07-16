@@ -1,0 +1,11 @@
+{
+  "eval_id": 4,
+  "eval_name": "pagination-design",
+  "prompt": "How should I handle pagination for a list endpoint that could return thousands of records?",
+  "assertions": [
+    {"name": "uses_range_header", "description": "Recommends Range header for pagination"},
+    {"name": "status_206_partial", "description": "Uses 206 Partial Content status code"},
+    {"name": "content_range_header", "description": "Response includes Content-Range header with total and subset info"},
+    {"name": "example_headers", "description": "Shows example request/response headers"}
+  ]
+}

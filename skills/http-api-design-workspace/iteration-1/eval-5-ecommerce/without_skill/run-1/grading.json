@@ -1,0 +1,14 @@
+{
+  "eval_id": 5,
+  "run": "without_skill",
+  "expectations": [
+    {"text": "Plural resource names", "passed": true, "evidence": "/products, /orders"},
+    {"text": "Correct HTTP methods", "passed": true, "evidence": "GET/POST/PATCH/DELETE"},
+    {"text": "Correct status codes", "passed": true, "evidence": "201 create, 200 read"},
+    {"text": "Actions pattern for status updates", "passed": false, "evidence": "Uses PATCH /orders/:id/status instead of actions pattern"},
+    {"text": "UUID identifiers", "passed": false, "evidence": "Uses prod_abc123, ord_xyz789 instead of UUIDs"},
+    {"text": "Nested order items", "passed": true, "evidence": "Items nested in order with product_id"},
+    {"text": "Complete request/response examples", "passed": true, "evidence": "Full examples with request body and JSON"}
+  ],
+  "summary": {"passed": 5, "failed": 2, "total": 7, "pass_rate": 0.71}
+}
