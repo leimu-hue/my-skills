@@ -50,5 +50,9 @@ When grading Java code, verify:
 - **Transaction**: `@Transactional` on public service methods, `readOnly = true` for reads
 - **SQL**: parameterized (`#{}` / `?`), no string concatenation
 - **Batch**: size from config, not hardcoded; uses partition/分批
-- **Switch**: arrow syntax `->`, no `break`, covers all branches
 - **Imports**: short names via import, no unjustified fully-qualified names
+- **No unrequested abstractions**: no interface with only one implementation, no factory for one product, no config for a value that never changes
+- **Reuse over rewrite**: check if the code re-implements something the project's existing utils/stdlib already provides
+- **Shortest diff**: the code should be the minimum viable — no boilerplate nobody asked for, no scaffolding "for later"
+- **Root cause fix**: for bug fixes, the fix should be in the shared function, not patched per-caller
+- **Deletion over addition**: prefer removing redundant code over adding new code when both achieve the same goal

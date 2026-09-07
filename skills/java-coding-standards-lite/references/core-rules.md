@@ -189,11 +189,65 @@ public record AmountRange(BigDecimal minAmount, BigDecimal maxAmount) {
     }
 }
 
-// ❌ 不适合 record 的场景：JPA Entity、需要 setter/无参构造、ORM 代理
-@Entity
-public class User { // 必须用 class
-    @Id
-    private Long id;
-    private String userName;
+## 8. 不要写没被要求的抽象
+
+- 一个实现的接口、一个产品的工厂、一个永不改变的配置值 → 不要建
+- 用接口做扩展点的前提是：当前已有或确定会有多个实现
+- 抽象是为了解耦真实的变化点，不是为了"以后可能需要"
+
+```java
+// ❌ 只有一个实现的接口 — 纯粹增加间接层
+public interface UserValidator {
+    void validate(User user);
+}
+@Service
+public class UserValidatorImpl implements UserValidator { ... }
+
+// ✅ 直接用 Service 方法，需要多实现时再抽接口
+@Service
+public class UserService {
+    public void validate(User user) { ... }
+}
+```
+
+## 9. 删除优于新增，最短可行 diff 赢
+
+- 先看能不能删掉冗余代码，再考虑加新代码
+- 项目已有工具方法/常量/模式能覆盖需求 → 复用，不重写
+- 标准库或已装依赖能一行解决 → 不写工具类
+- 最懒的可行方案就是对的方案
+
+```java
+// ❌ 手写日期格式化工具类
+public class DateUtil {
+    public static String format(LocalDate date) {
+        return date.getYear() + "-" + String.format("%02d", date.getMonthValue()) + ...
+    }
+}
+
+// ✅ 标准库一行搞定
+String formatted = date.toString(); // ISO-8601
+String formatted = DateTimeFormatter.ofPattern("yyyy-MM-dd").format(date);
+```
+
+## 10. Bug 修复 = 根因，不是症状
+
+- 修复前先 grep 所有调用方，在共享函数里修一次
+- 不要只修 ticket 描述的那条路径，留着的兄弟调用方会继续坏
+
+```java
+// ❌ 只在报错的调用方加空值检查
+public void createOrder(Long userId) {
+    if (userId == null) { throw ...; } // 只在这里加了
+    orderService.create(userId);
+}
+// 但 updateOrder、cancelOrder 里 userId 同样可能为 null
+
+// ✅ 在共享函数入口加一次守卫
+public void create(Long userId) {
+    if (userId == null || userId <= 0) {
+        throw new IllegalArgumentException("userId must be positive");
+    }
+    // ...
 }
 ```
