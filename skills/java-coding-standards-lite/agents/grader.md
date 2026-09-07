@@ -42,6 +42,7 @@ Review execution transcripts and output files, determine whether each expectatio
 When grading Java code, verify:
 
 - **record vs class**: record has no `@Data`/`@Getter`/`@Setter`, accessor is `fieldName()` not `getFieldName()`
+- **File organization**: record/DTO/VO/Command/Response in own `.java` files under dto/domain/vo packages, NOT inner classes of Service/Controller
 - **Guard clauses**: null/range checks at method start, before business logic
 - **Error codes**: referenced via `ErrorCodes.CONSTANT`, not inline strings
 - **i18n**: exception messages use message keys, not hardcoded Chinese

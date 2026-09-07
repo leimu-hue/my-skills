@@ -17,7 +17,7 @@ public void process(User user) {
 }
 ```
 
-如果 `return`、`continue`、`throw` 能明显降低嵌套层级，就优先这样写。命令式业务和边界校验默认抛出明确异常；批处理、查询兜底、可跳过单条数据等场景才使用 `return` / `continue` 静默跳过，并记录必要上下文。
+`return`、`continue`、`throw` 能降低嵌套就用。边界校验默认抛异常；批处理、查询兜底等场景用 `return` / `continue` 跳过，记必要上下文。
 
 ## 2. 跟随项目既有工具风格
 
@@ -54,9 +54,8 @@ if (id <= 0) {
 
 ## 4. 优先使用 import，避免全路径类名
 
-- 优先在文件头部 `import` 后使用短类名，如 `new TypeReference<T>()`
-- 禁止无理由使用全路径写法：`new com.alibaba.fastjson.TypeReference<T>()`
-- 仅当同一个类中存在来自不同包的同名类、且无法通过 import 同时引入时，才允许使用全路径；此时必须在全路径处用注释标明原因
+- 用 import 短类名，不用全路径
+- 同名类冲突时才用全路径，必须注释说明原因
 
 ```java
 // GOOD
@@ -158,6 +157,7 @@ String json = "{\n" +
 
 - Java 17+ 项目中，简单不可变 DTO / VO / Command / Response 优先使用 `record`，优先级高于 Lombok `@Data`、`@Getter`、`@Setter`、`@Value`
 - 不要使用 `record`：JPA / MyBatis Plus 实体、需要继承父类、需要可变状态、框架不支持的旧项目
+- record 必须放在独立 `.java` 文件中，归属 dto / domain / vo 等对应包。禁止作为内部类塞进 Service 或 Controller
 - record 字段天然 `private final`，不要再加 Lombok 注解
 - 访问器名称是组件名（`request.userName()`），不是 `getUserName()`
 - record 自动生成 `equals`/`hashCode`/`toString`，避免存放敏感明文字段

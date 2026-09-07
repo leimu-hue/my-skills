@@ -2,7 +2,7 @@
 
 ## 与主规范的关系
 
-本文补充代码格式、方法设计、注释和常用 API 细节。若本文与 `SKILL.md` 冲突，以 `SKILL.md` 为准：先确认 Java 版本；Java 17+ 简单不可变数据载体优先使用 `record`，不适合 `record` 时再按项目约定使用普通 class 或 Lombok。
+本文补充代码格式、方法设计、注释和常用 API 细节。与 `SKILL.md` 冲突时，以 `SKILL.md` 为准。
 
 ## 代码格式
 
@@ -38,16 +38,16 @@ private static final String USER_NOT_FOUND = "USER_NOT_FOUND";
 - 对外暴露的可变集合要谨慎，必要时返回不可变视图或副本
 - 优先组合而不是继承；只有存在稳定的 `is-a` 关系和可复用模板流程时再使用继承
 - `protected` 只在明确面向继承扩展时使用
-- 不允许在单个文件中堆积过多内部类；独立承担业务职责的类型应放在对应的包中，以项目现有约束为准
+- record / DTO / VO / Command / Response 必须放在独立 `.java` 文件中，归属 dto / domain / vo 等对应包。禁止作为内部类塞进 Service 或 Controller。仅当类型与外部类有强耦合的实现细节（如 Builder 内部状态）时才允许 private static inner class
 
 ## 方法设计
 
-- 方法保持单一职责；过长、嵌套深、需要多段注释解释时应拆分
-- 参数过多时使用参数对象；Java 17+ 简单不可变参数对象优先 `record`，Java 8/11 项目保持普通 class 或本地 Lombok 风格
-- 方法开始处完成参数校验，使用守卫式写法降低嵌套
-- 返回值语义要稳定：不存在是返回 `Optional`、`null` 还是抛异常，应跟随项目约定
-- 三元表达式只用于简单赋值；复杂分支使用 `if` 或策略拆分
-- `switch` 必须覆盖未知分支；枚举 `switch` 也要考虑未来新增枚举值
+- 单一职责；过长、嵌套深、需要多段注释时拆分
+- 参数过多用参数对象；Java 17+ 优先 `record`
+- 方法开头用守卫式写法校验参数
+- 返回值语义跟项目约定走（`Optional` / `null` / 抛异常）
+- 三元表达式只用于简单赋值；复杂分支用 `if` 或策略拆分
+- `switch` 覆盖未知分支；枚举 `switch` 考虑未来新增值
 
 ```java
 public User updateUser(Long id, UserUpdateRequest request) {
@@ -66,11 +66,11 @@ public User updateUser(Long id, UserUpdateRequest request) {
 
 ## 注释规范
 
-- 新增类必须有类注释，说明职责、适用场景、边界或主要用途
-- 新增 public/protected 方法、业务方法、接口方法、复杂私有方法必须有方法注释，说明用途、关键参数、返回值、约束、异常或副作用
-- 注释解释业务意图和约束，不复述代码
-- 不要求机械添加 `@author`、`@version`、`@since`，除非项目已有要求
-- 复杂算法、兼容逻辑、非显然业务规则应补短注释
+- 新增类加类注释：职责、适用场景、边界
+- public/protected 方法、业务方法、接口方法、复杂私有方法加方法注释：用途、参数、返回值、异常
+- 注释说业务意图和约束，不复述代码
+- 不机械加 `@author`、`@version`、`@since`，除非项目要求
+- 复杂算法、兼容逻辑、非显然业务规则补短注释
 
 ```java
 /**
@@ -97,6 +97,7 @@ public class UserRegisterService {
 ## Record 与 Lombok
 
 - 先确认项目 Java 版本；Java 17+ 简单不可变 DTO / VO / Command / Response 优先使用 `record`
+- record 必须放在独立 `.java` 文件中，归属 dto / domain / vo 等对应包，不作为 Service 或 Controller 的内部类
 - `record` 不要叠加 `@Data`、`@Getter`、`@Setter`
 - JPA Entity、需要 setter/无参构造、ORM 代理、复杂 Builder 的类型使用 class
 - 不适合 `record` 且项目已使用 Lombok 时，再用 `@Getter`、`@Setter`、`@Builder`、`@RequiredArgsConstructor` 减少样板
@@ -125,12 +126,12 @@ ZonedDateTime beijingTime = now.atZone(ZoneId.of("Asia/Shanghai"));
 
 ## 集合与 Stream
 
-- 集合判空跟随项目工具风格，如 `CollectionUtils.isEmpty(list)` 或 `list == null || list.isEmpty()`
-- 已知大容量集合可指定初始容量；普通小集合不必机械指定
-- 简单转换、过滤、聚合可用 Stream；复杂流程或需要调试的逻辑可用普通循环
-- 返回空集合优先用 `Collections.emptyList()`、`List.of()` 等不可变空集合
-- 对外返回集合时考虑是否需要不可变，避免调用方误改内部状态
-- 简单遍历不要用 Stream，for-each 更直接且性能更好
+- 判空跟项目工具风格走（`CollectionUtils.isEmpty` 或 `list == null || list.isEmpty()`）
+- 已知大容量集合指定初始容量；小集合不必
+- 简单转换、过滤、聚合用 Stream；复杂流程用普通循环
+- 返回空集合用 `Collections.emptyList()`、`List.of()` 等不可变空集合
+- 对外返回集合考虑不可变，避免调用方误改内部状态
+- 简单遍历用 for-each，不用 Stream
 
 ```java
 // ✅ 简单遍历用 for-each
@@ -148,9 +149,9 @@ var result = filtered.stream().map(...).collect(...);
 
 ## Optional
 
-- `Optional` 仅用于方法返回值，不用于字段、方法参数或集合元素
-- 不要用 `isPresent()` + `get()`，使用函数式 API
-- 不要用 `Optional` 代替 null 检查做流程控制
+- `Optional` 只用于返回值，不用作字段、参数或集合元素
+- 用函数式 API（`map` / `orElse` / `orElseThrow`），不用 `isPresent()` + `get()`
+- 不用 `Optional` 代替 null 检查做流程控制
 
 ```java
 // ✅ Optional 仅用于返回值
@@ -175,7 +176,7 @@ return "unknown";
 
 ## 控制语句
 
-- 优先守卫式返回，减少多层 `if/else`
-- 循环必须有清晰退出条件；重试循环必须限制次数
-- 不使用空 `catch`，不吞异常
-- `while (true)` 只在退出条件非常明确时使用，并加必要注释
+- 守卫式返回，减少多层 `if/else`
+- 循环有清晰退出条件；重试循环限制次数
+- 不空 `catch`，不吞异常
+- `while (true)` 退出条件必须明确，加必要注释

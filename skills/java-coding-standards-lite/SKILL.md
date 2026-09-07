@@ -19,6 +19,7 @@ license: MIT
 5. **switch 表达式（Java 17+）** — 箭头语法无穿透风险，强制穷举分支。已有稳定 switch 不改，只在新增/修改时用
 6. **文本块（Java 17+）** — 多行 JSON / SQL / XML 用 `"""`，所见即所得。单行字符串不用
 7. **record 优先（Java 17+）** — 简单不可变 DTO/VO/Command/Response 用 record，优先级高于 Lombok。JPA Entity、需要 setter / 继承 / ORM 代理的场景用 class
+8. **类型独立成文件** — record、DTO、VO、Command、Response 等数据载体必须放在独立 `.java` 文件中，归属 dto / domain / vo 等对应包。禁止作为内部类塞进 Service 或 Controller
 
 ## 工作方式
 
@@ -36,20 +37,21 @@ license: MIT
 ### 代码规范
 
 - 新增类 / public 方法缺少注释（职责、参数、返回值、异常）
-- 使用字段注入 `@Autowired`（应用构造器注入 + `@RequiredArgsConstructor`）
+- 用字段注入 `@Autowired`（用构造器注入 + `@RequiredArgsConstructor`）
 - 生产代码空 `catch` 或 `printStackTrace()`
 - `Optional` 用作字段或方法参数（仅限返回值）
-- 简单遍历滥用 `Stream`（for-each 更直接）
+- 简单遍历用 `Stream`（for-each 更直接）
+- record / DTO / VO 作为内部类放在 Service 或 Controller 中（必须独立成文件）
 
 ### 错误处理与国际化
 
-- 错误码内联字符串字面量（必须通过 `ErrorCodes` 常量类引用）
-- 异常或日志消息硬编码中文（必须用 i18n message key + `MessageSource`）
+- 错误码内联字符串字面量（用 `ErrorCodes` 常量类引用）
+- 异常或日志消息硬编码中文（用 i18n message key + `MessageSource`）
 
 ### 数据库与 SQL
 
-- SQL 通过字符串拼接构造（必须参数化：`#{}` / `?` / JPA 参数绑定）
-- 批量操作大小硬编码（必须通过配置项控制）
+- SQL 通过字符串拼接构造（参数化：`#{}` / `?` / JPA 参数绑定）
+- 批量操作大小硬编码（用配置项控制）
 - 新增业务表缺少审计字段或字段未声明 `NOT NULL`
 - 业务查询遗漏 `is_deleted = 0` 过滤
 

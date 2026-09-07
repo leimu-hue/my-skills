@@ -99,6 +99,18 @@
         "OrderService 只保留业务逻辑方法",
         "Java 17+ 的简单数据载体建议使用 record 而非 @Data class"
       ]
+    },
+    {
+      "id": 9,
+      "prompt": "写一个用户注册的 Service 方法，需要接收用户名、邮箱、手机号，创建用户并返回用户信息。项目是 Java 17 Spring Boot 3。",
+      "expected_output": "record 定义在独立文件中（dto 包），不在 Service 内部定义",
+      "expectations": [
+        "请求参数使用 record 定义（如 UserRegisterCommand）",
+        "返回值使用 record 定义（如 UserResponse）",
+        "record 定义在独立 .java 文件中，不是 Service 的内部类",
+        "record 放在 dto 或对应包中",
+        "Service 类中只包含业务逻辑方法"
+      ]
     }
   ]
 }

@@ -4,8 +4,8 @@
 
 本文用于指导 Java / Spring 设计取舍，不要求强行套模式或 DDD 术语。已有项目存在稳定约定时优先保持一致；只有在新增模块、重构公共能力或消除明显复杂度时，再引入新抽象。
 
-- 分层、接口、设计模式用于降低耦合，不是目标本身
-- 示例只表达职责边界；返回格式、异常类型、包结构跟随项目约定
+- 分层、接口、设计模式用来降低耦合，不是目标
+- 示例只表达职责边界；返回格式、异常类型、包结构跟项目走
 - 新增抽象必须对应真实变化点：多实现、多渠道、多算法、多外部系统适配
 - 枚举持久化默认使用 `EnumType.STRING`，避免枚举顺序变化污染历史数据
 
@@ -53,6 +53,37 @@ public class PaymentService {
 - Repository：数据访问；不写业务编排
 - Model / Entity / DTO：数据结构与自身规则；不要混入控制层细节
 
+**文件组织：** record、DTO、VO、Command、Response 等数据载体必须独立成 `.java` 文件，放在 dto / domain / vo 等对应包。禁止作为内部类塞进 Service 或 Controller。
+
+```java
+// ❌ 把 record 塞进 Service
+@Service
+public class OrderService {
+    public record OrderCreateCommand(Long userId, List<OrderItem> items) {}
+    public record OrderResponse(Long orderId, BigDecimal totalAmount) {}
+
+    @Transactional
+    public OrderResponse createOrder(OrderCreateCommand cmd) { ... }
+}
+
+// ✅ 各自独立文件
+// dto/OrderCreateCommand.java
+public record OrderCreateCommand(Long userId, List<OrderItem> items) {}
+
+// dto/OrderResponse.java
+public record OrderResponse(Long orderId, BigDecimal totalAmount) {
+    public static OrderResponse from(Order order) { ... }
+}
+
+// service/OrderService.java
+@Service
+@RequiredArgsConstructor
+public class OrderService {
+    @Transactional
+    public OrderResponse createOrder(OrderCreateCommand cmd) { ... }
+}
+```
+
 ```java
 @RestController
 @RequestMapping("/api/users")
@@ -70,7 +101,7 @@ public class UserController {
 
 ## 设计模式
 
-只在存在真实变化点时使用模式。只有一个实现、无复用计划、规则仍不稳定时，保持简单代码；当类型、渠道、算法或第三方适配导致分支持续增长，再抽象。
+一个实现、无复用计划、规则不稳时，保持简单代码。类型、渠道、算法或第三方适配导致分支持续增长时，再抽象。
 
 | 模式 | 适用场景 | 注意点 |
 | --- | --- | --- |
