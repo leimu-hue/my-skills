@@ -63,10 +63,20 @@ public final class ErrorCodes {
     private ErrorCodes() {}
 
     // --- 用户模块 ---
-    public static final String USER_ID_INVALID    = "USER_ID_INVALID";
-    public static final String USER_NOT_FOUND     = "USER_NOT_FOUND";
-    public static final String USER_EXISTS        = "USER_EXISTS";
-    public static final String USER_CREATE_FAILED = "USER_CREATE_FAILED";
+    public static final String USER_ID_INVALID              = "USER_ID_INVALID";
+    public static final String USER_NAME_BLANK              = "USER_NAME_BLANK";
+    public static final String USER_NAME_INVALID_FORMAT     = "USER_NAME_INVALID_FORMAT";
+    public static final String USER_UPDATE_REQUEST_REQUIRED = "USER_UPDATE_REQUEST_REQUIRED";
+    public static final String USER_NOT_FOUND               = "USER_NOT_FOUND";
+    public static final String USER_EXISTS                  = "USER_EXISTS";
+    public static final String USER_CREATE_FAILED           = "USER_CREATE_FAILED";
+
+    // --- 订单模块 ---
+    public static final String ORDER_STATUS_INVALID = "ORDER_STATUS_INVALID";
+
+    // --- 金额 ---
+    public static final String AMOUNT_RANGE_REQUIRED = "AMOUNT_RANGE_REQUIRED";
+    public static final String AMOUNT_RANGE_INVALID  = "AMOUNT_RANGE_INVALID";
 
     // --- 通用 ---
     public static final String INTERNAL_ERROR = "INTERNAL_ERROR";
@@ -79,17 +89,29 @@ public final class ErrorCodes {
 ```properties
 # messages.properties（默认 / 英文）
 USER_ID_INVALID=User ID must be greater than 0, actual: {0}
+USER_NAME_BLANK=User name must not be blank
+USER_NAME_INVALID_FORMAT=User name format is invalid: {0}
+USER_UPDATE_REQUEST_REQUIRED=Update request must not be null
 USER_NOT_FOUND=User not found: {0}
 USER_EXISTS=Username already exists: {0}
 USER_CREATE_FAILED=Failed to create user, please try again later
+ORDER_STATUS_INVALID=Order status does not allow this operation
+AMOUNT_RANGE_REQUIRED=Amount range must not be null
+AMOUNT_RANGE_INVALID=Minimum amount must not be greater than maximum amount
 INTERNAL_ERROR=Internal server error
 DB_ERROR=Database operation failed, please try again later
 
 # messages_zh_CN.properties（中文）
 USER_ID_INVALID=用户ID必须大于0，实际值：{0}
+USER_NAME_BLANK=用户名不能为空
+USER_NAME_INVALID_FORMAT=用户名格式非法：{0}
+USER_UPDATE_REQUEST_REQUIRED=更新请求不能为空
 USER_NOT_FOUND=用户不存在：{0}
 USER_EXISTS=用户名已存在：{0}
 USER_CREATE_FAILED=用户创建失败，请稍后重试
+ORDER_STATUS_INVALID=当前订单状态不允许此操作
+AMOUNT_RANGE_REQUIRED=金额区间不能为空
+AMOUNT_RANGE_INVALID=最小金额不能大于最大金额
 INTERNAL_ERROR=系统繁忙，请稍后重试
 DB_ERROR=数据库操作失败，请稍后重试
 ```

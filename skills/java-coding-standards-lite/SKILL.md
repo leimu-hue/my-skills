@@ -26,16 +26,18 @@ license: MIT
 
 ## 核心规则
 
+> **优先级：硬性规则 > 项目现有风格。** 已明确禁止的写法（字段注入、空 catch、硬编码中文消息、单实现接口等）禁止跟随项目现有风格。
+
 > 详细说明与代码示例见 `./references/core-rules.md`
 
 1. **守卫式写法** — 尽早拒绝非法输入，正常流程保持平直。嵌套深 = 难读、难测、难维护
 2. **跟随项目工具风格** — 沿用项目已有工具类（StringUtils / CollectionUtils），不额外引入依赖。同一文件内风格统一
-3. **空值防御** — 外部输入、第三方返回值解引用前先校验。风格贴近本地代码（`== null` vs `Objects.isNull` 都行）
+3. **空值防御** — 外部输入、第三方返回值解引用前先校验。风格贴近本地代码（`== null` vs `Objects.isNull` 都行，规则 2 的例外）
 4. **用 import，不用全路径** — 全路径只在同名类冲突时允许，且必须注释说明原因
 5. **switch 表达式（Java 17+）** — 箭头语法无穿透风险，强制穷举分支。已有稳定 switch 不改，只在新增/修改时用
 6. **文本块（Java 17+）** — 多行 JSON / SQL / XML 用 `"""`，所见即所得。单行字符串不用
 7. **record 优先（Java 17+）** — 简单不可变 DTO/VO/Command/Response 用 record，优先级高于 Lombok。JPA Entity、需要 setter / 继承 / ORM 代理的场景用 class
-8. **类型独立成文件** — record、DTO、VO、Command、Response 等数据载体必须放在独立 `.java` 文件中，归属 dto / domain / vo 等对应包。禁止作为内部类塞进 Service 或 Controller
+8. **类型独立成文件** — record、DTO、VO、Command、Response 等数据载体必须放在独立 `.java` 文件中，归属 dto / domain / vo 等对应包。禁止作为内部类塞进 Service 或 Controller。唯一例外：与外部类强耦合的实现细节（如 Builder 的内部状态）可用 `private static` 内部类
 9. **不要写没被要求的抽象** — 一个实现的接口、一个产品的工厂、一个永不改变的配置值 → 不要建
 10. **删除优于新增** — 最短可行 diff 赢。先删冗余，再加必要。最懒的可行方案就是对的方案
 
@@ -115,12 +117,12 @@ license: MIT
 | `./references/core-rules.md` | 核心规则详细说明与代码示例 |
 | `./references/naming-conventions.md` | 命名规范（Java / DB / 泛型 / 注解） |
 | `./references/coding-standards.md` | 格式、注释、Lombok、record、集合、Optional |
-| `./references/exception-logging.md` | 异常分类、ErrorCodes、i18n、日志级别与写法 |
+| `./references/exception-logging.md` | 异常分类、ErrorCodes、i18n、日志级别与写法（全局异常处理的权威定义） |
 | `./references/security.md` | 参数校验、SQL 注入、XSS、CSRF、敏感数据 |
 | `./references/testing.md` | 测试类型、结构、Mock、断言、Spring 测试选择 |
 | `./references/database.md` | 表设计、索引、SQL、分页、事务、批量操作、连接池 |
 | `./references/concurrency.md` | 线程池、共享状态、锁、ThreadLocal、异步任务 |
-| `./references/design.md` | 分层架构、设计模式、API 设计、配置管理、DDD |
+| `./references/design.md` | 分层架构、设计模式、API 设计、配置管理、DDD（全局异常处理仅列方案选型，实现见 `exception-logging.md`） |
 
 ## 输出要求
 

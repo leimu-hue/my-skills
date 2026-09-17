@@ -123,7 +123,7 @@ try {
 ```java
 boolean acquired = semaphore.tryAcquire(200, TimeUnit.MILLISECONDS);
 if (!acquired) {
-    throw new TimeoutException("获取并发许可超时");
+    throw new TimeoutException("Timed out acquiring concurrency permit");
 }
 try {
     useLimitedResource();

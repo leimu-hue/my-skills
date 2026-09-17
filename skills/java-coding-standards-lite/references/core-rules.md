@@ -28,7 +28,7 @@ public void process(User user) {
 
 ```java
 if (StringUtils.isBlank(request.getUserName())) {
-    throw new ValidationException("userName", "用户名不能为空");
+    throw new ValidationException(ErrorCodes.USER_NAME_BLANK);
 }
 
 if (CollectionUtils.isEmpty(users)) {
@@ -157,7 +157,7 @@ String json = "{\n" +
 
 - Java 17+ 项目中，简单不可变 DTO / VO / Command / Response 优先使用 `record`，优先级高于 Lombok `@Data`、`@Getter`、`@Setter`、`@Value`
 - 不要使用 `record`：JPA / MyBatis Plus 实体、需要继承父类、需要可变状态、框架不支持的旧项目
-- record 必须放在独立 `.java` 文件中，归属 dto / domain / vo 等对应包。禁止作为内部类塞进 Service 或 Controller
+- record 必须放在独立 `.java` 文件中，归属 dto / domain / vo 等对应包。禁止作为内部类塞进 Service 或 Controller。唯一例外：与外部类强耦合的实现细节（如 Builder 内部状态）可用 `private static` 内部类
 - record 字段天然 `private final`，不要再加 Lombok 注解
 - 访问器名称是组件名（`request.userName()`），不是 `getUserName()`
 - record 自动生成 `equals`/`hashCode`/`toString`，避免存放敏感明文字段
@@ -181,10 +181,10 @@ public record UserCreateRequest(
 public record AmountRange(BigDecimal minAmount, BigDecimal maxAmount) {
     public AmountRange {
         if (minAmount == null || maxAmount == null) {
-            throw new IllegalArgumentException("金额区间不能为空");
+            throw new IllegalArgumentException(ErrorCodes.AMOUNT_RANGE_REQUIRED);
         }
         if (minAmount.compareTo(maxAmount) > 0) {
-            throw new IllegalArgumentException("最小金额不能大于最大金额");
+            throw new IllegalArgumentException(ErrorCodes.AMOUNT_RANGE_INVALID);
         }
     }
 }

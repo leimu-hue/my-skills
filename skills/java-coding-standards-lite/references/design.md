@@ -14,6 +14,8 @@
 | ISP 接口隔离 | 接口按调用方需要拆小 | 大接口迫使实现类写无意义方法 |
 | DIP 依赖倒置 | 高层依赖接口，具体实现由注入提供 | 业务类 `new` 具体 Repository、SDK、Client |
 
+> DIP 的“依赖接口”指已经存在的扩展点契约或多实现抽象。仅为单个实现新建接口仍受 `SKILL.md` 规则 8 约束（不要写没被要求的抽象）：框架自身提供的接口（Repository、`TaskExecutor` 等）不属此列。
+
 典型扩展点写法：
 
 ```java
@@ -46,7 +48,7 @@ public class PaymentService {
 - Repository：数据访问；不写业务编排
 - Model / Entity / DTO：数据结构与自身规则；不要混入控制层细节
 
-**文件组织：** record、DTO、VO、Command、Response 等数据载体必须独立成 `.java` 文件，放在 dto / domain / vo 等对应包。禁止作为内部类塞进 Service 或 Controller。
+**文件组织：** record、DTO、VO、Command、Response 等数据载体必须独立成 `.java` 文件，放在 dto / domain / vo 等对应包。禁止作为内部类塞进 Service 或 Controller。唯一例外：与外部类强耦合的实现细节（如 Builder 内部状态）可用 `private static` 内部类。
 
 ```java
 // ❌ 把 record 塞进 Service
@@ -215,28 +217,33 @@ private String apiKey = "sk_live_12345";
 
 ### 方案二：ProblemDetail（RFC 7807）
 
+> `ProblemDetail` 仅决定错误体的结构，不豁免 i18n 要求。`detail` 同样必须来自 `MessageSource` 解析，不能直接用异常中的 message key 或堆栈信息。
+
 ```java
 @RestControllerAdvice
+@RequiredArgsConstructor
 public class GlobalExceptionHandler {
 
-    @ExceptionHandler(UserNotFoundException.class)
-    public ProblemDetail handleNotFound(UserNotFoundException e) {
-        return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, e.getMessage());
-    }
+    private final MessageSource messageSource;
 
     @ExceptionHandler(BusinessException.class)
-    public ProblemDetail handleBusiness(BusinessException e) {
+    public ProblemDetail handleBusiness(BusinessException e, Locale locale) {
+        // errorCode 即 message key，经 MessageSource 按 locale 解析
+        String userMessage = messageSource.getMessage(
+            e.getErrorCode(), e.getArgs(), e.getErrorCode(), locale);
         ProblemDetail detail = ProblemDetail.forStatusAndDetail(
-            HttpStatus.UNPROCESSABLE_ENTITY, e.getMessage());
+            HttpStatus.UNPROCESSABLE_ENTITY, userMessage);
         detail.setProperty("errorCode", e.getErrorCode());
         return detail;
     }
 
     @ExceptionHandler(Exception.class)
-    public ProblemDetail handleUnknown(Exception e) {
+    public ProblemDetail handleUnknown(Exception e, Locale locale) {
         log.error("Unexpected system error", e);
+        String userMessage = messageSource.getMessage(
+            ErrorCodes.INTERNAL_ERROR, null, "Internal server error", locale);
         return ProblemDetail.forStatusAndDetail(
-            HttpStatus.INTERNAL_SERVER_ERROR, "Internal server error");
+            HttpStatus.INTERNAL_SERVER_ERROR, userMessage);
     }
 }
 ```
@@ -261,7 +268,7 @@ public class Order {
 
     public void confirm() {
         if (status != OrderStatus.PENDING) {
-            throw new IllegalStateException("只有待确认的订单才能确认");
+            throw new IllegalStateException(ErrorCodes.ORDER_STATUS_INVALID);
         }
         this.status = OrderStatus.CONFIRMED;
     }

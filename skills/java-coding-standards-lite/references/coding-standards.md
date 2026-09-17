@@ -1,8 +1,6 @@
 # 编码规范
 
-## 与主规范的关系
-
-本文补充代码格式、方法设计、注释和常用 API 细节。与 `SKILL.md` 冲突时，以 `SKILL.md` 为准。
+本文补充代码格式、方法设计、注释和常用 API 细节。
 
 ## 代码格式
 
@@ -52,10 +50,10 @@ private static final String USER_NOT_FOUND = "USER_NOT_FOUND";
 ```java
 public User updateUser(Long id, UserUpdateRequest request) {
     if (id == null || id <= 0) {
-        throw new IllegalArgumentException("用户ID必须大于0");
+        throw new ValidationException(ErrorCodes.USER_ID_INVALID, id);
     }
     if (request == null) {
-        throw new IllegalArgumentException("更新请求不能为空");
+        throw new ValidationException(ErrorCodes.USER_UPDATE_REQUEST_REQUIRED);
     }
 
     User user = loadUser(id);

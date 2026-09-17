@@ -118,11 +118,13 @@ app:
 ```
 
 ```java
-@Data
 @ConfigurationProperties(prefix = "app.batch")
-public class BatchProperties {
-    /** 每批处理条数，默认 500 */
-    private int size = 500;
+public record BatchProperties(int size) {
+    public BatchProperties {
+        if (size <= 0) {
+            size = 500; // 默认每批处理条数
+        }
+    }
 }
 ```
 
@@ -138,7 +140,7 @@ for (Order order : orders) {
 Lists.partition(orders, 500).forEach(batch -> orderMapper.batchInsert(batch));
 
 // ✅ 批量插入 + 配置化批次大小
-Lists.partition(orders, batchProperties.getSize())
+Lists.partition(orders, batchProperties.size())
     .forEach(batch -> orderMapper.batchInsert(batch));
 ```
 
@@ -146,7 +148,7 @@ Lists.partition(orders, batchProperties.getSize())
 
 ```java
 // ✅ 批量更新，统一使用配置化批次大小
-Lists.partition(updates, batchProperties.getSize())
+Lists.partition(updates, batchProperties.size())
     .forEach(batch -> orderMapper.batchUpdate(batch));
 ```
 
@@ -154,7 +156,7 @@ Lists.partition(updates, batchProperties.getSize())
 
 ```java
 // ✅ 按 ID 批量删除，分批执行
-Lists.partition(ids, batchProperties.getSize())
+Lists.partition(ids, batchProperties.size())
     .forEach(batch -> orderMapper.batchDeleteByIds(batch));
 ```
 
