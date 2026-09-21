@@ -1,0 +1,31 @@
+{
+  "// 说明": "sources=从 GitHub 拉取的技能来源；links=默认把本地技能软连接到各 Agent 用户级 skills 目录",
+  "// skillsDir": "本地技能存放目录，默认 'skills'（相对本配置文件）",
+  "skillsDir": "skills",
+  "sources": [
+    {
+      "// name": "来源标识，也用于缓存目录名",
+      "name": "mattpocock-skills",
+      "repo": "https://github.com/mattpocock/skills.git",
+      "ref": "main",
+      "// paths": "写目录=自动同步其下所有技能；写单个技能目录=只同步该技能；也可用 { path, as } 改名",
+      "paths": [
+        "skills/productivity"
+      ]
+    }
+  ],
+  "links": [
+    {
+      "//": "也可用 agents 预设代替 targets，例如 agents: [\"claude\",\"pi\"]",
+      "skills": [
+        "grill-me",
+        "doc-generator",
+        "rust-coding-guide"
+      ],
+      "targets": [
+        "~/.pi/agent/skills",
+        "~/.agents/skills"
+      ]
+    }
+  ]
+}
