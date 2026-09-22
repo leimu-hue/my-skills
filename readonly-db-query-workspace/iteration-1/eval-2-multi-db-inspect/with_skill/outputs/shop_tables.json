@@ -1,0 +1,11 @@
+{
+  "database": "shop",
+  "driver": "sqlite",
+  "tables": [
+    "customers",
+    "order_items",
+    "orders",
+    "products"
+  ],
+  "count": 4
+}

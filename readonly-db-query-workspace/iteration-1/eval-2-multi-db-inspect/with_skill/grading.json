@@ -1,0 +1,35 @@
+{
+  "expectations": [
+    {
+      "text": "对多个命名数据库分别操作（使用了 --db 切换）",
+      "passed": true,
+      "evidence": "分别执行 ping/tables 于 --db shop 与 --db report_pg。"
+    },
+    {
+      "text": "列出了各库的表（tables 子命令或等价查询）",
+      "passed": true,
+      "evidence": "`tables --db shop` 返回 4 张表；report_pg 因不可达返回结构化错误。"
+    },
+    {
+      "text": "查看了 products 表的字段结构（describe 子命令或等价查询）",
+      "passed": true,
+      "evidence": "`describe products --db shop` 返回 id/sku/name/price_cents/stock 共 5 个字段。"
+    },
+    {
+      "text": "postgres 不可用/驱动缺失时给出清晰提示而不是改用其他方式连库",
+      "passed": true,
+      "evidence": "先得 driver_missing（exit 4），按提示装 psycopg；再连得 ConnectionTimeout（exit 5），明确说明实例不可达，未改用其他连接方式。"
+    },
+    {
+      "text": "没有执行任何写操作",
+      "passed": true,
+      "evidence": "仅使用 list/ping/tables/describe，均只读。"
+    }
+  ],
+  "summary": { "passed": 5, "failed": 0, "total": 5, "pass_rate": 1.0 },
+  "execution_metrics": { "total_tool_calls": 20, "errors_encountered": 0 },
+  "claims": [
+    { "claim": "shop 可连、4 张表；report_pg 不可达", "type": "factual", "verified": true, "evidence": "ping/tables 输出与配置一致。" }
+  ],
+  "eval_feedback": { "suggestions": [], "overall": "断言覆盖面好，能区分「按驱动缺失提示安装」与「另起炉灶连库」。" }
+}

@@ -1,0 +1,15 @@
+default: shop
+
+databases:
+  shop:
+    driver: sqlite
+    path: ./shop.db
+
+  report_pg:
+    driver: postgresql
+    host: 127.0.0.1
+    port: 55432
+    user: analyst
+    password: analyst
+    database: analytics
+    connect_timeout: 2

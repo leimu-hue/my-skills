@@ -1,0 +1,13 @@
+{
+  "report_pg_ping": {
+    "error": "database_error",
+    "message": "ConnectionTimeout: connection timeout expired",
+    "step": "ping --db report_pg",
+    "note": "report_pg 未初始化时为 driver_missing，安装 psycopg 后为连接超时，说明该 PostgreSQL 实例不可达"
+  },
+  "report_pg_tables": {
+    "error": "database_error",
+    "message": "ConnectionTimeout: connection timeout expired",
+    "step": "tables --db report_pg"
+  }
+}

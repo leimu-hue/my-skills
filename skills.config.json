@@ -20,7 +20,8 @@
       "skills": [
         "grill-me",
         "doc-generator",
-        "rust-coding-guide"
+        "rust-coding-guide",
+        "readonly-db-query"
       ],
       "targets": [
         "~/.pi/agent/skills",

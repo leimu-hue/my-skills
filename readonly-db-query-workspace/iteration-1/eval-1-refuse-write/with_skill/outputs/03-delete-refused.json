@@ -1,0 +1,4 @@
+{
+  "error": "read_only_violation",
+  "message": "语句类型 'delete' 不在只读白名单内。只允许: desc, describe, explain, select, show, table, values, with（SQLite 另允许只读 PRAGMA）。"
+}

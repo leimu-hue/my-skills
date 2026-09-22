@@ -18,6 +18,7 @@
 | `doc-generator` | 文档生成器，支持需求规格、概要设计、详细设计等核心文档及完整文档套件 |
 | `java-coding-standards-lite` | Java 编码规范，面向 Spring / MyBatis / JPA / 并发等企业级 Java 项目的轻量规范 |
 | `rust-coding-guide` | Rust 编码与审查指南，涵盖所有权/借用、unsafe、异步/并发、取消安全、错误处理、性能、Trait 设计 |
+| `readonly-db-query` | 只读数据库查询 CLI，支持 SQLite / MySQL / PostgreSQL，三层防护拒绝写操作，多库配置 |
 | `skill-creator` | Skill 创建辅助工具，包含评估、打包、改进描述等脚本 |
 | `skill-creator-rule` | 创建、编写、更改技能需要遵守的规约 |
 | `stop-slop-zh` | 去除中文文本里的 AI 生成痕迹，让散文、文案、博客等更自然、更像真人写 |

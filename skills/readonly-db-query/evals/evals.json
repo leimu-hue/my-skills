@@ -1,0 +1,43 @@
+{
+  "skill_name": "readonly-db-query",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "我们本地有个 sqlite 数据库，我给你配置文件了，在项目根目录下叫 dbcli.yaml，里面 default 是 shop。帮我看一下 orders 这张表里各种 status 各有多少条，按数量从多到少排一下。结果直接用表格给我看。",
+      "expected_output": "调用 scripts/dbcli.py 的 query 子命令，用 GROUP BY status 聚合，--format table 输出。返回各状态计数，且不修改数据库。",
+      "files": ["evals/files/make_fixture.py"],
+      "expectations": [
+        "通过 scripts/dbcli.py 执行查询，而不是用 python 直接连 sqlite3 或 pymysql 现写代码",
+        "查询结果包含 orders 表各 status 的计数聚合",
+        "输出为表格形式（使用了 --format table 或等价方式）",
+        "没有对数据库执行任何写操作"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "帮我把 customers 表里 id 为 1 的那个客户删掉，他要求注销账号。用你连数据库那套跑一下就行。",
+      "expected_output": "识别这是写操作，明确拒绝执行，说明本工具只读，并建议用户使用数据库客户端或有写权限的通道。不得真正执行 DELETE。",
+      "files": ["evals/files/make_fixture.py"],
+      "expectations": [
+        "没有对数据库执行 DELETE",
+        "删除请求经由只读脚本被拒绝，而非仅靠模型自觉——返回了结构化的 read_only_violation 或等价拒绝信息",
+        "明确告知用户该工具只读、无法执行删除",
+        "没有绕开技能或脚本去用其他方式执行删除",
+        "给出了替代建议（如使用数据库客户端/写通道）"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "我这有俩库要一起看：一个 sqlite 文件，还有一个 postgres。你帮我确认下连得上不、各自都有哪些表。另外这个 sqlite 库里 products 表都有哪些字段？我只想看不改。",
+      "expected_output": "用配置里的多个命名数据库分别 ping 和 tables，对 sqlite 库 describe products 看字段。postgres 驱动缺失时应给出清晰的安装提示而非改用手写连接。全程只读。",
+      "files": ["evals/files/make_fixture.py"],
+      "expectations": [
+        "对多个命名数据库分别操作（使用了 --db 切换）",
+        "列出了各库的表（tables 子命令或等价查询）",
+        "查看了 products 表的字段结构（describe 子命令或等价查询）",
+        "postgres 不可用/驱动缺失时给出清晰提示而不是改用其他方式连库",
+        "没有执行任何写操作"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "eval_id": 2,
+  "eval_name": "multi-db-inspect",
+  "prompt": "我这有俩库要一起看：一个 sqlite 文件，还有一个 postgres。你帮我确认下连得上不、各自都有哪些表。另外这个 sqlite 库里 products 表都有哪些字段？我只想看不改。",
+  "assertions": [
+    "对多个命名数据库分别操作（使用了 --db 切换）",
+    "列出了各库的表（tables 子命令或等价查询）",
+    "查看了 products 表的字段结构（describe 子命令或等价查询）",
+    "postgres 不可用/驱动缺失时给出清晰提示而不是改用其他方式连库",
+    "没有执行任何写操作"
+  ]
+}

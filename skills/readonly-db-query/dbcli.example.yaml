@@ -1,0 +1,41 @@
+# readonly-db-query 配置示例
+#
+# 把本文件复制/改名为 dbcli.yaml，放在你的项目根目录（或任意父目录），
+# CLI 会自动从当前工作目录向上逐级查找：dbcli.yaml / .dbcli.yaml / .pi/dbcli.yaml
+#
+# 也可用 --config 指定路径，或用 --url 直接传连接串（此时忽略本文件）。
+
+# 未指定 --db 时使用的默认库（可选；缺省取 databases 的第一项）
+default: local
+
+databases:
+  # ---- SQLite：直接给文件路径 ----
+  local:
+    driver: sqlite
+    path: ./data/app.db          # 相对路径按 CLI 的工作目录解析；也支持绝对路径与 :memory:
+
+  # ---- MySQL / MariaDB ----
+  shop_mysql:
+    driver: mysql
+    host: 10.0.0.12
+    port: 3306
+    user: readonly_user
+    password: ${DB_SHOP_PASSWORD}   # 支持 ${ENV_VAR} 引用环境变量，避免明文入库
+    database: shop
+    charset: utf8mb4
+    connect_timeout: 10
+
+  # ---- PostgreSQL ----
+  report_pg:
+    driver: postgresql
+    host: pg.internal
+    port: 5432
+    user: analyst
+    password: ${DB_PG_PASSWORD}
+    database: analytics
+    connect_timeout: 10
+
+# 说明：
+# - password 可写成 ${ENV_VAR}，CLI 会从环境变量读取；也可直接留空使用免密（trust）连接。
+# - 本技能所有操作都是只读的，建议数据库账号本身也只授予 SELECT 权限，
+#   形成「账号权限 + 会话只读 + SQL 拦截」的多重保障。

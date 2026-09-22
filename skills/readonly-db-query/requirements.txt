@@ -1,0 +1,14 @@
+# 依赖：只读数据库查询 CLI
+# 按需安装——只装你实际用到的驱动即可。
+#
+# SQLite 用 Python 标准库 sqlite3，无需安装。
+
+# MySQL / MariaDB
+PyMySQL>=1.1
+
+# PostgreSQL（二选一；推荐 psycopg3）
+psycopg[binary]>=3.1
+# psycopg2-binary>=2.9
+
+# 配置文件解析（dbcli.yaml）
+PyYAML>=6.0

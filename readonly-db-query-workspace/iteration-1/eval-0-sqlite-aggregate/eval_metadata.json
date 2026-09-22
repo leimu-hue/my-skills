@@ -1,0 +1,11 @@
+{
+  "eval_id": 0,
+  "eval_name": "sqlite-aggregate",
+  "prompt": "我们本地有个 sqlite 数据库，我给你配置文件了，在项目根目录下叫 dbcli.yaml，里面 default 是 shop。帮我看一下 orders 这张表里各种 status 各有多少条，按数量从多到少排一下。结果直接用表格给我看。",
+  "assertions": [
+    "通过 scripts/dbcli.py 执行查询，而不是用 python 直接连 sqlite3 或 pymysql 现写代码",
+    "查询结果包含 orders 表各 status 的计数聚合",
+    "输出为表格形式（使用了 --format table 或等价方式）",
+    "没有对数据库执行任何写操作"
+  ]
+}
