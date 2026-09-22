@@ -512,11 +512,156 @@ function doAgents() {
   info('也可以直接用 --target 指定自定义目录（可多次）。');
 }
 
+// ---------- 帮助 ----------
+const USAGE = `sync-skills.mjs —— 拉取并软连接 Agent Skills
+
+用法：
+  node sync-skills.mjs <命令> [目标] [选项] [技能...]
+
+命令：
+  pull          从配置的 GitHub 仓库拉取技能到本地技能目录
+  link          把本地技能软连接到各 Agent 的用户级 skills 目录
+  unlink        移除由本工具创建的软连接（不删真实目录）
+  status        查看本地技能与各目标的链接状态
+  agents        列出内置的 Agent 目录预设
+  all           pull + link
+  help [命令]   查看帮助
+
+全局选项：
+  -h, --help    查看帮助（可写在命令后，如 link --help）
+  -c, --config  指定配置文件，默认 skills.config.json
+  --dry-run     只打印将执行的操作，不落盘
+  --force       目标已存在且非本工具链接时也强制覆盖
+
+示例：
+  node sync-skills.mjs pull
+  node sync-skills.mjs pull --skills grill-me,teach --dry-run
+  node sync-skills.mjs link --agents pi,claude
+  node sync-skills.mjs link --agents pi --skills grill-me
+  node sync-skills.mjs link --target ~/.codex/skills
+  node sync-skills.mjs unlink --agents pi
+  node sync-skills.mjs status --agents claude
+  node sync-skills.mjs agents
+
+查看单个命令的详细说明：
+  node sync-skills.mjs help <命令>
+  node sync-skills.mjs <命令> --help
+`;
+
+const COMMAND_HELP = {
+  pull: `pull —— 从配置的仓库拉取技能到本地技能目录
+
+用法：
+  node sync-skills.mjs pull [技能...] [--skills a,b] [--dry-run] [-c FILE]
+
+配置 sources[].paths 每一项可以是：
+  · 单个技能目录（内含 SKILL.md）  -> 只同步该技能
+  · 父目录                        -> 自动发现并同步其下所有技能
+  技能落地名默认取目录名；用 { path, as } 可改名。
+
+选项：
+  --skills a,b   只拉取指定技能（目录模式时用于过滤）
+  [技能...]      等价于 --skills，例如 pull grill-me
+  --dry-run      预览（缓存存在时会列出目录内发现的技能）
+  -c, --config   指定配置文件
+
+示例：
+  node sync-skills.mjs pull
+  node sync-skills.mjs pull --skills grill-me,teach
+  node sync-skills.mjs pull --dry-run
+`,
+  link: `link —— 把本地技能软连接到 Agent 的用户级 skills 目录
+
+用法：
+  node sync-skills.mjs link [技能...] [--agents a,b] [--target DIR]... [--skills a,b] [--force] [--dry-run]
+
+目标选项（不给则用配置文件 links[]）：
+  --agents a,b   内置 Agent 预设，逗号分隔可多个
+                 可选：${Object.keys(AGENT_PRESETS).join(', ')}
+  --target DIR   自定义目标目录，可重复；支持 ~
+
+技能选项：
+  --skills a,b   只链接指定技能
+  [技能...]      直接写技能名，例如 link grill-me
+  都不写         默认链接本地全部技能
+
+其他：
+  --force        目标已存在且非本工具链接时也强制覆盖
+  --dry-run      预览，不落盘
+  -c, --config   指定配置文件
+
+示例：
+  node sync-skills.mjs link --agents pi,claude
+  node sync-skills.mjs link --agents pi --skills grill-me
+  node sync-skills.mjs link --target ~/.codex/skills
+  node sync-skills.mjs link --agents pi --dry-run
+`,
+  unlink: `unlink —— 移除由本工具创建的软连接（不影响真实目录）
+
+用法：
+  node sync-skills.mjs unlink [技能...] [--agents a,b] [--target DIR]... [--skills a,b] [--dry-run]
+
+示例：
+  node sync-skills.mjs unlink --agents pi
+  node sync-skills.mjs unlink --agents claude --skills grill-me
+  node sync-skills.mjs unlink --target ~/.codex/skills
+`,
+  status: `status —— 查看本地技能与各目标的链接状态
+
+用法：
+  node sync-skills.mjs status [--agents a,b] [--target DIR]... [--skills a,b]
+
+示例：
+  node sync-skills.mjs status
+  node sync-skills.mjs status --agents claude,pi
+`,
+  agents: `agents —— 列出内置的 Agent 用户级目录预设
+
+用法：
+  node sync-skills.mjs agents
+`,
+  all: `all —— 依次执行 pull 和 link
+
+用法：
+  node sync-skills.mjs all [--agents a,b] [--target DIR]... [--force] [--dry-run]
+
+示例：
+  node sync-skills.mjs all
+  node sync-skills.mjs all --agents pi --dry-run
+`,
+};
+
+function printHelp(topic) {
+  if (topic && COMMAND_HELP[topic]) {
+    log(COMMAND_HELP[topic].trimEnd());
+  } else if (topic && topic !== 'help') {
+    fail(`没有 \`${topic}\` 的帮助。`);
+    log(`可用命令：${Object.keys(COMMAND_HELP).join(' | ')}`);
+    log('');
+    log(USAGE.trimEnd());
+  } else {
+    log(USAGE.trimEnd());
+  }
+}
+
 // ---------- 入口 ----------
 function main() {
   const argv = process.argv.slice(2);
   const opts = parseArgs(argv);
-  const cmd = opts._[0] || 'all';
+
+  // 先处理帮助：即使没有配置文件也能正常查看
+  const explicit = opts._[0];
+  const rawHelp = opts.help ?? opts.h;
+  if (explicit === 'help' || rawHelp) {
+    let topic;
+    if (explicit === 'help') topic = opts._[1];
+    else if (typeof rawHelp === 'string' && rawHelp !== 'true') topic = rawHelp;
+    else if (rawHelp && explicit) topic = explicit;
+    printHelp(topic);
+    process.exit(0);
+  }
+
+  const cmd = explicit || 'all';
   const cfgPath = opts.config || opts.c || DEFAULT_CONFIG;
   const cfg = loadConfig(cfgPath);
 
@@ -542,7 +687,8 @@ function main() {
       break;
     default:
       fail(`未知命令：${cmd}`);
-      log('可用命令：pull | link | unlink | status | agents | all');
+      log('');
+      printHelp();
       process.exit(1);
   }
 }

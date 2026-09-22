@@ -38,6 +38,8 @@
 
 ## 快速开始
 
+> 不确定命令怎么写？直接跑 `node sync-skills.mjs --help`，或 `node sync-skills.mjs help <命令>` 查看单个命令详情。
+
 ```bash
 # 1. 按需修改 skills.config.json
 # 2. 从远端拉取技能
@@ -60,6 +62,7 @@ node sync-skills.mjs all
 | `status` | 查看本地技能、以及每个目标目录的链接状态 |
 | `agents` | 列出内置的 Agent 用户级目录预设及是否存在 |
 | `all` | 依次执行 `pull` + `link` |
+| `help` | 查看帮助：`--help` 总览，`help <命令>` 或 `<命令> --help` 查看单个命令详情 |
 
 ## pull 的选项
 
