@@ -5,31 +5,48 @@ description: 通过统一的只读 CLI 脚本查询 SQLite / MySQL / PostgreSQL 
 
 # 只读数据库查询
 
-用固定的 CLI 脚本执行所有数据库操作，把"我能查库"变成"我有一条可复现、可审计、绝对不会误写数据的查询通道"。
+所有数据库操作都通过 `scripts/dbcli.py`（相对本技能目录）执行。不要自己写 `pymysql.connect` / `sqlite3.connect` 直连，也不要为了让写操作跑通换别的连法。
 
-## 为什么用脚本而不是临时拼代码
+## 写操作：拒绝，别想办法绕
 
-直接 `pymysql.connect(...)` 或 `sqlite3.connect(...)` 当然也能查，但每次都要现写驱动代码、现处理连接串、现拼结果格式，而且**没有任何只读保护**——一次手滑的 `UPDATE` 就写进生产库了。这个技能把连接管理、只读校验、行数限额、JSON 输出都固化成一份脚本，让每次查询的结果结构和安全边界都一致，也让失败时的错误信息可预测。
+用户要写数据（`INSERT` / `UPDATE` / `DELETE` / `DROP` / `ALTER` / `TRUNCATE` 等）时，你只做三件事：说明本工具只读、给出拒绝原因、建议他用数据库客户端或有写权限的通道。
 
-脚本路径（相对本技能目录）：`scripts/dbcli.py`。
+脚本有三层拦截（SQL 白名单、关键字扫描、数据库只读会话），命中任何一层都以退出码 3 返回 `read_only_violation`。这是你要转达给用户的结果，不是待突破的障碍。
 
-## 只读是硬约束，靠三层保障
+## 第一次用：先拿到连接信息
 
-**任何时候都不要绕开 `scripts/dbcli.py` 去直连数据库执行写操作。** 如果用户请求写数据（`INSERT`/`UPDATE`/`DELETE`/`DROP`/`ALTER`/`TRUNCATE` 等），正确做法是：说明本工具只读、给出被拒绝的原因，并建议用户使用数据库客户端或专门的写通道——而不是想办法执行它。
+先跑 `python scripts/dbcli.py list`。返回 `count: 0` 或带 `hint` 字段，说明这个项目还没配过数据库。接下来：
 
-`dbcli.py` 自身用三层防护确保只读，任何一层拦截都会以退出码 3 拒绝：
+1. 不要猜连接串，更不要手写驱动代码去试连。
+2. 向用户要齐：数据库类型（sqlite / mysql / postgresql）、主机和端口（SQLite 是库文件路径）、账号、密码、库名。缺哪项问哪项，密码不许编。
+3. 用 `init` 生成 `./dbcli.yaml`，密码放环境变量，别写明文：
 
-1. **SQL 白名单**：语句必须以 `SELECT` / `SHOW` / `DESCRIBE` / `DESC` / `EXPLAIN` / `WITH` / `TABLE` / `VALUES` 开头（SQLite 另允许只读 `PRAGMA`）。
-2. **词法拦截**：剥离注释与字符串字面量后再扫描关键字，命中 `INSERT`、`UPDATE`、`DELETE`、`DROP` 等一律拒绝；同时拒绝多语句（分号分隔）、`SELECT ... INTO`、`FOR UPDATE`、`LOCK IN SHARE MODE`、带赋值的 `PRAGMA`。
-3. **会话只读**：连上后立刻设置只读会话（SQLite `PRAGMA query_only=ON`；MySQL `START TRANSACTION READ ONLY`；PostgreSQL `SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY`）。即使前两层被绕过，数据库自身也会拒绝写入。
+```bash
+# 有完整连接串
+python scripts/dbcli.py init --url "mysql://user:pass@10.0.0.12:3306/shop" --name shop
 
-配合数据库账号本身只授 `SELECT` 权限，效果更好。
+# 分项填，密码走环境变量
+python scripts/dbcli.py init --driver mysql --host 10.0.0.12 --port 3306 \
+  --user readonly --password-env DB_SHOP_PASSWORD --database shop --name shop
 
-## 配置：从会话项目里读多个数据库
+# SQLite 只要路径
+python scripts/dbcli.py init --driver sqlite --path ./data/shop.db --name local
+```
 
-优先读配置文件，这样可以在同一个项目里定义多个命名数据库，并通过 `--db <名称>` 切换。脚本从当前工作目录**向上逐级查找**：`dbcli.yaml` → `.dbcli.yaml` → `.pi/dbcli.yaml`。
+4. 提醒用户把环境变量设好，然后 `ping` 验证连通。配置文件已存在时 `init` 不覆盖，用户明确要覆盖才加 `--force`。
+5. 用户只想临时查一次、不愿落盘，就用 `--url` 直连，不生成配置。
 
-配置文件格式见 `dbcli.example.yaml`；最小示例：
+## 多个库：让用户挑，别全查
+
+配置里有多个库、用户又没说查哪个时，先 `list` 把候选列出来（名称、驱动、主机、库名），问清要查哪一个，拿到答复再加 `--db` 执行。
+
+不要挨个库连一遍，也不要同一条 SQL 在所有库上跑一遍。用户明确说"所有库都查"，才逐个 `--db` 执行。
+
+没设 `default` 又没传 `--db` 时，脚本以退出码 2 报错并列出可用库名。照报错让用户挑，不要自己定一个。
+
+## 配置文件
+
+从当前目录向上逐级找 `dbcli.yaml` → `.dbcli.yaml` → `.pi/dbcli.yaml`。格式参考技能目录下的 `dbcli.example.yaml`：
 
 ```yaml
 default: shop
@@ -42,72 +59,43 @@ databases:
     host: pg.internal
     port: 5432
     user: analyst
-    password: ${DB_PG_PASSWORD}   # 支持 ${ENV_VAR} 引用环境变量
+    password: ${DB_PG_PASSWORD}   # ${ENV_VAR} 从环境变量取值
     database: analytics
-  shop_mysql:
-    driver: mysql
-    host: 10.0.0.12
-    port: 3306
-    user: readonly_user
-    password: ${DB_SHOP_PASSWORD}
-    database: shop
 ```
 
-- `--config <路径>` 可显式指定配置文件；`--db <名称>` 选择库，不传则用 `default`。
-- **环境变量兜底**：若找不到配置文件，可用 `DB_DRIVER` / `DB_HOST` / `DB_PORT` / `DB_USER` / `DB_PASSWORD` / `DB_NAME` / `DB_PATH` 定义单个连接（名称为 `env`）。
-- **`--url` 直连**：`sqlite:///abs/path.db`、`mysql://user:pass@host:3306/db`、`postgresql://user:pass@host/db`，此时忽略配置文件。
+- `--db <名称>` 选库。只有一个库可以省；多个库要有 `default` 或显式 `--db`。
+- `--config <路径>` 指定配置文件；`--url` 直连并忽略配置文件。
+- 没有配置文件时，可用 `DB_DRIVER` / `DB_HOST` / `DB_PORT` / `DB_USER` / `DB_PASSWORD` / `DB_NAME` / `DB_PATH` 配一个库（名为 `env`）。
 
-## 命令
+## 子命令
 
-脚本统一入口为 `python scripts/dbcli.py <子命令> [选项]`。所有子命令都支持 `--config` / `--db` / `--url` / `--max-rows` / `--timeout-ms` / `--format json|table`。
+入口是 `python scripts/dbcli.py <子命令>`。查询类子命令（`query` / `tables` / `describe` / `ping`）都支持 `--config` / `--db` / `--url` / `--max-rows` / `--timeout-ms` / `--format json|table`；`list` 支持 `--config` / `--format`。
 
 | 子命令 | 用途 | 关键参数 |
 | --- | --- | --- |
+| `init` | 生成配置文件 `dbcli.yaml` | `--url` 或 `--driver` + 连接参数；`--force` 覆盖 |
 | `list` | 列出配置里的数据库（密码只显示 `has_password`） | `--config` |
 | `query` | 执行一条只读 SQL | `--sql "..."` 或 `--sql-file path.sql` |
 | `tables` | 列出当前库的表与视图 | — |
 | `describe <表名>` | 查看某张表的结构 | 位置参数：表名 |
-| `ping` | 测试连接并确认只读会话已生效 | — |
-
-常见调用：
+| `ping` | 测试连接与只读会话 | — |
 
 ```bash
-# 有哪些库可用
 python scripts/dbcli.py list
-
-# 直接跑一条 SELECT（默认输出 JSON）
 python scripts/dbcli.py query --db shop --sql "SELECT id, name FROM customers LIMIT 10"
-
-# SQL 写在文件里，避免 shell 转义问题
 python scripts/dbcli.py query --db shop --sql-file ./reports/q1.sql
-
-# 看表结构 / 列表
 python scripts/dbcli.py describe orders --db shop
 python scripts/dbcli.py tables --db report_pg
-
-# 人类可读的表格输出
+# 要给用户看表格时
 python scripts/dbcli.py query --db shop --sql "SELECT status, COUNT(*) FROM orders GROUP BY status" --format table
 ```
 
-`query` 的 JSON 输出固定包含：`database`、`driver`、`sql`、`columns`、`rows`、`row_count`，以及 `meta`（含 `truncated`、`max_rows`、`elapsed_ms`、`read_only`）。**当 `meta.truncated` 为 `true`**，说明结果被 `--max-rows` 截断，需要聚合、加 `WHERE` 收窄或调大 `--max-rows` 后再取。
+`query` 返回固定字段：`database`、`driver`、`sql`、`columns`、`rows`、`row_count`、`meta`。`meta.truncated` 为 `true` 表示结果被 `--max-rows` 截断：改用 `COUNT` / `GROUP BY` 在库里算完、加 `WHERE` 收窄，或者调大 `--max-rows`，再取数。
 
-## 工作方式
+## 执行要点
 
-1. **先确认目标库**：不确定有哪些库时先跑 `list`；不确定表名先跑 `tables`，不确定字段先跑 `describe <表>`。这比凭猜测写 SQL 更省事。
-2. **默认 `--max-rows` 为 100**：查询明细时保持小额度；确需全量聚合时用 SQL 的 `COUNT`/`SUM`/`GROUP BY` 在库内算完，而不是把大结果集拉回来。
-3. **SQL 复杂或含特殊字符时用 `--sql-file`**，避免 shell 引号转义问题。
-4. **解读退出码**：`0` 成功；`2` 用法/配置错误（如库不存在、缺字段）；`3` 命中只读防护；`4` 缺少驱动（按 `requirements.txt` 安装）；`5` 数据库运行期错误（连接失败、SQL 语法错等）。错误以 JSON 输出到 stdout，字段为 `error` 与 `message`。
-5. **驱动缺失时不要改用别的写法连库**：按提示安装即可（MySQL→`PyMySQL`，PostgreSQL→`psycopg[binary]`，SQLite 用标准库无需安装）。
-
-## 依赖
-
-按需安装（详见 `requirements.txt`）：SQLite 用 Python 标准库，无需安装；MySQL 需 `PyMySQL`；PostgreSQL 需 `psycopg[binary]`；读取 YAML 配置需 `PyYAML`。
-
-## 测试夹具
-
-`evals/files/make_fixture.py` 可生成一个确定性的 SQLite 示例库（customers / products / orders / order_items），用于本地验证脚本行为：
-
-```bash
-python evals/files/make_fixture.py ./shop.db
-python scripts/dbcli.py query --url sqlite:///$(pwd)/shop.db --sql "SELECT COUNT(*) FROM orders"
-```
+1. 不确定有哪些库先 `list`，不确定表名先 `tables`，不确定字段先 `describe <表>`，别凭猜写 SQL。
+2. `--max-rows` 默认 100。要统计就在 SQL 里算完（`COUNT` / `SUM` / `GROUP BY`），别把大结果集往回拉。
+3. SQL 长或含特殊字符，写进文件用 `--sql-file`。
+4. 退出码：`0` 成功；`2` 用法或配置错（库不存在、缺参数）；`3` 被只读防护拦下；`4` 缺驱动，按提示安装（MySQL→`PyMySQL`，PostgreSQL→`psycopg[binary]`，SQLite 不用装；完整清单见 `requirements.txt`）；`5` 数据库运行期错误（连不上、SQL 语法错）。错误以 JSON 输出到 stdout，字段是 `error` 和 `message`。
+5. 报缺驱动就装，不要换一种写法自己连。

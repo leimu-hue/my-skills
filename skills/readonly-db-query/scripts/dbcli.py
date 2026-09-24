@@ -8,6 +8,14 @@
 
 支持驱动：sqlite / mysql / postgresql。
 
+子命令：
+- init   首次使用：根据 --url 或连接参数生成配置文件 dbcli.yaml
+- list   列出配置里的数据库
+- query  执行只读 SQL
+- tables 列出表/视图
+- describe 查看表结构
+- ping   测试连接与只读会话
+
 退出码：
   0  成功
   2  用法错误 / 配置错误
@@ -391,9 +399,7 @@ def load_config(explicit: str | None = None) -> tuple[dict[str, DbConfig], str |
         databases[name] = DbConfig(name=name, driver=driver, options=options)
 
     default = raw.get("default")
-    if default is None:
-        default = next(iter(databases))
-    if default not in databases:
+    if default is not None and default not in databases:
         raise UsageError(f"default 指向不存在的数据库 '{default}': {path}")
 
     env_databases = _config_from_env()
@@ -610,12 +616,24 @@ def _emit_table(payload: dict[str, Any], stream) -> None:
 def _resolve_database(databases: dict[str, DbConfig], name: str | None, default: str | None) -> DbConfig:
     if not databases:
         raise UsageError(
-            "未找到任何数据库配置。请添加 dbcli.yaml（见 SKILL.md 配置示例），"
-            "或设置 DB_DRIVER 等环境变量，或使用 --url。"
+            "未找到任何数据库配置（既没有 dbcli.yaml，也没有 DB_DRIVER 环境变量，也没传 --url）。"
+            "请先准备连接信息（数据库类型 sqlite/mysql/postgresql、主机与端口、账号、密码、库名；"
+            "SQLite 只需文件路径），然后生成配置文件："
+            "python scripts/dbcli.py init --url 'mysql://user:pass@host:3306/dbname' "
+            "（或 init --driver mysql --host ... --user ... --password-env ... --database ...），"
+            "也可以临时用 --url 直连。"
         )
     chosen = name or default
     if chosen is None:
-        raise UsageError("未指定数据库，且配置中没有 default。请用 --db 指定。")
+        if len(databases) == 1:
+            chosen = next(iter(databases))
+        else:
+            available = ", ".join(sorted(databases))
+            raise UsageError(
+                f"配置中有多个数据库（{available}）且未指定要查哪一个。"
+                "请先确认目标库再用 --db <名称> 执行，或在配置文件中设置 default；"
+                "不要逐个库盲目执行。"
+            )
     if chosen not in databases:
         raise UsageError(f"未知数据库 '{chosen}'。可用: {', '.join(sorted(databases))}")
     return databases[chosen]
@@ -628,6 +646,82 @@ def cmd_list(args: argparse.Namespace) -> int:
         "default": default,
         "databases": [databases[n].display() for n in databases],
         "count": len(databases),
+    }
+    if not databases:
+        payload["hint"] = (
+            "未找到任何数据库配置。请向用户索取连接信息（类型、host:port、账号、密码、库名，"
+            "SQLite 则是文件路径）后运行 init 生成配置文件，或用 --url 直连。"
+        )
+    emit(payload, args.format)
+    return 0
+
+
+def _yaml_scalar(value: Any) -> str:
+    """把值序列化成安全的 YAML 标量（必要时加单引号）。"""
+    if isinstance(value, int) and not isinstance(value, bool):
+        return str(value)
+    text = str(value)
+    if text == "" or text != text.strip() or any(c in text for c in ":#{}[]&*!|>'\"%@`,"):
+        return "'" + text.replace("'", "''") + "'"
+    return text
+
+
+def cmd_init(args: argparse.Namespace) -> int:
+    """首次使用：根据连接串或分项参数生成 dbcli.yaml。"""
+    out_path = os.path.abspath(args.output)
+
+    if args.url:
+        cfg = _config_from_url(args.url)
+        driver = cfg.driver
+        name = args.name or ("local" if driver == "sqlite" else "main")
+        options = dict(cfg.options)
+    elif args.driver:
+        driver = args.driver.lower()
+        options = {}
+        if driver == "sqlite":
+            if not args.path:
+                raise UsageError("SQLite 需要 --path 指定数据库文件路径（或直接用 --url sqlite:///path）。")
+            options["path"] = args.path
+        else:
+            if not args.host or not args.database:
+                raise UsageError(f"{driver} 需要 --host 与 --database（建议同时提供账号密码）。")
+            options["host"] = args.host
+            options["port"] = int(args.port) if args.port else (3306 if driver == "mysql" else 5432)
+            if args.user:
+                options["user"] = args.user
+            if args.password:
+                options["password"] = args.password
+            elif args.password_env:
+                options["password"] = "${" + args.password_env + "}"
+            options["database"] = args.database
+        name = args.name or ("local" if driver == "sqlite" else "main")
+    else:
+        raise UsageError(
+            "缺少连接信息。请提供 --url（如 mysql://user:pass@host:3306/dbname），"
+            "或 --driver 加对应参数（mysql/postgresql: --host --port --user --password/--password-env --database；"
+            "sqlite: --path）。这些信息需向用户确认，不要自行猜测。"
+        )
+
+    if os.path.exists(out_path) and not args.force:
+        raise UsageError(f"配置文件已存在: {out_path}。确认要覆盖请加 --force。")
+
+    lines = [f"default: {name}", "", "databases:", f"  {name}:", f"    driver: {driver}"]
+    for key, value in options.items():
+        lines.append(f"    {key}: {_yaml_scalar(value)}")
+    lines.append("")
+    with open(out_path, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(lines))
+
+    payload = {
+        "config_path": out_path,
+        "default": name,
+        "database": {
+            "name": name,
+            "driver": driver,
+            **{k: v for k, v in options.items() if k != "password"},
+            "has_password": "password" in options,
+        },
+        "next_step": "python scripts/dbcli.py ping",
     }
     emit(payload, args.format)
     return 0
@@ -737,6 +831,22 @@ def build_parser() -> argparse.ArgumentParser:
         description="只读数据库查询 CLI（sqlite / mysql / postgresql）",
     )
     sub = parser.add_subparsers(dest="command", required=True)
+
+    p_init = sub.add_parser("init", help="首次使用：生成配置文件 dbcli.yaml")
+    p_init.add_argument("--output", default="dbcli.yaml", help="输出路径（默认 ./dbcli.yaml）")
+    p_init.add_argument("--force", action="store_true", help="覆盖已存在的配置文件")
+    p_init.add_argument("--url", help="连接串，直接转换为一条数据库配置")
+    p_init.add_argument("--driver", choices=("sqlite", "mysql", "postgresql"), help="驱动类型（不用 --url 时必填）")
+    p_init.add_argument("--name", help="数据库名称（配置里的键，默认 sqlite=local / 其他=main）")
+    p_init.add_argument("--host", help="主机地址")
+    p_init.add_argument("--port", type=int, help="端口")
+    p_init.add_argument("--user", help="账号")
+    p_init.add_argument("--password", help="明文密码（建议改用 --password-env，避免落盘）")
+    p_init.add_argument("--password-env", help="把密码写成 ${ENV_VAR} 引用，值从环境变量读取")
+    p_init.add_argument("--database", help="数据库名")
+    p_init.add_argument("--path", help="SQLite 文件路径")
+    p_init.add_argument("--format", choices=("json", "table"), default="json")
+    p_init.set_defaults(func=cmd_init)
 
     p_list = sub.add_parser("list", help="列出配置中的数据库")
     p_list.add_argument("--config", help="配置文件路径")

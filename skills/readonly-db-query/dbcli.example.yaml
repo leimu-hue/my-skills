@@ -4,8 +4,11 @@
 # CLI 会自动从当前工作目录向上逐级查找：dbcli.yaml / .dbcli.yaml / .pi/dbcli.yaml
 #
 # 也可用 --config 指定路径，或用 --url 直接传连接串（此时忽略本文件）。
+# 首次使用没有本文件时，可让 CLI 根据连接信息自动生成：
+#   python scripts/dbcli.py init --url "mysql://user:pass@host:3306/db" --name shop
 
-# 未指定 --db 时使用的默认库（可选；缺省取 databases 的第一项）
+# 未指定 --db 时使用的默认库（推荐显式指定；只有一个库时可省略，
+# 多个库又没设 default 时，CLI 会以退出码 2 报错并要求 --db）
 default: local
 
 databases:
