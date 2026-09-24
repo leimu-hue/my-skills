@@ -15,10 +15,12 @@ description: 通过统一的只读 CLI 脚本查询 SQLite / MySQL / PostgreSQL 
 
 ## 第一次用：先拿到连接信息
 
-先跑 `python scripts/dbcli.py list`。返回 `count: 0` 或带 `hint` 字段，说明这个项目还没配过数据库。接下来：
+**以用户项目的目录为 cwd 执行**：`python <技能目录>/scripts/dbcli.py list`。配置查找从 cwd 向上逐级走，cd 到技能目录里跑会看不到项目配置，别这么干。
 
-1. 不要猜连接串，更不要手写驱动代码去试连。
-2. 向用户要齐：数据库类型（sqlite / mysql / postgresql）、主机和端口（SQLite 是库文件路径）、账号、密码、库名。缺哪项问哪项，密码不许编。
+返回 `count: 0` 或带 `hint` 字段，说明这个项目还没配过数据库。此时立刻停下，按下面来：
+
+1. **不要自己找凭据。** 别翻 `application.yml`、`.env`、`.pi/` 目录，别 `grep jdbc:mysql`，翻到了也不许拿来连库。用户没给的地址和账号，就是不能用。
+2. **一次问齐**：数据库类型（sqlite / mysql / postgresql）、主机和端口（SQLite 是库文件路径）、账号、密码、库名。缺哪项问哪项，密码不许编。
 3. 用 `init` 生成 `./dbcli.yaml`，密码放环境变量，别写明文：
 
 ```bash
@@ -94,7 +96,7 @@ python scripts/dbcli.py query --db shop --sql "SELECT status, COUNT(*) FROM orde
 
 ## 执行要点
 
-1. 不确定有哪些库先 `list`，不确定表名先 `tables`，不确定字段先 `describe <表>`，别凭猜写 SQL。
+1. 不确定有哪些库先 `list`，不确定表名先 `tables`，不确定字段先 `describe <表>`，别凭猜写 SQL。`list` 报无配置就走“第一次用”流程：问用户要信息，别自己去仓库里搜。
 2. `--max-rows` 默认 100。要统计就在 SQL 里算完（`COUNT` / `SUM` / `GROUP BY`），别把大结果集往回拉。
 3. SQL 长或含特殊字符，写进文件用 `--sql-file`。
 4. 退出码：`0` 成功；`2` 用法或配置错（库不存在、缺参数）；`3` 被只读防护拦下；`4` 缺驱动，按提示安装（MySQL→`PyMySQL`，PostgreSQL→`psycopg[binary]`，SQLite 不用装；完整清单见 `requirements.txt`）；`5` 数据库运行期错误（连不上、SQL 语法错）。错误以 JSON 输出到 stdout，字段是 `error` 和 `message`。

@@ -649,8 +649,9 @@ def cmd_list(args: argparse.Namespace) -> int:
     }
     if not databases:
         payload["hint"] = (
-            "未找到任何数据库配置。请向用户索取连接信息（类型、host:port、账号、密码、库名，"
-            "SQLite 则是文件路径）后运行 init 生成配置文件，或用 --url 直连。"
+            "未找到任何数据库配置。向用户索取连接信息（类型、host:port、账号、密码、库名，"
+            "SQLite 则是文件路径）后运行 init 生成配置文件，或用 --url 直连；"
+            "不要自行在项目里搜索连接串或凭据。"
         )
     emit(payload, args.format)
     return 0
