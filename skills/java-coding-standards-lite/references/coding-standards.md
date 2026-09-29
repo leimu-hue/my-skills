@@ -32,7 +32,8 @@ private static final String USER_NOT_FOUND = "USER_NOT_FOUND";
 ## 类与封装
 
 - 成员变量默认 `private`
-- Spring 依赖默认 `private final` + 构造器注入
+- Spring 依赖默认 `private final` + 构造器注入；禁止字段注入 `@Autowired`（不可变性差、隐藏依赖、测试需反射）
+- Lombok 项目用 `@RequiredArgsConstructor` 生成构造器
 - 对外暴露的可变集合要谨慎，必要时返回不可变视图或副本
 - 优先组合而不是继承；只有存在稳定的 `is-a` 关系和可复用模板流程时再使用继承
 - `protected` 只在明确面向继承扩展时使用
