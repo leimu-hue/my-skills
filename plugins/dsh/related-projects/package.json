@@ -1,6 +1,6 @@
 {
   "name": "@local/dsh-related-projects",
-  "version": "0.6.5",
+  "version": "0.6.6",
   "private": true,
   "type": "module",
   "description": "Per-workspace related projects: the agent knows which sibling projects a change touches, and the composer can insert their paths.",
@@ -34,7 +34,9 @@
     "client": {
       "platform": "web",
       "immediately": true,
-      "inject": []
+      "inject": [
+        "@deepseek-ai/dsh-client-locale"
+      ]
     }
   }
 }

@@ -14,13 +14,15 @@ import { call } from './api.js'
 import { describeError } from './ui.js'
 import { insertMention, type InputActions } from './mention.js'
 import { useSnapshot, type ProjectView, type Store } from './state.js'
-import type { Translate } from './locale.js'
+import { withFallback, type Translate } from './locale.js'
 
 export interface DockProps {
   sessionId?: string
   inputActions?: InputActions
   /** Provided by the registration's `locale` namespace. */
   t: Translate
+  /** The plugin's own dictionary, used when the seat answers with a raw key. */
+  fallbackT?: Translate
   /** Per-session store created in the registration's `inject` world. */
   dockStore: Store
   /** The Client catalog's directory for a session, '' when unknown. */
@@ -29,7 +31,9 @@ export interface DockProps {
 
 export function DockRow(props: DockProps): unknown {
   const React = useReact()
-  const t = props.t
+  /* The seat first (it follows locale packs), the bundled dictionary second:
+     a missing namespace must never print `dock.label` at the user. */
+  const t = withFallback(props.t, props.fallbackT ?? props.t)
   const sessionId = props.sessionId
   const store = props.dockStore
   const snapshot = useSnapshot(store)

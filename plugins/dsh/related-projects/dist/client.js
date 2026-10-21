@@ -209,6 +209,13 @@
     const template = dict[key] ?? EN[key] ?? key;
     return fill(template, values);
   }
+  function withFallback(seat, fallback) {
+    return (key, values) => {
+      const resolved = typeof seat === "function" ? seat(key, values) : void 0;
+      if (typeof resolved === "string" && resolved !== "" && resolved !== key) return resolved;
+      return fallback(key, values);
+    };
+  }
 
   // src/client/api.ts
   var API_BASE = "related-projects/api";
@@ -427,7 +434,7 @@
   // src/client/dock.ts
   function DockRow(props) {
     const React = useReact();
-    const t = props.t;
+    const t = withFallback(props.t, props.fallbackT ?? props.t);
     const sessionId = props.sessionId;
     const store = props.dockStore;
     const snapshot = useSnapshot(store);
@@ -599,7 +606,7 @@
   // src/client/panel.ts
   function Panel(props) {
     const React = useReact();
-    const t = props.t;
+    const t = withFallback(props.t, props.fallbackT ?? props.t);
     const snapshot = useSnapshot(groupStore);
     const [expanded, setExpanded] = React.useState({});
     const [notice, setNotice] = React.useState(null);
@@ -1147,6 +1154,12 @@
   function createPlugin(React) {
     setReact(React);
     return {
+      /* Only `slots` is a hard dependency: without it there is nothing to mount.
+         `locale` is deliberately NOT declared here — the registrations below keep
+         working when it is missing, they just lose their dictionary (see the
+         `withFallback` seat below), and a hard inject would take the whole plugin
+         down over a degraded translation. The dictionary registration attaches
+         through `ctx.inject` instead, so it happens whenever the service appears. */
       inject: ["slots"],
       apply(ctx) {
         const style = document.createElement("style");
@@ -1156,10 +1169,24 @@
         ctx.effect(() => () => {
           style.remove();
         }, "related-projects: styles");
-        const locale = ctx.get("locale");
-        if (locale !== void 0 && locale !== null && typeof locale.register === "function") {
-          ctx.effect(() => locale.register(NS, { zh: ZH, en: EN }), "related-projects: dictionaries");
-        }
+        const mountDictionaries = (scoped) => {
+          const locale = scoped.get("locale");
+          if (locale === void 0 || locale === null || typeof locale.register !== "function") {
+            console.warn("[related-projects] locale service unavailable; UI copy falls back to the bundled dictionaries");
+            return;
+          }
+          scoped.effect(() => {
+            try {
+              return locale.register(NS, { zh: ZH, en: EN });
+            } catch (error) {
+              console.warn("[related-projects] locale dictionaries already registered (stale reload)", error);
+              return () => {
+              };
+            }
+          }, "related-projects: dictionaries");
+        };
+        if (typeof ctx.inject === "function") ctx.inject(["locale"], mountDictionaries);
+        else mountDictionaries(ctx);
         const mountTrigger = (scoped) => {
           const triggers = scoped.get("inputTriggers");
           if (triggers === void 0 || triggers === null || typeof triggers.registerSource !== "function") {
@@ -1196,7 +1223,10 @@
           locale: NS,
           inject: (sessionId) => ({
             dockStore: dockStoreFor(sessionId, (id) => sessionWorkspace(ctx, id)),
-            workspaceHint: (id) => sessionWorkspace(ctx, id)
+            workspaceHint: (id) => sessionWorkspace(ctx, id),
+            /* The framework seat answers with the key when the namespace has no
+               dictionary; this keeps a readable label on screen in that case. */
+            fallbackT: (key, values) => translate(ctx, key, values)
           })
         }, (props) => h(DockRow, props))), "related-projects: composer row");
         ctx.effect(() => slots.inject("sidebar.panellist", () => slots.register({
@@ -1208,7 +1238,10 @@
         ctx.effect(() => slots.inject("main", () => slots.register({
           name: "main",
           key: PANEL_ID,
-          locale: NS
+          locale: NS,
+          inject: () => ({
+            fallbackT: (key, values) => translate(ctx, key, values)
+          })
         }, (props) => h(Panel, props))), "related-projects: panel");
       }
     };

@@ -11,16 +11,18 @@ import {
   groupStore, refreshDockStores, useSnapshot,
   type ProjectView, type WorkspaceRow,
 } from './state.js'
-import type { Translate } from './locale.js'
+import { withFallback, type Translate } from './locale.js'
 
 export interface PanelProps {
   /** Provided by the registration's `locale` namespace. */
   t: Translate
+  /** The plugin's own dictionary, used when the seat answers with a raw key. */
+  fallbackT?: Translate
 }
 
 export function Panel(props: PanelProps): unknown {
   const React = useReact()
-  const t = props.t
+  const t = withFallback(props.t, props.fallbackT ?? props.t)
   const snapshot = useSnapshot(groupStore)
   /* Sections the user expanded. A workspace that already holds projects starts
      open; that is the reason this page gets visited. */

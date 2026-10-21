@@ -43,6 +43,12 @@ export function createPlugin(React: unknown): Plugin {
   setReact(React as never)
 
   return {
+    /* Only `slots` is a hard dependency: without it there is nothing to mount.
+       `locale` is deliberately NOT declared here — the registrations below keep
+       working when it is missing, they just lose their dictionary (see the
+       `withFallback` seat below), and a hard inject would take the whole plugin
+       down over a degraded translation. The dictionary registration attaches
+       through `ctx.inject` instead, so it happens whenever the service appears. */
     inject: ['slots'],
     apply(ctx) {
       const style = document.createElement('style')
@@ -51,10 +57,30 @@ export function createPlugin(React: unknown): Plugin {
       document.head.appendChild(style)
       ctx.effect(() => () => { style.remove() }, 'related-projects: styles')
 
-      const locale = ctx.get('locale') as LocaleLike | undefined
-      if (locale !== undefined && locale !== null && typeof locale.register === 'function') {
-        ctx.effect(() => locale.register(NS, { zh: ZH, en: EN }), 'related-projects: dictionaries')
+      /* The dictionaries behind the `t` seat of every `locale: NS` registration.
+         `inject` (not a bare `get`) because a service that is not yet provided is
+         invisible to `get`, and a skipped registration is silent: the seat then
+         renders raw keys (`dock.label`, `panel.title`). A stale duplicate — a hot
+         reload whose predecessor's effect is still alive — throws "namespace
+         already has locale", and the dictionaries are already in place, so it must
+         not abort the rest of this apply. */
+      const mountDictionaries = (scoped: PluginContext): void => {
+        const locale = scoped.get('locale') as LocaleLike | undefined
+        if (locale === undefined || locale === null || typeof locale.register !== 'function') {
+          console.warn('[related-projects] locale service unavailable; UI copy falls back to the bundled dictionaries')
+          return
+        }
+        scoped.effect(() => {
+          try {
+            return locale.register(NS, { zh: ZH, en: EN })
+          } catch (error) {
+            console.warn('[related-projects] locale dictionaries already registered (stale reload)', error)
+            return () => {}
+          }
+        }, 'related-projects: dictionaries')
       }
+      if (typeof ctx.inject === 'function') ctx.inject(['locale'], mountDictionaries)
+      else mountDictionaries(ctx)
 
       /* The `@` source: feeds the official trigger menu, which owns all of the UI.
          `inject` (not a bare get) because the pipeline service may be provided
@@ -98,6 +124,9 @@ export function createPlugin(React: unknown): Plugin {
         inject: (sessionId: string) => ({
           dockStore: dockStoreFor(sessionId, (id) => sessionWorkspace(ctx, id)),
           workspaceHint: (id: unknown) => sessionWorkspace(ctx, id),
+          /* The framework seat answers with the key when the namespace has no
+             dictionary; this keeps a readable label on screen in that case. */
+          fallbackT: (key: string, values?: Record<string, unknown>) => translate(ctx, key, values),
         }),
       }, (props) => h(DockRow as never, props))), 'related-projects: composer row')
 
@@ -113,6 +142,9 @@ export function createPlugin(React: unknown): Plugin {
         name: 'main',
         key: PANEL_ID,
         locale: NS,
+        inject: () => ({
+          fallbackT: (key: string, values?: Record<string, unknown>) => translate(ctx, key, values),
+        }),
       }, (props) => h(Panel as never, props))), 'related-projects: panel')
     },
   }

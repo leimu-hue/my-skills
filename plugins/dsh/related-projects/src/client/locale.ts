@@ -123,4 +123,23 @@ export function translate(ctx: { get(name: string): unknown }, key: string, valu
   return fill(template, values)
 }
 
+/**
+ * Keep the framework's `t` seat, but never let a raw key reach the DOM.
+ *
+ * The seat answers with the key itself when the namespace has no dictionary in
+ * the locale runtime — a registration that never landed (the service was not
+ * reachable from this fiber) or one lost to a reload. `dock.label` on screen is a
+ * broken UI, worse than copy in the wrong language, so a miss falls through to
+ * this plugin's own dictionary, which reads the same locale snapshot and only
+ * then falls back to `navigator`. The seat stays primary: while the dictionary is
+ * registered the framework wins, including any language pack registered later.
+ */
+export function withFallback(seat: Translate | undefined, fallback: Translate): Translate {
+  return (key, values) => {
+    const resolved = typeof seat === 'function' ? seat(key, values) : undefined
+    if (typeof resolved === 'string' && resolved !== '' && resolved !== key) return resolved
+    return fallback(key, values)
+  }
+}
+
 
