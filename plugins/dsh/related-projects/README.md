@@ -4,8 +4,8 @@
 会话开始时以**静态 system prompt section** 告诉模型，于是「改后端顺手改前端和文档」不再需要每次去文件管理器找路径、粘贴进对话框。
 
 - **工作区**用 DSH 自己的工作区（`workspaceRegistry`），本插件不另造概念。
-- **注入**每会话只算一次、逐字不变，保住前缀缓存；同时带一行**实时可写边界**（来自 `sandboxPolicy.resolve()`）。
-- **会话内增删**走宿主**运行时上下文**通道投递一次，不会在聊天记录里产生用户消息。
+- **注入**是**会话首轮的冻结快照**（逐字不变 → 保住 provider 的前缀缓存），同时带一行**实时可写边界**（来自 `sandboxPolicy.resolve()`）。
+- **会话内变更**走**追加式通知**：每次改动以一条**新的、静态文本的运行时上下文快照**追加进历史（内容含"改了什么 + 当前完整列表"，并声明取代 system prompt 与更早的通知）。system 节点**从不重写**，缓存前缀始终复用，代价只有这条通知本身的 token（一次性）。
 - **模型**只能新增（可带备注），且只能写当前会话所属工作区；改名/备注/开关/删除仅限 UI。
 
 ---
@@ -102,6 +102,14 @@ plugin_manager(action: "remove_bundle", target: "@local/dsh-related-projects")
 
 实现方式：向 `ctx.inputTriggers.registerSource()` 注册一个 `InputTriggerSource`（`trigger: '@'`、`name: 'related-projects'`、`order: -10`、`candidates` / `onPick` / `codec` / `lexicon`），文件搜索走插件自己的宿主路由 `files`。候选行使用与官方文件源相同的字段（`icon` / `section` / `value`），菜单的渲染、键盘、分组全部由 `dsh-client-ui-input-trigger` 负责，本插件不碰菜单 UI，也**不替换**任何随包服务。
 
+### 为什么是"冻结 + 追加"，不是"每次重渲染"
+
+system prompt 在 DSH 里是**一个整体节点**，所以任何一次重渲染（哪怕只是备注多了一个字）都会重写这个节点，把该会话**整段前缀缓存**作废。实测：某会话新增第三个关联项目后，日志里立刻出现 `system/message replace`，命中率的代价远大于"通知本身的那点 token"。
+
+因此本插件的策略是：section 只在会话首轮渲染一次并冻结；后续变更以**新名字 + 静态文本**的运行时上下文快照追加到历史尾部。追加不会改动任何已缓存的前缀，且文本恒定不变，后续请求不会再触发任何重写。
+
+（踩过的坑：旧实现用"读一次即失效"的 context 提供者做通知。DSH 每个 step 会读 context **两次**——`assemble()` 一次、`agent/pre-step` 之后的 `refreshContext()` 再一次——第一次读就把状态置为已送达，第二次读返回空串，通知在准入前就被丢弃了。导出的会话日志里该文案出现 0 次即为证据。）
+
 ## 约定与边界
 
 - 每个工作区最多 **10** 个关联项目；备注 ≤200 字，名称 ≤60 字。
@@ -121,7 +129,7 @@ $base='http://127.0.0.1:<port>/related-projects/api'
 Invoke-RestMethod "$base/prompt" -Method Post -ContentType application/json -Body '{"sessionId":"session-..."}'
 ```
 
-返回该会话**将被注入的原文**（`text`）、是否挂上（`attached`）、section 挂载状态（`section`）、变更通知通道状态（`notice`），用于判断"模型为什么不知道这些路径"。
+返回**当前注册表会渲染出的原文**（`current`）、是否挂上（`attached`）、section 挂载状态（`section`）、本会话已追加的变更通知数（`notices`）、live 会话数（`liveSessions`），用于判断"模型为什么不知道这些路径"。
 
 ## 代码结构
 
@@ -132,7 +140,7 @@ src/host/
   files.ts      关联项目内部的文件索引与搜索（有上限、跳过产物目录）
   prompt.ts     模型读到的全部文案
   context.ts    "我在哪个工作区" 与 "我能写哪里"
-  sessions.ts   每会话两条 prompt 通道（section + 一次性 notice）
+  sessions.ts   每会话的 prompt section（冻结）+ 变更的追加式通知
   routes.ts     UI 调用的 JSON 路由
   tool.ts       related_projects 工具
   http.ts       请求管道（信任校验、JSON 解析）
@@ -154,3 +162,5 @@ scripts/build.mjs  构建脚本
 ```
 
 改动后的自检：`npm run typecheck:host`、`npm run typecheck:client`。
+
+

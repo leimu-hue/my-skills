@@ -100,10 +100,11 @@ export function createTool(ctx: ServiceBag, registry: Registry, sessions: Sessio
           note: typeof args.note === 'string' ? args.note : undefined,
           origin: 'agent',
         })
-        /* The agent changed the registry: announce it, so other sessions of the
-           same workspace do not keep working from a stale list. */
-        sessions.notify(workspace, 'added ' + project.name + ' (' + project.path + ')')
-        return { text: text({ added: project, workspace }) }
+        /* The agent changed the registry: every other live session of this
+           workspace gets one appended snapshot, so none keeps working from a
+           stale list — and no frozen section has to be rewritten. */
+        const delivered = sessions.notify(workspace, 'added ' + project.name + ' (' + project.path + ')').delivered
+        return { text: text({ added: project, workspace, sessionsNotified: delivered }) }
       } catch (error) {
         if (error instanceof RegistryError) throw new Error('Cannot add that path: ' + error.code)
         throw error

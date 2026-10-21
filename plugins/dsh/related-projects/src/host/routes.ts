@@ -1,10 +1,10 @@
 /**
  * The plugin-owned JSON route the Client UI talks to.
  *
- * Notice policy lives here: a mutation announces itself to the model only when
- * the caller asks for it (`notify: true`, sent by the panel and by the tool).
- * Scripted or diagnostic writes stay silent, so a notice in the conversation
- * always means someone really changed the list.
+ * Change policy lives here: a mutation appends ONE snapshot to the live sessions
+ * of that workspace when the caller asks for it (`notify: true`, sent by the panel
+ * and by the tool). Appending keeps the cached prompt prefix intact, because the
+ * frozen system section is never rewritten — see sessions.ts.
  */
 import { sep } from 'node:path'
 import { normalizePath, RegistryError, workspaceKey } from './store.js'
@@ -14,7 +14,7 @@ import { boundaryText, sectionText } from './prompt.js'
 import type { HostContext, ServiceBag } from './context.js'
 import type { Registry } from './store.js'
 import type { SessionRegistry } from './sessions.js'
-import type { StateValue } from './types.js'
+import type { ProjectView, StateValue } from './types.js'
 
 interface Payload {
   [key: string]: unknown
@@ -35,6 +35,21 @@ function str(value: unknown): string {
 
 function flag(value: unknown): boolean {
   return value === true
+}
+
+/**
+ * "updated X" is useless to a model that has to decide whether its frozen list is
+ * still true, so name the fields that actually moved — the note text included.
+ */
+function describeUpdate(before: ProjectView | undefined, after: ProjectView): string {
+  const parts: string[] = []
+  if (before !== undefined && before.name !== after.name) parts.push('renamed "' + before.name + '" to "' + after.name + '"')
+  if (before === undefined || before.note !== after.note) {
+    parts.push(after.note === '' ? 'note cleared for ' + after.name : 'note for ' + after.name + ' is now "' + after.note + '"')
+  }
+  if (before !== undefined && before.enabled !== after.enabled) parts.push(after.name + (after.enabled ? ' enabled' : ' disabled'))
+  if (parts.length === 0) return 'updated ' + after.name
+  return parts.join('; ')
 }
 
 export function createHandlers(deps: HandlerDeps): Record<string, Handler> {
@@ -63,9 +78,12 @@ export function createHandlers(deps: HandlerDeps): Record<string, Handler> {
     return workspace
   }
 
-  const notify = (workspace: string, summary: string, enabled: unknown): void => {
-    if (flag(enabled) !== true) return
-    sessions.notify(workspace, summary)
+  /* A change is appended to live sessions as a snapshot, never pushed into the
+     system section (which stays frozen for cache reuse). `notify: true` — what the
+     panel and the tool send — is what arms that snapshot. */
+  const announce = (workspace: string, summary: string, enabled: unknown): number => {
+    if (flag(enabled) !== true) return 0
+    return sessions.notify(workspace, summary).delivered
   }
 
   return {
@@ -123,28 +141,33 @@ export function createHandlers(deps: HandlerDeps): Record<string, Handler> {
         note: payload.note,
         origin: payload.origin === 'agent' ? 'agent' : 'user',
       })
-      notify(workspace, 'added ' + project.name + ' (' + project.path + ')', payload.notify)
-      return { project, ...registry.snapshot(workspace) }
+      const delivered = announce(workspace, 'added ' + project.name + ' (' + project.path + ')', payload.notify)
+      return { project, sessions: delivered, ...registry.snapshot(workspace) }
     },
 
     async update(payload) {
       const workspace = requireWorkspace(payload)
+      const before = registry.snapshot(workspace).projects.find((entry) => entry.id === payload.id)
       const project = registry.update(workspace, payload.id, payload.patch)
-      notify(workspace, 'updated ' + project.name, payload.notify)
-      return { project, ...registry.snapshot(workspace) }
+      const delivered = announce(workspace, describeUpdate(before, project), payload.notify)
+      return { project, sessions: delivered, ...registry.snapshot(workspace) }
     },
 
     async remove(payload) {
       const workspace = requireWorkspace(payload)
       const removed = registry.remove(workspace, payload.id)
-      notify(workspace, 'removed ' + removed.name, payload.notify)
-      return { ...registry.snapshot(workspace) }
+      const delivered = announce(workspace, 'removed ' + removed.name, payload.notify)
+      return { removed: removed.name, sessions: delivered, ...registry.snapshot(workspace) }
     },
 
     async copy(payload) {
       const result = registry.copy(payload.from, payload.to)
-      notify(str(payload.to), 'copied ' + String(result.added) + ' project(s) from another workspace', payload.notify)
-      return { ...result, ...registry.snapshot(payload.to) }
+      const delivered = announce(
+        str(payload.to),
+        'copied ' + String(result.added) + ' project(s) from another workspace',
+        payload.notify,
+      )
+      return { ...result, sessions: delivered, ...registry.snapshot(payload.to) }
     },
 
     async ensureGroup(payload) {
@@ -173,24 +196,30 @@ export function createHandlers(deps: HandlerDeps): Record<string, Handler> {
       return { path: picked === null || picked === undefined ? '' : picked }
     },
 
-    /** Diagnostics: exactly what this session will be told. */
+    /**
+     * Diagnostics: the frozen section this session started with (what the model
+     * has in its system prompt) plus how many change snapshots were appended.
+     * `current` is what a NEW session would render right now — useful to see the
+     * difference the notices are meant to close.
+     */
     async prompt(payload) {
       const session = sessionOf(ctx, payload.sessionId)
       const workspace = session === undefined ? str(payload.workspace) : workspaceOfSession(ctx, session)
-      const text = sectionText(registry, workspace, boundaryText(sandboxFactOf(ctx, session)))
+      const current = sectionText(registry, workspace, boundaryText(sandboxFactOf(ctx, session)))
       const described = typeof payload.sessionId === 'string'
         ? sessions.describe(payload.sessionId)
-        : { attached: false, section: 'no-session', notice: 'no-session' }
+        : { attached: false, section: 'no-session', notices: 0 }
       return {
         workspace,
-        text,
-        bytes: Buffer.byteLength(text),
+        current,
+        bytes: Buffer.byteLength(current),
         attached: described.attached,
         section: described.section,
-        notice: described.notice,
-        sessions: sessions.size,
+        notices: described.notices,
+        liveSessions: sessions.size,
       }
     },
   }
 }
+
 

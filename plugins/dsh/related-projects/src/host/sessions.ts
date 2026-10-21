@@ -1,20 +1,28 @@
 /**
- * Per-session prompt channels.
+ * Per-session prompt channels, both cache-friendly:
  *
- * Two distinct channels, deliberately separate:
- *  - `section`: the frozen project list, registered once when the agent is
- *    created (or when the plugin loads for an agent that already exists).
- *  - `notice`: a one-shot "the registry moved" line, registered once and merely
- *    re-armed on change. Registering it per change would throw, because a
- *    disposer does not take effect synchronously and prompt context names are
- *    unique per scope.
+ *  - `section`: the frozen project list, rendered ONCE per session. A stable head
+ *    is what keeps the provider's prefix cache valid, so the section must never
+ *    change mid-session; a change arrives as a notice instead.
+ *  - `notice`: an APPEND-ONLY snapshot describing one change. Each change
+ *    registers a NEW context name carrying STATIC text, so DSH appends it at the
+ *    tail of the history once and never rewrites it afterwards. The cached prefix
+ *    (system prompt + everything before the notice) stays reusable — the whole
+ *    point of not touching the section.
  *
- * Neither channel writes into the message inbox: an inbox message becomes a
- * visible user bubble, which would put words in the user's mouth.
+ * Why the notice is not a one-shot `text()` provider any more: one model step
+ * reads a context provider TWICE — `assemble()` first, then `refreshContext()`
+ * after `agent/pre-step`. The previous implementation marked itself served on the
+ * FIRST read, so the second read returned '' and the notice never reached the
+ * request (verified against an exported session: the notice text appears zero
+ * times). Static text has no such read-order hazard.
+ *
+ * Tangible cost per change: the notice's own tokens, appended once. Everything
+ * before it stays cached.
  */
-import { workspaceKey } from './store.js'
-import { NOTICE_NAME, NOTICE_ORDER, SECTION_NAME, SECTION_ORDER, noticeText, sectionText } from './prompt.js'
+import { sectionText, NOTICE_NAME, NOTICE_ORDER, SECTION_NAME, SECTION_ORDER, changeNotice } from './prompt.js'
 import { sandboxFactOf, workspaceOfAgent } from './context.js'
+import { workspaceKey } from './store.js'
 import type { AgentLike, HostContext, ServiceBag } from './context.js'
 import type { Registry } from './store.js'
 
@@ -22,12 +30,7 @@ export const TOOL_NAME = 'related_projects'
 
 interface PromptService extends ServiceBag {
   section(section: { name: string; order: number; text: () => string; interpolate?: boolean }): () => void
-  context?(context: { name: string; order: number; text: () => string; interpolate?: boolean }): () => void
-}
-
-interface NoticeState {
-  text: string
-  served: boolean
+  context?(context: { name: string; order: number; text: string; interpolate?: boolean }): () => void
 }
 
 interface Entry {
@@ -35,22 +38,21 @@ interface Entry {
   workspace: string
   key: string
   disposeSection?: () => void
-  notice?: NoticeState
+  /** Disposers of the append-only change snapshots registered for this session. */
+  notices: (() => void)[]
   sectionOn: 'agent' | 'none' | 'pending'
   sectionError?: string
-  /** Which scoped name this session's notice landed on (see attach). */
-  noticeName?: string
 }
 
 export interface NotifyResult {
   delivered: number
-  error: string
 }
 
 export class SessionRegistry {
   private readonly ctx: HostContext
   private readonly registry: Registry
   private readonly entries = new Map<string, Entry>()
+  private notices = 0
 
   constructor(ctx: HostContext, registry: Registry) {
     this.ctx = ctx
@@ -62,12 +64,21 @@ export class SessionRegistry {
   }
 
   /** Diagnostics for `/prompt`: is this session actually wired up? */
-  describe(sessionId: string): { attached: boolean; section: string; notice: string } {
+  describe(sessionId: string): { attached: boolean; section: string; notices: number } {
     const entry = this.entries.get(sessionId)
-    if (entry === undefined) return { attached: false, section: 'no-session', notice: 'no-session' }
-    const section = entry.sectionError !== undefined ? 'failed: ' + entry.sectionError : entry.sectionOn
-    const notice = entry.notice === undefined ? 'unavailable' : 'ok' + (entry.noticeName === undefined ? '' : ':' + entry.noticeName)
-    return { attached: true, section, notice }
+    if (entry === undefined) return { attached: false, section: 'no-session', notices: 0 }
+    return {
+      attached: true,
+      section: entry.sectionError !== undefined ? 'failed: ' + entry.sectionError : entry.sectionOn,
+      notices: entry.notices.length,
+    }
+  }
+
+  sessionsOf(workspace: string): string[] {
+    const key = workspaceKey(workspace)
+    const ids: string[] = []
+    for (const [id, entry] of this.entries) if (entry.key === key) ids.push(id)
+    return ids
   }
 
   attach(agent: AgentLike | undefined): void {
@@ -79,7 +90,7 @@ export class SessionRegistry {
     const promptCtx = agent.ctx
     if (promptCtx === undefined) return
 
-    const entry: Entry = { agent, workspace, key: workspaceKey(workspace), sectionOn: 'pending' }
+    const entry: Entry = { agent, workspace, key: workspaceKey(workspace), notices: [], sectionOn: 'pending' }
     const service = this.promptService(promptCtx)
     if (service === undefined) {
       entry.sectionOn = 'none'
@@ -88,8 +99,9 @@ export class SessionRegistry {
       return
     }
 
-    /* Frozen on first render and reused afterwards: a stable prefix keeps the
-       provider's prompt cache valid for the whole session. */
+    /* Frozen on first render and reused afterwards: a stable head is what keeps
+       the provider's prefix cache valid for the whole session. Changes go out as
+       append-only notices instead of rewriting this node. */
     let rendered: string | null = null
     const text = (): string => {
       if (rendered === null) rendered = sectionText(this.registry, workspace, this.boundary(agent))
@@ -109,37 +121,6 @@ export class SessionRegistry {
       entry.sectionError = failure instanceof Error ? failure.message : String(failure)
     }
 
-    /* The notice channel is registered separately and tolerantly: prompt context
-       names are unique per scope, and a previous module generation's registration
-       may still be alive on this agent after a hot reload. Its text provider is
-       already spent (it returns ''), so leaving it there costs nothing — but the
-       new one needs a free name. */
-    if (typeof service.context === 'function') {
-      const notice: NoticeState = { text: '', served: true }
-      entry.notice = notice
-      const provider = (name: string) => service.context?.({
-        name,
-        order: NOTICE_ORDER,
-        interpolate: false,
-        text: () => {
-          if (notice.served === true || notice.text === '') return ''
-          notice.served = true
-          return notice.text
-        },
-      })
-      for (let generation = 0; generation < 8; generation += 1) {
-        const name = generation === 0 ? NOTICE_NAME : NOTICE_NAME + '-' + String(generation)
-        try {
-          promptCtx.effect(() => provider(name) ?? (() => {}), 'related-projects: notice channel')
-          entry.noticeName = name
-          break
-        } catch {
-          /* name taken by a dead generation: try the next one */
-        }
-      }
-      if (entry.noticeName === undefined) entry.notice = undefined
-    }
-
     this.entries.set(id, entry)
   }
 
@@ -150,28 +131,57 @@ export class SessionRegistry {
     if (entry === undefined) return
     this.entries.delete(id)
     try { entry.disposeSection?.() } catch { /* already gone */ }
+    for (const dispose of entry.notices) {
+      try { dispose() } catch { /* already gone */ }
+    }
   }
 
-  /** Re-arm every live session of one workspace. */
+  /**
+   * Append one change snapshot to every live session of this workspace.
+   *
+   * The snapshot carries STATIC text under a fresh name, so it enters the history
+   * once as a tail node: no head rewrite, no repeated delivery. A session that is
+   * not live needs nothing — its section renders from the registry when it next
+   * starts.
+   */
   notify(workspace: string, summary: string): NotifyResult {
     const key = workspaceKey(workspace)
-    const text = noticeText(summary, TOOL_NAME)
     let delivered = 0
-    let error = ''
     for (const entry of this.entries.values()) {
       if (entry.key !== key) continue
-      const notice = entry.notice
-      if (notice === undefined) { error = 'notice channel unavailable for this session'; continue }
-      notice.text = text
-      notice.served = false
-      delivered += 1
+      const promptCtx = entry.agent.ctx
+      if (promptCtx === undefined) continue
+      const service = this.promptService(promptCtx)
+      if (service === undefined || typeof service.context !== 'function') continue
+      const context = service.context
+      const text = changeNotice(summary, sectionText(this.registry, entry.workspace, this.boundary(entry.agent)))
+      /* A unique name per change is what makes the notice append instead of
+         replacing an earlier snapshot in place (a replacement would invalidate
+         the prefix from its old position). */
+      this.notices += 1
+      const name = NOTICE_NAME + '-' + String(Date.now()) + '-' + String(this.notices)
+      try {
+        const dispose = promptCtx.effect(() => context.call(service, {
+          name,
+          order: NOTICE_ORDER,
+          text,
+          interpolate: false,
+        }) ?? (() => {}), 'related-projects: change notice')
+        entry.notices.push(dispose)
+        delivered += 1
+      } catch {
+        /* A taken name (stale generation) must not abort the other sessions. */
+      }
     }
-    return { delivered, error }
+    return { delivered }
   }
 
   disposeAll(): void {
     for (const entry of this.entries.values()) {
       try { entry.disposeSection?.() } catch { /* ignore */ }
+      for (const dispose of entry.notices) {
+        try { dispose() } catch { /* ignore */ }
+      }
     }
     this.entries.clear()
   }
