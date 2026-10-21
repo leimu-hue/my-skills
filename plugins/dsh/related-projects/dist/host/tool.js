@@ -12,11 +12,9 @@ export function createTool(ctx, registry, sessions) {
     const text = (value) => JSON.stringify(value, null, 2);
     return {
         name: TOOL_NAME,
-        description: 'List the related projects registered for the current workspace, or register one more. '
-            + 'A related project is another local repository the user usually changes together with this one '
-            + '(frontend, docs, a sibling service). Use action="list" before assuming a path; use action="add" when '
-            + 'the user asks you to remember a project for this workspace. Only the current workspace can be written, '
-            + 'and only adding is allowed — renaming, disabling and deleting belong to the user interface.',
+        description: 'List or add a related project for this workspace. A related project is a sibling repository the '
+            + 'user usually changes with this one. Use action="list" before assuming a path; action="add" to remember one. '
+            + "Only this workspace's registry is writable, and only by adding; renaming, disabling, and deletion are UI-only.",
         parameters: {
             type: 'object',
             additionalProperties: false,
@@ -24,11 +22,11 @@ export function createTool(ctx, registry, sessions) {
                 action: {
                     type: 'string',
                     enum: ['list', 'add'],
-                    description: 'list = read the registry for this workspace; add = register one more project.',
+                    description: "list = read this workspace's projects; add = register one.",
                 },
-                path: { type: 'string', description: 'add only: absolute path of the related project directory.' },
-                name: { type: 'string', description: 'add only: short display name (defaults to the directory name).' },
-                note: { type: 'string', description: 'add only: when this project needs a change, in one or two sentences.' },
+                path: { type: 'string', description: 'add: absolute directory path.' },
+                name: { type: 'string', description: 'add: display name (defaults to the directory name).' },
+                note: { type: 'string', description: 'add: when this project needs a change.' },
             },
             required: ['action'],
         },
@@ -65,6 +63,8 @@ export function createTool(ctx, registry, sessions) {
                     }),
                 };
             }
+            if (action !== 'add')
+                throw new Error('Unknown action "' + action + '"; use "list" or "add".');
             const path = typeof args.path === 'string' ? args.path : '';
             if (path === '')
                 throw new Error('add requires the absolute "path" of the project directory');

@@ -6,22 +6,21 @@
  */
 import { h, useReact } from './runtime.js'
 import { call } from './api.js'
-import { useT } from './locale.js'
 import { ConfirmButton, Spinner, Toggle, describeError } from './ui.js'
 import {
   groupStore, refreshDockStores, useSnapshot,
-  type ProjectView, type StateValue, type WorkspaceRow,
+  type ProjectView, type WorkspaceRow,
 } from './state.js'
 import type { Translate } from './locale.js'
 
 export interface PanelProps {
-  ctx: { get(name: string): unknown }
+  /** Provided by the registration's `locale` namespace. */
+  t: Translate
 }
 
 export function Panel(props: PanelProps): unknown {
   const React = useReact()
-  const ctx = props.ctx
-  const t = useT(ctx)
+  const t = props.t
   const snapshot = useSnapshot(groupStore)
   /* Sections the user expanded. A workspace that already holds projects starts
      open; that is the reason this page gets visited. */
@@ -30,7 +29,9 @@ export function Panel(props: PanelProps): unknown {
   const [busy, setBusy] = React.useState(false)
   const [manual, setManual] = React.useState<{ key: string; text: string } | null>(null)
 
-  React.useEffect(() => { void groupStore.refresh() }, [])
+  /* The store is shared with the composer row and may already hold a snapshot
+     from another mount; this page must not show that stale answer. */
+  React.useEffect(() => { void groupStore.refresh(true) }, [])
 
   const data = snapshot.data
   const workspaces = data === null ? [] : data.workspaces
@@ -83,6 +84,15 @@ export function Panel(props: PanelProps): unknown {
   const remove = (workspace: WorkspaceRow, project: ProjectView) => run(async () => {
     await call('remove', { workspace: workspace.path, id: project.id, notify: true })
   })
+
+  /* Opening the OS file manager is a side effect with no state to refresh, but
+     a rejection must still reach the user instead of becoming an unhandled one. */
+  const openProject = (workspace: WorkspaceRow, project: ProjectView): void => {
+    setNotice(null)
+    void call('open', { workspace: workspace.path, id: project.id }).catch((error: unknown) => {
+      setNotice(describeError(t, error))
+    })
+  }
 
   const copyGroup = (workspace: WorkspaceRow, target: string) => run(async () => {
     await call('copy', { from: workspace.path, to: target, notify: true })
@@ -179,11 +189,11 @@ export function Panel(props: PanelProps): unknown {
           key: project.id,
           t,
           project,
-          workspace: workspace.path,
           busy,
           noteMax: limits.noteMax,
           onUpdate: (patch: Record<string, unknown>) => { void update(workspace, project, patch) },
           onRemove: () => { void remove(workspace, project) },
+          onOpen: () => openProject(workspace, project),
         })),
         h('button', {
           type: 'button',
@@ -221,11 +231,11 @@ export function Panel(props: PanelProps): unknown {
 interface RowProps {
   t: Translate
   project: ProjectView
-  workspace: string
   busy: boolean
   noteMax: number
   onUpdate(patch: Record<string, unknown>): void
   onRemove(): void
+  onOpen(): void
 }
 
 function ProjectRow(props: RowProps): unknown {
@@ -270,7 +280,7 @@ function ProjectRow(props: RowProps): unknown {
         type: 'button',
         className: 'rprj-btn rprj-btn-quiet',
         title: t('panel.open'),
-        onClick: () => { void call('open', { workspace: props.workspace, id: project.id }) },
+        onClick: props.onOpen,
       }, '↗'),
       h(ConfirmButton, {
         t,
@@ -293,9 +303,7 @@ function ProjectRow(props: RowProps): unknown {
     }))
 }
 
-export function basename(path: string): string {
+function basename(path: string): string {
   const parts = String(path).replace(/\\/g, '/').split('/').filter((part) => part !== '')
   return parts.length === 0 ? String(path) : parts[parts.length - 1]
 }
-
-export type { StateValue }

@@ -8,7 +8,10 @@
  *    registers a NEW context name carrying STATIC text, so DSH appends it at the
  *    tail of the history once and never rewrites it afterwards. The cached prefix
  *    (system prompt + everything before the notice) stays reusable — the whole
- *    point of not touching the section.
+ *    point of not touching the section. The provider of the previous notice is
+ *    retired once the new one is registered: the snapshot already carries the
+ *    complete current list, so keeping the older providers would repeat their
+ *    text in every later snapshot.
  *
  * Why the notice is not a one-shot `text()` provider any more: one model step
  * reads a context provider TWICE — `assemble()` first, then `refreshContext()`
@@ -20,7 +23,7 @@
  * Tangible cost per change: the notice's own tokens, appended once. Everything
  * before it stays cached.
  */
-import { sectionText, NOTICE_NAME, NOTICE_ORDER, SECTION_NAME, SECTION_ORDER, changeNotice } from './prompt.js';
+import { boundaryText, listText, sectionText, NOTICE_NAME, NOTICE_ORDER, SECTION_NAME, SECTION_ORDER, changeNotice } from './prompt.js';
 import { sandboxFactOf, workspaceOfAgent } from './context.js';
 import { workspaceKey } from './store.js';
 export const TOOL_NAME = 'related_projects';
@@ -44,16 +47,8 @@ export class SessionRegistry {
         return {
             attached: true,
             section: entry.sectionError !== undefined ? 'failed: ' + entry.sectionError : entry.sectionOn,
-            notices: entry.notices.length,
+            notices: entry.noticeCount,
         };
-    }
-    sessionsOf(workspace) {
-        const key = workspaceKey(workspace);
-        const ids = [];
-        for (const [id, entry] of this.entries)
-            if (entry.key === key)
-                ids.push(id);
-        return ids;
     }
     attach(agent) {
         if (agent === undefined || agent === null)
@@ -67,7 +62,7 @@ export class SessionRegistry {
         const promptCtx = agent.ctx;
         if (promptCtx === undefined)
             return;
-        const entry = { agent, workspace, key: workspaceKey(workspace), notices: [], sectionOn: 'pending' };
+        const entry = { agent, workspace, key: workspaceKey(workspace), notices: [], noticeCount: 0, sectionOn: 'pending' };
         const service = this.promptService(promptCtx);
         if (service === undefined) {
             entry.sectionOn = 'none';
@@ -139,7 +134,9 @@ export class SessionRegistry {
             if (service === undefined || typeof service.context !== 'function')
                 continue;
             const context = service.context;
-            const text = changeNotice(summary, sectionText(this.registry, entry.workspace, this.boundary(entry.agent)));
+            /* The notice carries only the current rows: the frozen section already
+               carries the instructions and the write boundary. */
+            const text = changeNotice(summary, listText(this.registry, entry.workspace));
             /* A unique name per change is what makes the notice append instead of
                replacing an earlier snapshot in place (a replacement would invalidate
                the prefix from its old position). */
@@ -153,6 +150,18 @@ export class SessionRegistry {
                     interpolate: false,
                 }) ?? (() => { }), 'related-projects: change notice');
                 entry.notices.push(dispose);
+                entry.noticeCount += 1;
+                /* The snapshot carries the COMPLETE current list, so keeping the older
+                   providers would make the next snapshot repeat their text too (and
+                   every later snapshot would grow with every earlier change). Retire
+                   them: the appended snapshot keeps only the newest list. */
+                while (entry.notices.length > 1) {
+                    const previous = entry.notices.shift();
+                    try {
+                        previous?.();
+                    }
+                    catch { /* already gone */ }
+                }
                 delivered += 1;
             }
             catch {
@@ -186,13 +195,6 @@ export class SessionRegistry {
         }
     }
     boundary(agent) {
-        const fact = sandboxFactOf(this.ctx, agent.session);
-        if (fact === null)
-            return 'unknown';
-        return fact.mode === 'danger-full-access'
-            ? 'danger-full-access (no path restriction)'
-            : (fact.mode === 'read-only'
-                ? 'read-only (no writes)'
-                : 'workspace-write (only ' + fact.workspaceRoot + ' is writable; writes elsewhere need approval)');
+        return boundaryText(sandboxFactOf(this.ctx, agent.session));
     }
 }

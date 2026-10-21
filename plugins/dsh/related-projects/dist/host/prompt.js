@@ -2,7 +2,11 @@ export const SECTION_NAME = 'related-projects';
 export const SECTION_ORDER = 900;
 export const NOTICE_NAME = 'related-projects-changed';
 export const NOTICE_ORDER = 910;
-/** The write boundary as one clause; it comes from the live sandbox policy. */
+/**
+ * The write boundary as one clause; it comes from the sandbox policy. The
+ * workspace root is deliberately not repeated: the session's working directory
+ * already states it, and `workspace-write` is bounded by that directory.
+ */
 export function boundaryText(fact) {
     if (fact === null)
         return 'unknown';
@@ -10,7 +14,15 @@ export function boundaryText(fact) {
         return 'danger-full-access (no path restriction)';
     if (fact.mode === 'read-only')
         return 'read-only (no writes)';
-    return 'workspace-write (only ' + fact.workspaceRoot + ' is writable; writes elsewhere need approval)';
+    return 'workspace-write (writes outside the working directory need approval)';
+}
+function projectsOf(registry, workspace) {
+    const snapshot = registry.snapshot(workspace);
+    const enabled = snapshot.projects.filter((project) => project.enabled !== false);
+    return {
+        usable: enabled.filter((project) => project.exists !== false),
+        unavailable: enabled.filter((project) => project.exists === false),
+    };
 }
 /**
  * The session's prompt section, rendered ONCE per session and then frozen.
@@ -24,33 +36,47 @@ export function boundaryText(fact) {
  * projects" is noise in every session of every unconfigured workspace.
  */
 export function sectionText(registry, workspace, boundary) {
-    const snapshot = registry.snapshot(workspace);
-    const usable = snapshot.projects.filter((project) => project.enabled !== false && project.exists !== false);
+    const { usable, unavailable } = projectsOf(registry, workspace);
     if (usable.length === 0)
         return '';
-    const unavailable = snapshot.projects.filter((project) => project.enabled !== false && project.exists === false);
     const lines = [
-        '## Related projects',
+        '## Related projects (' + String(usable.length) + ')',
         '',
-        'The workspace groups ' + String(usable.length) + ' related project(s) that a change here usually touches '
-            + '(for example the frontend, the docs, or a sibling service). Treat them as in scope when the request '
-            + 'plausibly involves them, and read them directly instead of asking the user for a path.',
+        'Sibling repositories that a change here usually touches. Treat them as in scope when the request '
+            + 'plausibly involves them; read them directly instead of asking for a path.',
         '',
-        'Write scope for this session: ' + boundary + '.',
+        'Write scope: ' + boundary + '.',
         '',
     ];
-    for (const project of usable) {
+    for (const project of usable)
         lines.push(line(project));
-    }
-    if (unavailable.length > 0) {
-        lines.push('');
-        lines.push(String(unavailable.length) + ' further related project(s) are currently unavailable (their path is '
-            + 'missing); they are omitted on purpose — do not guess their content.');
-    }
+    appendUnavailable(lines, unavailable);
     return lines.join('\n');
 }
+/**
+ * The rows of the CURRENT list, without the section's instructions or write
+ * boundary. A notice already has its own lead-in, and the frozen section still
+ * carries the instructions, so repeating them in every notice is pure
+ * per-request overhead.
+ */
+export function listText(registry, workspace) {
+    const { usable, unavailable } = projectsOf(registry, workspace);
+    if (usable.length === 0)
+        return '';
+    const lines = usable.map(line);
+    appendUnavailable(lines, unavailable);
+    return lines.join('\n');
+}
+function appendUnavailable(lines, unavailable) {
+    if (unavailable.length === 0)
+        return;
+    lines.push('');
+    lines.push(unavailable.length === 1
+        ? '1 related project is unavailable (path missing); omitted — do not guess its content.'
+        : String(unavailable.length) + ' related projects are unavailable (path missing); omitted — do not guess their content.');
+}
 function line(project) {
-    const note = project.note === '' ? '' : ' — when to touch: ' + project.note.replace(/\s+/g, ' ').trim();
+    const note = project.note === '' ? '' : ' — ' + project.note.replace(/\s+/g, ' ').trim();
     return '- ' + project.name + ' — ' + project.path + note;
 }
 /**
@@ -62,9 +88,9 @@ function line(project) {
  * what keeps it from being rewritten (and re-charged) later.
  */
 export function changeNotice(summary, current) {
-    const head = 'Related projects changed for this workspace: ' + summary + '. ';
+    const head = 'Related projects changed: ' + summary + '. ';
     if (current === '') {
-        return head + 'There are no usable related projects now; ignore every earlier list, including earlier notices.';
+        return head + 'No usable related projects remain; ignore every earlier list, including earlier notices.';
     }
-    return head + 'The list below is current and supersedes the list in your system prompt as well as any earlier notice.\n\n' + current;
+    return head + 'Current list (supersedes the system prompt and earlier notices):\n\n' + current;
 }

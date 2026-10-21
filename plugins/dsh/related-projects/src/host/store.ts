@@ -6,7 +6,7 @@
  */
 import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { dirname, join, parse, resolve, sep } from 'node:path'
+import { dirname, isAbsolute, join, parse, resolve, sep } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { Group, GroupView, Limits, Project, ProjectView, RegistryErrorCode, Settings, Snapshot } from './types.js'
 
@@ -14,7 +14,7 @@ export const MAX_PROJECTS = 10
 export const NOTE_MAX = 200
 export const NAME_MAX = 60
 export const STORE_VERSION = 1
-export const FILE_NAME = 'related-projects.json'
+const FILE_NAME = 'related-projects.json'
 
 export class RegistryError extends Error {
   readonly code: RegistryErrorCode
@@ -33,10 +33,20 @@ export function defaultDataFile(): string {
   return join(home, FILE_NAME)
 }
 
-/** Absolute path without a trailing separator. */
+/**
+ * Absolute path without a trailing separator.
+ *
+ * A relative spelling is rejected instead of being resolved against the Host
+ * process cwd: every public contract here (workspace path, project path, the
+ * tool's `path` argument) is "fully qualified path", so silently picking a
+ * different directory is worse than an explicit failure.
+ */
 export function normalizePath(input: unknown): string {
   const text = String(input ?? '').trim()
-  if (text === '') return ''
+  if (text === '' || !isAbsolute(text)) return ''
+  /* Windows also calls `\foo` and `/foo` absolute (rooted on the current drive),
+     which is not a fully qualified spelling either. `\\server\share` stays. */
+  if (process.platform === 'win32' && /^[\\/](?![\\/])/.test(text)) return ''
   let resolved: string
   try { resolved = resolve(text) } catch { return '' }
   if (resolved.length > 3 && (resolved.endsWith(sep) || resolved.endsWith('/'))) resolved = resolved.slice(0, -1)

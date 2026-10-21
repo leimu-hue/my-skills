@@ -11,31 +11,27 @@
  */
 import { h, useReact } from './runtime.js'
 import { call } from './api.js'
-import { useT } from './locale.js'
 import { describeError } from './ui.js'
 import { insertMention, type InputActions } from './mention.js'
-import { dockStoreFor, useSnapshot, type ProjectView } from './state.js'
-import { sessionWorkspace } from './session.js'
+import { useSnapshot, type ProjectView, type Store } from './state.js'
 import type { Translate } from './locale.js'
 
 export interface DockProps {
   sessionId?: string
   inputActions?: InputActions
-  ctx: { get(name: string): unknown }
+  /** Provided by the registration's `locale` namespace. */
+  t: Translate
+  /** Per-session store created in the registration's `inject` world. */
+  dockStore: Store
+  /** The Client catalog's directory for a session, '' when unknown. */
+  workspaceHint(sessionId: unknown): string
 }
 
 export function DockRow(props: DockProps): unknown {
   const React = useReact()
-  const ctx = props.ctx
-  const t = useT(ctx)
+  const t = props.t
   const sessionId = props.sessionId
-  /* The directory the Client's own catalog knows for this session. It answers
-     for a cold (old) session as soon as the session list has loaded — earlier
-     than the Host resume that opening such a session starts. */
-  const store = React.useMemo(
-    () => dockStoreFor(sessionId, (session) => sessionWorkspace(ctx, session)),
-    [ctx, sessionId],
-  )
+  const store = props.dockStore
   const snapshot = useSnapshot(store)
   const [open, setOpen] = React.useState(false)
   const [notice, setNotice] = React.useState<string | null>(null)
@@ -109,7 +105,7 @@ export function DockRow(props: DockProps): unknown {
       /* The session id, not a client-side guess: the host resolves the workspace.
          The catalog hint rides along because an old session's resume may still be
          in flight — without it the add would be refused as "workspace-missing". */
-      const workspace = sessionWorkspace(ctx, sessionId)
+      const workspace = props.workspaceHint(sessionId)
       await call('add', workspace === ''
         ? { sessionId, path, notify: true }
         : { sessionId, path, workspace, notify: true })

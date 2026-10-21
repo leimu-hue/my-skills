@@ -40,6 +40,24 @@ interface PluginConfig {
   dataFile?: unknown
 }
 
+/**
+ * The Host half of `ctx.connection`: `requestRejection()` applies the same
+ * Host/Origin checks and browser-session authentication the shipped `/api`
+ * bridge uses. Named `webServer` routes get none of that automatically.
+ */
+interface ConnectionService {
+  requestRejection?(request: IncomingMessage): number | undefined
+}
+
+function connectionOf(ctx: HostContext): ConnectionService | undefined {
+  try {
+    const value = ctx.get('connection')
+    return value !== undefined && value !== null && typeof value === 'object' ? value as ConnectionService : undefined
+  } catch {
+    return undefined
+  }
+}
+
 function openInFileManager(target: string): void {
   const command = process.platform === 'win32' ? 'explorer' : (process.platform === 'darwin' ? 'open' : 'xdg-open')
   try {
@@ -59,9 +77,34 @@ export function apply(ctx: HostContext, config?: PluginConfig): void {
 
   /* ------------------------------- route ------------------------------- */
 
+  /* The carrier authenticates nothing for named routes, so this one applies
+     Connection's documented fence (Host/Origin + browser session) whenever the
+     Web composition provides it; `isTrusted` is the fallback for a Host that
+     mounts `webServer` without `connection`. */
+  let connection = connectionOf(ctx)
+  const rejectionOf = (req: IncomingMessage): number | undefined => {
+    if (connection === undefined) connection = connectionOf(ctx)
+    if (connection !== undefined && typeof connection.requestRejection === 'function') {
+      try {
+        const status = connection.requestRejection(req)
+        return typeof status === 'number' ? status : (status === undefined || status === null ? undefined : 403)
+      } catch {
+        return 403
+      }
+    }
+    return isTrusted(req) === true ? undefined : 403
+  }
+
   const handle = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
-    if (isTrusted(req) !== true) {
-      sendJson(res, 403, { ok: false, error: { code: 'forbidden', message: 'forbidden' } })
+    const rejection = rejectionOf(req)
+    if (rejection !== undefined) {
+      sendJson(res, rejection, {
+        ok: false,
+        error: {
+          code: rejection === 401 ? 'unauthorized' : 'forbidden',
+          message: rejection === 401 ? 'browser session required' : 'forbidden',
+        },
+      })
       return
     }
     if (req.method !== 'POST') {

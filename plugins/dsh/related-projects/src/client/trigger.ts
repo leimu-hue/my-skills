@@ -56,11 +56,11 @@ function drillValue(label: string, path: string): string {
 }
 
 /**
- * The source's `name` doubles as the visible group title: the menu renders
- * `t(sourceName)` in its own `slash.menu` namespace and falls back to the raw
- * name when the key is unknown. Registering a dictionary entry there loses to the
- * pipeline's own whole-namespace registration when the pipeline applies later, so
- * the title is carried by the name itself — no dictionary race at all.
+ * Stable source identity. The pipeline routes a restored chip back to its source
+ * by `name`, so this value must never depend on the active locale: a draft
+ * written in Chinese would otherwise stop resolving after switching to English.
+ * The visible heading comes from the `section` on each row instead (the pipeline
+ * suppresses the name-derived group title when rows carry sections).
  */
 export const SOURCE_KEY = 'related-projects'
 const TRIGGER = '@'
@@ -120,6 +120,12 @@ export interface TriggerSource {
   trigger: string
   name: string
   order: number
+  /**
+   * Hide the group title the pipeline would render from `name`; rows carry their
+   * own `section` headings instead. Same field the shipped `@` reference source
+   * uses, and the menu reads it (`trigger-client.js: seedGroups`).
+   */
+  showGroupTitle?: boolean
   candidates(session: TriggerSession, request: TriggerRequest): Promise<TriggerCandidate[]>
   /** Breadcrumbs for the current level; published only after a drill. */
   header?(session: TriggerSession, request: TriggerHeaderRequest): TriggerCrumb[] | undefined
@@ -136,13 +142,9 @@ interface Cached {
 
 /** One source object per plugin instance; candidates are cached per session. */
 export function createTriggerSource(
-  title: string,
   hint: WorkspaceHint = () => '',
   t: Translate = (key: string) => key,
 ): TriggerSource {
-  /* The menu shows the source name as the group heading, so the display text IS
-     the name — while `SOURCE_KEY`-style identity is not needed anywhere else. */
-  const sourceName = title
   const cache = new Map<string, Cached>()
 
   const load = async (sessionId: string): Promise<ProjectView[]> => {
@@ -298,7 +300,8 @@ export function createTriggerSource(
 
   return {
     trigger: TRIGGER,
-    name: sourceName,
+    name: SOURCE_KEY,
+    showGroupTitle: false,
     order: ORDER,
 
     async candidates(session, request) {
@@ -325,6 +328,7 @@ export function createTriggerSource(
         name: project.name + '/',
         description: project.note === '' ? project.path : project.path + '  ·  ' + project.note,
         icon: 'folder',
+        section: t('panel.title'),
         drill: true,
         value: JSON.stringify({ kind: 'project', label: project.name, mention: referenceOf(project.path, true) }),
       }))
@@ -394,7 +398,7 @@ export function createTriggerSource(
       }
       return {
         insert: {
-          source: sourceName,
+          source: SOURCE_KEY,
           ref: absolute,
           label: directory ? name + '/' : name,
           appearance: directory ? 'folder' : 'file',

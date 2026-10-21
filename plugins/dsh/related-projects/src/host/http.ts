@@ -17,19 +17,43 @@ function header(req: IncomingMessage, name: string): string | undefined {
   return Array.isArray(value) ? value[0] : value
 }
 
+function isLoopbackHostname(hostname: string): boolean {
+  return hostname === 'localhost' || hostname === '::1' || hostname === '0.0.0.0' || /^127\./.test(hostname)
+}
+
+function authorityOf(host: string, scheme: 'http:' | 'https:'): URL | undefined {
+  try { return new URL(scheme + '//' + host) } catch { return undefined }
+}
+
+/** Compare Host under the Origin's scheme, so default ports normalize. */
+function isSameAuthority(origin: string, host: string): boolean {
+  let originUrl: URL
+  try { originUrl = new URL(origin) } catch { return false }
+  if (originUrl.protocol !== 'http:' && originUrl.protocol !== 'https:') return false
+  const hostUrl = authorityOf(host, originUrl.protocol === 'https:' ? 'https:' : 'http:')
+  return hostUrl !== undefined && originUrl.host === hostUrl.host
+}
+
 /**
- * Loopback authority or a same-origin browser request. `webServer` routes skip
- * the Connection gate entirely, so this is the only thing standing between the
- * registry and any local process that can reach the port.
+ * Fallback trust fence for a Host without the Connection service. The carrier
+ * applies no authentication or Origin policy to named routes (see
+ * docs/subsystems/web-server.md), so a route that exposes mutations has to
+ * apply one. This mirrors the documented browser fence: a cross-site request is
+ * refused, an attached Origin must name this exact authority, and without a
+ * browser Origin only loopback callers are accepted.
+ *
+ * The shipped Web composition mounts `ctx.connection`, whose
+ * `requestRejection()` is authoritative (Host/Origin plus browser
+ * authentication); this function is only the fallback.
  */
 export function isTrusted(req: IncomingMessage): boolean {
   const host = header(req, 'host')
   if (host === undefined || host === '') return false
+  if (header(req, 'sec-fetch-site') === 'cross-site') return false
+  const origin = header(req, 'origin')
+  if (origin !== undefined) return isSameAuthority(origin, host)
   const hostname = host.replace(/^\[/, '').replace(/\]:\d+$/, '').replace(/:\d+$/, '')
-  if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || hostname === '0.0.0.0') return true
-  if (/^127\./.test(hostname)) return true
-  const site = header(req, 'sec-fetch-site')
-  return site === 'same-origin' || site === 'same-site'
+  return isLoopbackHostname(hostname)
 }
 
 export function readJsonBody(req: IncomingMessage, limit = 1 << 20): Promise<Record<string, unknown>> {

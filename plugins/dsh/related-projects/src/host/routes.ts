@@ -41,13 +41,13 @@ function flag(value: unknown): boolean {
  * "updated X" is useless to a model that has to decide whether its frozen list is
  * still true, so name the fields that actually moved — the note text included.
  */
-function describeUpdate(before: ProjectView | undefined, after: ProjectView): string {
+function describeUpdate(before: ProjectView, after: ProjectView): string {
   const parts: string[] = []
-  if (before !== undefined && before.name !== after.name) parts.push('renamed "' + before.name + '" to "' + after.name + '"')
-  if (before === undefined || before.note !== after.note) {
+  if (before.name !== after.name) parts.push('renamed "' + before.name + '" to "' + after.name + '"')
+  if (before.note !== after.note) {
     parts.push(after.note === '' ? 'note cleared for ' + after.name : 'note for ' + after.name + ' is now "' + after.note + '"')
   }
-  if (before !== undefined && before.enabled !== after.enabled) parts.push(after.name + (after.enabled ? ' enabled' : ' disabled'))
+  if (before.enabled !== after.enabled) parts.push(after.name + (after.enabled ? ' enabled' : ' disabled'))
   if (parts.length === 0) return 'updated ' + after.name
   return parts.join('; ')
 }
@@ -125,10 +125,12 @@ export function createHandlers(deps: HandlerDeps): Record<string, Handler> {
       const query = str(payload.filter)
       if (dir === '') throw new RegistryError('not-directory')
       const snapshot = registry.snapshot(workspace)
-      const root = snapshot.projects.find((project) => {
-        const projectPath = normalizePath(project.path)
-        return dir === projectPath || dir.startsWith(projectPath + sep)
-      })
+      const root = snapshot.projects
+        .filter((project) => project.enabled !== false && project.exists !== false)
+        .find((project) => {
+          const projectPath = normalizePath(project.path)
+          return dir === projectPath || dir.startsWith(projectPath + sep)
+        })
       if (root === undefined) throw new RegistryError('no-group')
       return listDirectory(root.path, root.name, dir, query, typeof payload.limit === 'number' ? payload.limit : undefined)
     },
@@ -149,7 +151,8 @@ export function createHandlers(deps: HandlerDeps): Record<string, Handler> {
       const workspace = requireWorkspace(payload)
       const before = registry.snapshot(workspace).projects.find((entry) => entry.id === payload.id)
       const project = registry.update(workspace, payload.id, payload.patch)
-      const delivered = announce(workspace, describeUpdate(before, project), payload.notify)
+      const summary = before === undefined ? 'updated ' + project.name : describeUpdate(before, project)
+      const delivered = announce(workspace, summary, payload.notify)
       return { project, sessions: delivered, ...registry.snapshot(workspace) }
     },
 
@@ -168,11 +171,6 @@ export function createHandlers(deps: HandlerDeps): Record<string, Handler> {
         payload.notify,
       )
       return { ...result, sessions: delivered, ...registry.snapshot(payload.to) }
-    },
-
-    async ensureGroup(payload) {
-      const group = registry.ensureGroup(payload.path)
-      return { key: group.key, path: group.path }
     },
 
     async settings(payload) {

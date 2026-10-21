@@ -69,7 +69,6 @@ export type RegistryErrorCode =
   | 'home'
   | 'self'
   | 'limit'
-  | 'exists'
   | 'no-group'
   | 'no-project'
   | 'workspace-missing'

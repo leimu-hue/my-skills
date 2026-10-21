@@ -8,6 +8,7 @@ import { NS, EN, ZH, translate } from './locale.js'
 import { DockRow, PanelIcon } from './dock.js'
 import { Panel } from './panel.js'
 import { sessionWorkspace } from './session.js'
+import { dockStoreFor } from './state.js'
 import { createTriggerSource, type TriggerSource } from './trigger.js'
 
 export const PANEL_ID = 'related-projects'
@@ -55,12 +56,6 @@ export function createPlugin(React: unknown): Plugin {
         ctx.effect(() => locale.register(NS, { zh: ZH, en: EN }), 'related-projects: dictionaries')
       }
 
-      /* The menu renders the group heading from the source NAME (its own locale
-         lookup falls back to that raw name). Carrying the display text in the name
-         is therefore the only way to title the group without racing the pipeline's
-         own whole-namespace `slash.menu` registration. */
-      const groupTitle = translateLabel(ctx, 'panel.title')
-
       /* The `@` source: feeds the official trigger menu, which owns all of the UI.
          `inject` (not a bare get) because the pipeline service may be provided
          after this apply runs; the callback fires when it exists. registerSource
@@ -77,7 +72,6 @@ export function createPlugin(React: unknown): Plugin {
           let dispose = (): void => {}
           try {
             dispose = triggers.registerSource(createTriggerSource(
-              groupTitle,
               (sessionId) => sessionWorkspace(ctx, sessionId),
               (key, values) => translate(ctx, key, values),
             ))
@@ -93,13 +87,19 @@ export function createPlugin(React: unknown): Plugin {
       const slots = ctx.get('slots') as SlotsLike | undefined
       if (slots === undefined || slots === null) return
 
-      /* Composer row: session-scoped, so its workspace comes from the session. */
+      /* Composer row: session-scoped, so its workspace comes from the session.
+         The per-session store is created in the registration's inject world (the
+         documented place for entry-private data), never from the component. */
       ctx.effect(() => slots.inject('conversation.composer.dock', () => slots.register({
         name: 'conversation.composer.dock',
         id: PANEL_ID,
         order: DOCK_ORDER,
-        label: () => translateLabel(ctx, 'panel.title'),
-      }, (props) => h(DockRow as never, { ...props, ctx }))), 'related-projects: composer row')
+        locale: NS,
+        inject: (sessionId: string) => ({
+          dockStore: dockStoreFor(sessionId, (id) => sessionWorkspace(ctx, id)),
+          workspaceHint: (id: unknown) => sessionWorkspace(ctx, id),
+        }),
+      }, (props) => h(DockRow as never, props))), 'related-projects: composer row')
 
       /* Left rail icon + the panel it opens (the same id on both slots). */
       ctx.effect(() => slots.inject('sidebar.panellist', () => slots.register({
@@ -112,7 +112,8 @@ export function createPlugin(React: unknown): Plugin {
       ctx.effect(() => slots.inject('main', () => slots.register({
         name: 'main',
         key: PANEL_ID,
-      }, (props) => h(Panel as never, { ...props, ctx }))), 'related-projects: panel')
+        locale: NS,
+      }, (props) => h(Panel as never, props))), 'related-projects: panel')
     },
   }
 }

@@ -23,12 +23,12 @@ function flag(value) {
  */
 function describeUpdate(before, after) {
     const parts = [];
-    if (before !== undefined && before.name !== after.name)
+    if (before.name !== after.name)
         parts.push('renamed "' + before.name + '" to "' + after.name + '"');
-    if (before === undefined || before.note !== after.note) {
+    if (before.note !== after.note) {
         parts.push(after.note === '' ? 'note cleared for ' + after.name : 'note for ' + after.name + ' is now "' + after.note + '"');
     }
-    if (before !== undefined && before.enabled !== after.enabled)
+    if (before.enabled !== after.enabled)
         parts.push(after.name + (after.enabled ? ' enabled' : ' disabled'));
     if (parts.length === 0)
         return 'updated ' + after.name;
@@ -106,7 +106,9 @@ export function createHandlers(deps) {
             if (dir === '')
                 throw new RegistryError('not-directory');
             const snapshot = registry.snapshot(workspace);
-            const root = snapshot.projects.find((project) => {
+            const root = snapshot.projects
+                .filter((project) => project.enabled !== false && project.exists !== false)
+                .find((project) => {
                 const projectPath = normalizePath(project.path);
                 return dir === projectPath || dir.startsWith(projectPath + sep);
             });
@@ -129,7 +131,8 @@ export function createHandlers(deps) {
             const workspace = requireWorkspace(payload);
             const before = registry.snapshot(workspace).projects.find((entry) => entry.id === payload.id);
             const project = registry.update(workspace, payload.id, payload.patch);
-            const delivered = announce(workspace, describeUpdate(before, project), payload.notify);
+            const summary = before === undefined ? 'updated ' + project.name : describeUpdate(before, project);
+            const delivered = announce(workspace, summary, payload.notify);
             return { project, sessions: delivered, ...registry.snapshot(workspace) };
         },
         async remove(payload) {
@@ -142,10 +145,6 @@ export function createHandlers(deps) {
             const result = registry.copy(payload.from, payload.to);
             const delivered = announce(str(payload.to), 'copied ' + String(result.added) + ' project(s) from another workspace', payload.notify);
             return { ...result, sessions: delivered, ...registry.snapshot(payload.to) };
-        },
-        async ensureGroup(payload) {
-            const group = registry.ensureGroup(payload.path);
-            return { key: group.key, path: group.path };
         },
         async settings(payload) {
             registry.setSettings(payload);

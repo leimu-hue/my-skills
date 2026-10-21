@@ -1,5 +1,4 @@
 /** Copy for both halves of the UI, plus the live-locale plumbing. */
-import { useReact } from './runtime.js'
 
 export const NS = 'related-projects'
 
@@ -34,7 +33,6 @@ export const ZH: Record<string, string> = {
   'dock.applies': '本次会话会告诉模型这些路径',
   'menu.files': '关联项目-项目文件',
   'error.generic': '操作失败',
-  'error.exists': '这个路径已经是关联项目了。',
   'error.not-directory': '路径不存在或不是目录。',
   'error.root': '不能把磁盘根目录设为关联项目。',
   'error.home': '不能把用户主目录设为关联项目。',
@@ -78,7 +76,6 @@ export const EN: Record<string, string> = {
   'dock.applies': 'The agent is told these paths for this session',
   'menu.files': 'Related projects - project files',
   'error.generic': 'Operation failed',
-  'error.exists': 'That path is already a related project.',
   'error.not-directory': 'The path does not exist or is not a directory.',
   'error.root': 'A drive root cannot be a related project.',
   'error.home': 'The user home directory cannot be a related project.',
@@ -124,25 +121,6 @@ export function translate(ctx: { get(name: string): unknown }, key: string, valu
   const dict = dictionaryFor(activeTag(ctx))
   const template = dict[key] ?? EN[key] ?? key
   return fill(template, values)
-}
-
-/** Re-read the dictionary whenever the locale preference changes. */
-export function useT(ctx: { get(name: string): unknown }): Translate {
-  const React = useReact()
-  const [, bump] = React.useState(0)
-  React.useEffect(() => {
-    try {
-      const locale = ctx.get('locale') as LocaleService | undefined
-      const unsubscribe = locale?.subscribe?.(() => bump((value: number) => value + 1))
-      return typeof unsubscribe === 'function' ? unsubscribe : undefined
-    } catch {
-      return undefined
-    }
-  }, [ctx])
-  return React.useCallback(
-    (key: string, values?: Record<string, unknown>) => translate(ctx, key, values),
-    [ctx],
-  )
 }
 
 

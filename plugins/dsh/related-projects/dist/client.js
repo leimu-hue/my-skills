@@ -126,7 +126,6 @@
     "dock.applies": "\u672C\u6B21\u4F1A\u8BDD\u4F1A\u544A\u8BC9\u6A21\u578B\u8FD9\u4E9B\u8DEF\u5F84",
     "menu.files": "\u5173\u8054\u9879\u76EE-\u9879\u76EE\u6587\u4EF6",
     "error.generic": "\u64CD\u4F5C\u5931\u8D25",
-    "error.exists": "\u8FD9\u4E2A\u8DEF\u5F84\u5DF2\u7ECF\u662F\u5173\u8054\u9879\u76EE\u4E86\u3002",
     "error.not-directory": "\u8DEF\u5F84\u4E0D\u5B58\u5728\u6216\u4E0D\u662F\u76EE\u5F55\u3002",
     "error.root": "\u4E0D\u80FD\u628A\u78C1\u76D8\u6839\u76EE\u5F55\u8BBE\u4E3A\u5173\u8054\u9879\u76EE\u3002",
     "error.home": "\u4E0D\u80FD\u628A\u7528\u6237\u4E3B\u76EE\u5F55\u8BBE\u4E3A\u5173\u8054\u9879\u76EE\u3002",
@@ -169,7 +168,6 @@
     "dock.applies": "The agent is told these paths for this session",
     "menu.files": "Related projects - project files",
     "error.generic": "Operation failed",
-    "error.exists": "That path is already a related project.",
     "error.not-directory": "The path does not exist or is not a directory.",
     "error.root": "A drive root cannot be a related project.",
     "error.home": "The user home directory cannot be a related project.",
@@ -204,23 +202,6 @@
     const dict = dictionaryFor(activeTag(ctx));
     const template = dict[key] ?? EN[key] ?? key;
     return fill(template, values);
-  }
-  function useT(ctx) {
-    const React = useReact();
-    const [, bump] = React.useState(0);
-    React.useEffect(() => {
-      try {
-        const locale = ctx.get("locale");
-        const unsubscribe = locale?.subscribe?.(() => bump((value) => value + 1));
-        return typeof unsubscribe === "function" ? unsubscribe : void 0;
-      } catch {
-        return void 0;
-      }
-    }, [ctx]);
-    return React.useCallback(
-      (key, values) => translate(ctx, key, values),
-      [ctx]
-    );
   }
 
   // src/client/api.ts
@@ -435,35 +416,12 @@
     return React.useSyncExternalStore(store.subscribe, store.get, store.get);
   }
 
-  // src/client/session.ts
-  function sessionWorkspace(ctx, sessionId) {
-    if (typeof sessionId !== "string" || sessionId === "") return "";
-    let catalog;
-    try {
-      catalog = ctx.get("sessions");
-    } catch {
-      return "";
-    }
-    if (catalog === void 0 || catalog === null) return "";
-    try {
-      const snapshot = catalog.list?.getSnapshot?.();
-      const row = snapshot?.byId?.[sessionId];
-      return row !== void 0 && typeof row.cwd === "string" ? row.cwd : "";
-    } catch {
-      return "";
-    }
-  }
-
   // src/client/dock.ts
   function DockRow(props) {
     const React = useReact();
-    const ctx = props.ctx;
-    const t = useT(ctx);
+    const t = props.t;
     const sessionId = props.sessionId;
-    const store = React.useMemo(
-      () => dockStoreFor(sessionId, (session) => sessionWorkspace(ctx, session)),
-      [ctx, sessionId]
-    );
+    const store = props.dockStore;
     const snapshot = useSnapshot(store);
     const [open, setOpen] = React.useState(false);
     const [notice, setNotice] = React.useState(null);
@@ -525,7 +483,7 @@
         const picked = await call("pick", {});
         const path = picked.path ?? "";
         if (path === "") return;
-        const workspace = sessionWorkspace(ctx, sessionId);
+        const workspace = props.workspaceHint(sessionId);
         await call("add", workspace === "" ? { sessionId, path, notify: true } : { sessionId, path, workspace, notify: true });
         await store.refresh(true);
       } catch (error) {
@@ -633,15 +591,14 @@
   // src/client/panel.ts
   function Panel(props) {
     const React = useReact();
-    const ctx = props.ctx;
-    const t = useT(ctx);
+    const t = props.t;
     const snapshot = useSnapshot(groupStore);
     const [expanded, setExpanded] = React.useState({});
     const [notice, setNotice] = React.useState(null);
     const [busy, setBusy] = React.useState(false);
     const [manual, setManual] = React.useState(null);
     React.useEffect(() => {
-      void groupStore.refresh();
+      void groupStore.refresh(true);
     }, []);
     const data = snapshot.data;
     const workspaces = data === null ? [] : data.workspaces;
@@ -687,6 +644,12 @@
     const remove = (workspace, project) => run(async () => {
       await call("remove", { workspace: workspace.path, id: project.id, notify: true });
     });
+    const openProject = (workspace, project) => {
+      setNotice(null);
+      void call("open", { workspace: workspace.path, id: project.id }).catch((error) => {
+        setNotice(describeError(t, error));
+      });
+    };
     const copyGroup = (workspace, target) => run(async () => {
       await call("copy", { from: workspace.path, to: target, notify: true });
     });
@@ -794,7 +757,6 @@
           key: project.id,
           t,
           project,
-          workspace: workspace.path,
           busy,
           noteMax: limits.noteMax,
           onUpdate: (patch) => {
@@ -802,7 +764,8 @@
           },
           onRemove: () => {
             void remove(workspace, project);
-          }
+          },
+          onOpen: () => openProject(workspace, project)
         })),
         h("button", {
           type: "button",
@@ -897,9 +860,7 @@
           type: "button",
           className: "rprj-btn rprj-btn-quiet",
           title: t("panel.open"),
-          onClick: () => {
-            void call("open", { workspace: props.workspace, id: project.id });
-          }
+          onClick: props.onOpen
         }, "\u2197"),
         h(ConfirmButton, {
           t,
@@ -928,6 +889,25 @@
     return parts.length === 0 ? String(path) : parts[parts.length - 1];
   }
 
+  // src/client/session.ts
+  function sessionWorkspace(ctx, sessionId) {
+    if (typeof sessionId !== "string" || sessionId === "") return "";
+    let catalog;
+    try {
+      catalog = ctx.get("sessions");
+    } catch {
+      return "";
+    }
+    if (catalog === void 0 || catalog === null) return "";
+    try {
+      const snapshot = catalog.list?.getSnapshot?.();
+      const row = snapshot?.byId?.[sessionId];
+      return row !== void 0 && typeof row.cwd === "string" ? row.cwd : "";
+    } catch {
+      return "";
+    }
+  }
+
   // src/client/trigger.ts
   function referenceOf(path, directory) {
     const text = String(path).replace(/\\/g, "/").replace(/\/+$/, "");
@@ -940,11 +920,11 @@
   function drillValue(label, path) {
     return JSON.stringify({ kind: "directory", label, mention: referenceOf(path, true) });
   }
+  var SOURCE_KEY = "related-projects";
   var TRIGGER = "@";
   var ORDER = -10;
   var CACHE_TTL_MS = 1e4;
-  function createTriggerSource(title, hint = () => "", t = (key) => key) {
-    const sourceName = title;
+  function createTriggerSource(hint = () => "", t = (key) => key) {
     const cache = /* @__PURE__ */ new Map();
     const load = async (sessionId) => {
       const hit = cache.get(sessionId);
@@ -1040,7 +1020,8 @@
     });
     return {
       trigger: TRIGGER,
-      name: sourceName,
+      name: SOURCE_KEY,
+      showGroupTitle: false,
       order: ORDER,
       async candidates(session, request) {
         let projects;
@@ -1060,6 +1041,7 @@
           name: project.name + "/",
           description: project.note === "" ? project.path : project.path + "  \xB7  " + project.note,
           icon: "folder",
+          section: t("panel.title"),
           drill: true,
           value: JSON.stringify({ kind: "project", label: project.name, mention: referenceOf(project.path, true) })
         }));
@@ -1113,7 +1095,7 @@
         }
         return {
           insert: {
-            source: sourceName,
+            source: SOURCE_KEY,
             ref: absolute,
             label: directory ? name + "/" : name,
             appearance: directory ? "folder" : "file",
@@ -1170,7 +1152,6 @@
         if (locale !== void 0 && locale !== null && typeof locale.register === "function") {
           ctx.effect(() => locale.register(NS, { zh: ZH, en: EN }), "related-projects: dictionaries");
         }
-        const groupTitle = translateLabel(ctx, "panel.title");
         const mountTrigger = (scoped) => {
           const triggers = scoped.get("inputTriggers");
           if (triggers === void 0 || triggers === null || typeof triggers.registerSource !== "function") {
@@ -1182,7 +1163,6 @@
             };
             try {
               dispose = triggers.registerSource(createTriggerSource(
-                groupTitle,
                 (sessionId) => sessionWorkspace(ctx, sessionId),
                 (key, values) => translate(ctx, key, values)
               ));
@@ -1205,8 +1185,12 @@
           name: "conversation.composer.dock",
           id: PANEL_ID,
           order: DOCK_ORDER,
-          label: () => translateLabel(ctx, "panel.title")
-        }, (props) => h(DockRow, { ...props, ctx }))), "related-projects: composer row");
+          locale: NS,
+          inject: (sessionId) => ({
+            dockStore: dockStoreFor(sessionId, (id) => sessionWorkspace(ctx, id)),
+            workspaceHint: (id) => sessionWorkspace(ctx, id)
+          })
+        }, (props) => h(DockRow, props))), "related-projects: composer row");
         ctx.effect(() => slots.inject("sidebar.panellist", () => slots.register({
           name: "sidebar.panellist",
           id: PANEL_ID,
@@ -1215,8 +1199,9 @@
         }, PanelIcon)), "related-projects: sidebar icon");
         ctx.effect(() => slots.inject("main", () => slots.register({
           name: "main",
-          key: PANEL_ID
-        }, (props) => h(Panel, { ...props, ctx }))), "related-projects: panel");
+          key: PANEL_ID,
+          locale: NS
+        }, (props) => h(Panel, props))), "related-projects: panel");
       }
     };
   }
