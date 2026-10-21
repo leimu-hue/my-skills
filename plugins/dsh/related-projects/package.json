@@ -1,6 +1,6 @@
 {
   "name": "@local/dsh-related-projects",
-  "version": "0.6.6",
+  "version": "0.6.7",
   "private": true,
   "type": "module",
   "description": "Per-workspace related projects: the agent knows which sibling projects a change touches, and the composer can insert their paths.",
