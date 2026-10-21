@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Related Projects",
+    "description": "Keeps a per-workspace list of related projects so the agent knows which sibling repositories a change touches, and can insert their paths into the composer."
+  }
+}
