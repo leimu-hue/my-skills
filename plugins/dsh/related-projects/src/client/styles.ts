@@ -61,7 +61,13 @@ export const CSS = `
 .rprj-toggle[aria-checked=true]{border-color:var(--dsw-alias-brand-primary)}
 .rprj-toggle-knob{position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:var(--dsw-alias-label-secondary);transition:left .15s ease,background .15s ease}
 .rprj-toggle[aria-checked=true] .rprj-toggle-knob{left:16px;background:var(--dsw-alias-brand-primary)}
-.rprj-confirm{display:inline-flex;gap:4px}
+.rprj-btn-delete:hover{background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 12%,transparent);border-color:color-mix(in srgb,var(--dsw-alias-state-error-primary) 45%,transparent);color:var(--dsw-alias-state-error-primary)}
+/* The armed delete strip: consequence, then the two answers, in one row that can
+   wrap on a narrow panel. A tinted border makes it read as a state, not a button. */
+.rprj-confirm{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;padding:4px 6px 4px 10px;border:1px solid color-mix(in srgb,var(--dsw-alias-state-error-primary) 45%,transparent);border-radius:8px;background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 9%,var(--dsw-alias-bg-layer-1));animation:rprj-confirm-in .12s ease-out}
+.rprj-confirm-text{font-size:12px;line-height:16px;color:var(--dsw-alias-label-primary);max-width:34ch}
+.rprj-confirm .rprj-btn{padding:2px 10px}
+@keyframes rprj-confirm-in{from{opacity:0;transform:translateY(-2px)}to{opacity:1;transform:none}}
 .rprj-ws-list{display:flex;flex-direction:column;gap:10px}
 .rprj-ws{border:1px solid var(--dsw-alias-border-l1);border-radius:10px;background:var(--dsw-alias-bg-layer-1);padding:8px 12px;display:flex;flex-direction:column;gap:8px;min-width:0}
 .rprj-ws-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;min-width:0}

@@ -21,8 +21,15 @@ export function Toggle(props: {
   }, h('span', { className: 'rprj-toggle-knob' }))
 }
 
-/** Two-step delete: an armed state is safer than a native confirm() and needs no
- * modal of our own. */
+/**
+ * Two-step delete, rendered IN the row.
+ *
+ * A native `window.confirm()` was the original shortcut; in the desktop shell it
+ * paints an OS dialog titled with the app id ("@deepseek-ai/dsh-desktop") that
+ * ignores the theme and looks nothing like the panel. This inline strip keeps the
+ * consequence visible next to the thing being deleted, and it cannot be dismissed
+ * into a state the user has to reason about: 6s of no answer disarms it again.
+ */
 export function ConfirmButton(props: {
   t: Translate
   title: string
@@ -35,30 +42,30 @@ export function ConfirmButton(props: {
   React.useEffect(() => {
     if (armed !== true) return undefined
     const timer = setTimeout(() => setArmed(false), 6000)
-    return () => clearTimeout(timer)
+    const onKey = (event: KeyboardEvent): void => { if (event.key === 'Escape') setArmed(false) }
+    window.addEventListener('keydown', onKey)
+    return () => {
+      clearTimeout(timer)
+      window.removeEventListener('keydown', onKey)
+    }
   }, [armed])
 
   if (armed === true) {
-    return h('span', { className: 'rprj-confirm' },
+    return h('span', { className: 'rprj-confirm', role: 'group' },
+      h('span', { className: 'rprj-confirm-text' }, props.confirmText),
       h('button', {
         type: 'button',
         className: 'rprj-btn rprj-btn-danger',
+        autoFocus: true,
         onClick: () => { setArmed(false); props.onConfirm() },
       }, props.t('panel.deleteYes')),
       h('button', { type: 'button', className: 'rprj-btn', onClick: () => setArmed(false) }, props.t('panel.cancel')))
   }
   return h('button', {
     type: 'button',
-    className: 'rprj-btn rprj-btn-quiet',
+    className: 'rprj-btn rprj-btn-quiet rprj-btn-delete',
     title: props.title,
-    onClick: () => {
-      if (typeof window === 'object' && typeof window.confirm === 'function') {
-        if (window.confirm(props.confirmText) !== true) return
-        props.onConfirm()
-        return
-      }
-      setArmed(true)
-    },
+    onClick: () => setArmed(true),
   }, props.children)
 }
 
