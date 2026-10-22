@@ -1,0 +1,69 @@
+{
+  "skill_name": "unit-integration-testing",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "帮我把这个 Java 项目里的 OrderCreateService 补上单元测试。项目是 Spring Boot 3.3 + JUnit 5 + Mockito + AssertJ，现在这个类只有 getOrderById 有一个 happy path 测试，其他方法都没测。上次改 createOrder 的一个分支把整条下单链路搞挂了，测试一个都没红。源码在 src/main/java/com/xp/order/create/OrderCreateService.java。",
+      "expected_output": "一个按方法维度组织的 OrderCreateServiceTest，内含 @Nested 分组（每个 public 方法一组），覆盖每个方法的分支两侧与异常出口，只 mock 边界依赖（repository / client），异常断言错误码而非消息，且实际运行 mvn test 验证通过",
+      "files": [],
+      "expectations": [
+        "测试类位于 src/test/java/com/xp/order/create 下（与生产代码同包）",
+        "使用 @Nested 为每个 public 方法（createOrder/getOrderById/cancelOrder）建立测试组",
+        "每个方法的正常路径与至少一个失败/异常分支都有测试",
+        "边界同时覆盖非法侧与合法侧（例如 quantity 既有 0/-1 也有 1）",
+        "只 mock 边界依赖（OrderRepository/StockClient/Clock），未 mock 被测类或值对象",
+        "异常断言校验了 ErrorCodes 错误码（非仅 assertThrows 或明文消息断言）",
+        "对 save 返回值做透传断言（stub 返回与入参不同的对象并断言 isSameAs），而非 thenAnswer 回传入参",
+        "报告了实际运行测试的命令与结果（或标注未执行+原因）",
+        "测试实际可编译并通过（mvn test 绿）"
+      ],
+      "mutation_gate": {
+        "runner": "unit-integration-testing-workspace/mutate.py",
+        "project_subdir": "order-service",
+        "min_mutation_score": 1.0,
+        "note": "23 个注入变异点全部必须被杀死；得分 < 1.0 视为测试有盲区"
+      }
+    },
+    {
+      "id": 2,
+      "prompt": "我们仓颉服务里的 payment_service.cj 一直没测试，现在接了个需求要改退款流程，我怕改坏。请按我们仓库惯例给它补齐单元测试，尤其是 refund 方法的各种失败情况。仓颉版本 1.2.0，用 cjpm。",
+      "expected_output": "在 src/payment/ 下生成 payment_service_test.cj，使用 @Test 类 + @TestCase，按方法维度（每个方法一个 @Test 类）组织，用 std.unittest.mock 的 mock/spy + @On 打桩覆盖 refund 的成功/失败分支，用 @AssertThrows / @PowerAssert 断言，并给出 cjpm test 的运行或未执行说明",
+      "files": [],
+      "expectations": [
+        "测试文件与被测源文件同目录同包，命名为 xxx_test.cj",
+        "按方法维度分组：每个生产方法一个 @Test 类，用例用 @TestCase 标记",
+        "使用 std.unittest.mock 的 mock<T>() / @On 打桩边界依赖，而非仅在测试里硬编码分支",
+        "使用了正确的仓颉断言宏（@Assert 或 @Expect，异常用 @AssertThrows/@ExpectThrows）",
+        "未使用 JUnit 风格的不存在宏（如 @Nested、@Disabled）",
+        "给出 cjpm test 的运行命令；无法执行时明确标注未执行及原因"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "帮我审一下 src/test/java 里的测试，我总觉得测了但没安全感。尤其 OrderFlowIT 和 OrderCreateServiceTest，最近重构一次挂了十几个。",
+      "expected_output": "按审查表逐条指出具体问题（多无关断言、过度 verify、mock 了被测对象/值对象、断言内部状态、Thread.sleep、测试间共享状态、集成测试用 H2、只断言非空等），并给出针对每条的最小修改建议；不应只是泛泛而谈「测试要写好」",
+      "files": [],
+      "expectations": [
+        "指出具体的文件名与方法名，而非泛泛评论",
+        "至少识别出「断言内部实现/过度 verify 导致重构即红」这类问题",
+        "检查集成测试是否使用真实数据库（Testcontainers）而非 H2",
+        "检查是否存在共享可变状态或执行顺序依赖导致「一挂全挂」",
+        "给出可执行的最小修改建议（改哪一行、换成什么断言）",
+        "补测优先级聚焦改动过/出过 bug 的方法，而非追求历史覆盖率"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "订单服务加个 cancelOrder 方法：参数 orderId，状态为 PENDING_PAYMENT 才能取消，取消要调 stockClient.release 释放库存，已支付订单抛 BusinessException(ORDER_ALREADY_PAID)。写完直接交付。",
+      "expected_output": "实现 cancelOrder 的同时按技能要求同步产出对应测试（@Nested CancelOrder 组，覆盖可取消、已支付异常、库存释放调用三个场景），并运行测试给出结果；说明测试与代码的关系，而不是只交实现",
+      "files": [],
+      "expectations": [
+        "产出实现的同时产出了对应的单元测试（未等待用户再次要求）",
+        "测试覆盖：可取消成功路径、已支付抛异常分支、库存释放被调用",
+        "异常测试断言了 ORDER_ALREADY_PAID 错误码",
+        "测试组织符合方法维度分组（@Nested CancelOrder）",
+        "交付时报告了测试运行结果或未执行原因"
+      ]
+    }
+  ]
+}
