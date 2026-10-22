@@ -94,7 +94,7 @@ package payment_service.payment
 
 这与「按功能归档」天然一致：一个功能目录里源码和测试并排，`src/order/` 下全是下单相关的代码。不要另建 `test/` 镜像树——仓颉按包组织源码，镜像树会丢掉对 `internal` 成员的访问权。
 
-同目录的 `_test.cj` 访问不到源码里的 `private`（`private` 是文件级可见）。这是好事：它物理上禁止「直接测私有方法」，与主技能的要求一致，不要为了测试把 `private` 改成 `internal`。
+同目录的 `_test.cj` 访问不到源码里的 `private`（`private` 是文件级可见）。这是好事：它物理上禁止「直接测私有方法」，与 SKILL.md 的要求一致，不要为了测试把 `private` 改成 `internal`。
 
 ## 单元测试：一个方法一个测试类
 
@@ -199,7 +199,7 @@ func createOrder_quantityBoundary(): Unit {
 
 要保留 `@Expect(a, b)` 的可读性，就在生产代码里为需要的类型扩展 `Equatable<T>`（并实现 `==`），不要只为了测试能编译而随意改业务类型——先看项目里是否已有统一做法。
 
-选择原则与主技能一致：一个用例只验证一个失败原因。同一用例内多条**同质**检查（同一方法的多组边界输入）用 `@Expect` 更省时间；跨场景的检查拆成不同 `@TestCase`。
+选择原则与 SKILL.md 一致：一个用例只验证一个失败原因。同一用例内多条**同质**检查（同一方法的多组边界输入）用 `@Expect` 更省时间；跨场景的检查拆成不同 `@TestCase`。
 
 ## mock / spy
 
@@ -260,7 +260,7 @@ Verify.that(stmt)
 | `returnsConsecutively` | `times(values.size)` |
 | `fails` | 不可调用 |
 
-所以「多余的 stub」在仓颉里会直接变成红测，不需要额外告警——这正是主技能要求「只打必要的桩」的天然执行机制。确实可能不被调用的可选交互，显式加 `.anyTimes()`。其他可用的基数说明符：`once()` / `atLeastOnce()` / `times(n)` / `times(min:, max:)` / `atLeastTimes(n)`。
+所以「多余的 stub」在仓颉里会直接变成红测，不需要额外告警——这正好对应 SKILL.md 要求的「只打必要的桩」。确实可能不被调用的可选交互，显式加 `.anyTimes()`。其他可用的基数说明符：`once()` / `atLeastOnce()` / `times(n)` / `times(min:, max:)` / `atLeastTimes(n)`。
 
 参数匹配器：`_`（= `any()`）、常量字面量、单个标识符（按结构相等匹配）、`ofType<T>()`、`none()`、`argThat({arg => ...})`。
 

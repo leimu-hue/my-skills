@@ -62,7 +62,6 @@ license: MIT
 | `./references/coding-standards.md` | 格式、注释、Lombok、record、集合、Optional |
 | `./references/exception-logging.md` | 异常分类、ErrorCodes、i18n、日志级别与写法（全局异常处理的权威定义） |
 | `./references/security.md` | 参数校验、SQL 注入、XSS、CSRF、敏感数据 |
-| `unit-integration-testing` skill | 测试组织、模板与 Java/仓颉测试 API（测试规范已从本技能拆出） |
 | `./references/database.md` | 表设计、索引、SQL、分页、事务、批量操作、连接池 |
 | `./references/concurrency.md` | 线程池、共享状态、锁、ThreadLocal、异步任务 |
 | `./references/design.md` | 分层架构、设计模式、API 设计、配置管理、DDD（全局异常处理仅列方案选型，实现见 `exception-logging.md`） |
