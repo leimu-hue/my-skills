@@ -9,7 +9,7 @@
 - `skills/`：已实现的 Skill 示例（也是同步工具的本地技能目录）
 - `sync-skills.mjs`：技能拉取 + 软连接同步脚本
 - `skills.config.json`：同步工具配置文件
-- `references/`：技能相关的参考文档
+- `references/`：技能相关的参考文档（如 `lumix-lab-apk-analysis/`：LUMIX Lab APK 架构逆向分析）
 
 ## 当前 Skill 列表
 

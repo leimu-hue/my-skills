@@ -1,0 +1,1786 @@
+{
+  "meta": {
+    "target": "Panasonic LUMIX Lab 3.1.0 (com.panasonic.jp.lumixlab)",
+    "apk_sha256": "262335c3032c82fc966812e84803551cffd215d5125fc334fffa221e5be91824",
+    "versionCode": 22,
+    "versionName": "3.1.0",
+    "minSdk": 30,
+    "targetSdk": 35,
+    "generated_by": "REA static analysis + JADX 1.5.1",
+    "note": "所有条目来自 APK 静态观测；未执行 APK。字段名/顺序以反编译为准。"
+  },
+  "ble": {
+    "advertised_service_uuid": "054ac620-3214-11e6-ac0d-0002a5d5c51b",
+    "data_service_uuid": "1fe71b85-8344-4e6a-bf1a-ac7acdb3f8af",
+    "scan_mode": "SCAN_MODE_LOW_LATENCY(1) ; MATCH_MODE_AGGRESSIVE(2)",
+    "characteristics": [
+      {
+        "uuid": "42d509f7-f122-4816-92d1-5e402d9453cb",
+        "name": "WIFI_PASSWORD"
+      },
+      {
+        "uuid": "239c7203-922f-43e9-bdf1-6d1fedf6f43f",
+        "name": "INITIAL_INFORM"
+      },
+      {
+        "uuid": "ed8b1352-5aa7-4155-b7c9-521292dd1932",
+        "name": "APP_INFO"
+      },
+      {
+        "uuid": "05a797b6-9c2f-4d18-99a7-fa61a3880bfe",
+        "name": "FRIENDLY_NAME"
+      },
+      {
+        "uuid": "657edba2-5bc8-42dd-974f-21871d7dbcd1",
+        "name": "WIFI_SSID"
+      },
+      {
+        "uuid": "bff12e7f-5944-4eb6-a90f-48d8786157ea",
+        "name": "APP_UUID"
+      },
+      {
+        "uuid": "7644371c-1ddc-4b16-832f-f07c322e311b",
+        "name": "ACTION_MODE"
+      },
+      {
+        "uuid": "dcba3a74-80bc-4919-8ef4-0c9f99cc20dd",
+        "name": "AP_STATE"
+      },
+      {
+        "uuid": "6c875728-7636-425e-818a-f1d93a39e075",
+        "name": "ACTION_MODE_RESULT"
+      },
+      {
+        "uuid": "09b2bddf-452b-48e8-96de-92954f48c21b",
+        "name": "AUTO_TRANSFER_START_CMD"
+      },
+      {
+        "uuid": "52f8c131-dd62-4e34-9283-3086db261fad",
+        "name": "AUTO_TRANSFER_START_NOTIFY"
+      },
+      {
+        "uuid": "30185b4a-f18f-44c1-9b19-1bf787956185",
+        "name": "AUTO_TRANSFER_OBJ"
+      },
+      {
+        "uuid": "d6bbd828-eb91-4b00-acfc-b2c5821ff0f7",
+        "name": "SD_CARD_SLOTS_INFO"
+      },
+      {
+        "uuid": "ca1b02cb-0cdd-42fb-aba4-a4212e019ffb",
+        "name": "SD_CARD_REMOVED_NOTIFY"
+      },
+      {
+        "uuid": "565b4253-8bac-46ae-8c5d-ec6f94fc8714",
+        "name": "GPS_INFORMATION"
+      },
+      {
+        "uuid": "437e6512-321a-4a94-9281-fab1bff49a91",
+        "name": "GPS_ACTION_NOTIFICATION"
+      },
+      {
+        "uuid": "c289b6a4-b9ee-49ab-ab06-7099bb5edaa8",
+        "name": "GPS_ACTION_START_CMD"
+      },
+      {
+        "uuid": "39a02c41-c6e3-4b73-a3ea-537f23f0085a",
+        "name": "TIME_INFORMATION"
+      },
+      {
+        "uuid": "289270d6-c07d-46de-bf70-70f5120234d1",
+        "name": "TIME_ACTION_NOTIFICATION"
+      },
+      {
+        "uuid": "c623f9bd-beae-443b-b5e6-af4652b81343",
+        "name": "CAMERA_MODEL_NAME"
+      },
+      {
+        "uuid": "d2a2a363-16a4-43df-89f4-7817be9f0cde",
+        "name": "CAMERA_FM_VERSION"
+      },
+      {
+        "uuid": "f665a6cb-aac8-4c58-9601-3534a72f47c1",
+        "name": "CAMERA_SERIAL_NUMBER"
+      },
+      {
+        "uuid": "e416bfbd-2716-4976-be32-1bc28c5b6192",
+        "name": "LENS_NAME"
+      },
+      {
+        "uuid": "799b5d87-e680-4ddf-bfd7-7b075830aff3",
+        "name": "LENS_FM_VERSION"
+      },
+      {
+        "uuid": "d4684037-9580-47e1-98c5-f9d766197e1c",
+        "name": "LENS_SERIAL_NUMBER"
+      },
+      {
+        "uuid": "16726c35-52ef-4d00-868d-099549a90d9b",
+        "name": "CAMERA_OPERATE_NOTIFICATION"
+      },
+      {
+        "uuid": "e92bd99a-723a-092c-fbc3-bc09b9eb5985",
+        "name": "HTTPS_CA_CONTENTS"
+      },
+      {
+        "uuid": "419010c2-3a85-47d6-9e71-a1ea58ced881",
+        "name": "READ_WIFI_FREQUENCY_BAND"
+      },
+      {
+        "uuid": "e1e91dde-ad9b-4887-9cee-07a8284bdc16",
+        "name": "SET_WIFI_FREQUENCY_BAND"
+      },
+      {
+        "uuid": "e08508ea-b4f8-4a22-8025-b1f22748e8e4",
+        "name": "CAMERA_DESTINATION"
+      },
+      {
+        "uuid": "b2c2c10e-2702-4f75-9c0e-d676dd249b20",
+        "name": "CAMERA_DESTINATION_SUB"
+      },
+      {
+        "uuid": "1be8a9e3-178b-46c4-b6b3-43d4a5311fc1",
+        "name": "CER_FINGER_PRINT"
+      },
+      {
+        "uuid": "79780bf7-897e-4a4f-a4f2-ae51fa3fa51b",
+        "name": "AUTO_TRANSFER_GET_SETTING"
+      },
+      {
+        "uuid": "21bd7079-2f9a-40ac-91fd-89871a4ac364",
+        "name": "SHUTTER_ACTION_RESULT"
+      },
+      {
+        "uuid": "0b29969b-a89a-4636-8e63-575d416663d6",
+        "name": "IMAGE_TRANSFER_NOTIFICATION"
+      },
+      {
+        "uuid": "72ef8930-887b-47b2-bab0-a2cbbd657300",
+        "name": "IMAGE_TRANSFER_ACTION"
+      },
+      {
+        "uuid": "56e01cb5-9941-448c-a84f-671c7cf847b8",
+        "name": "READ_FUNCTION_LEVEL"
+      },
+      {
+        "uuid": "943cc5aa-4abd-4b59-98f3-ce43f9e10a24",
+        "name": "CAMERA_INFO"
+      },
+      {
+        "uuid": "12be9f0b-1417-4b9b-85c7-87932213db4e",
+        "name": "GET_QUALITY"
+      },
+      {
+        "uuid": "ad390b65-5607-4c01-9a9f-73e9006f9635",
+        "name": "CURRENT_SSID"
+      },
+      {
+        "uuid": "702cc3cf-92b2-476c-ae3c-ee9bb9d9aeee",
+        "name": "CONNECTED_SSID_BLOCK"
+      },
+      {
+        "uuid": "46fd7afd-e068-4223-9474-062bb373007d",
+        "name": "SSID_BLOCK"
+      },
+      {
+        "uuid": "1641e3dc-b07e-4028-b5dc-d09e591b576a",
+        "name": "SSID"
+      },
+      {
+        "uuid": "3a42969f-2c83-4a1f-a140-b8f4d08e6062",
+        "name": "AP_PASSWORD_APS"
+      },
+      {
+        "uuid": "3ee36c7f-0e48-4c47-8446-04b103b771c5",
+        "name": "SET_QUALITY"
+      },
+      {
+        "uuid": "5c565e17-8fba-4aec-b863-32b9b318bfbd",
+        "name": "SERVER_URL"
+      },
+      {
+        "uuid": "ed38e89c-0a0c-4e0b-a3f5-ee0ef2e7fb68",
+        "name": "LIVE_STREAMING_ACTION"
+      },
+      {
+        "uuid": "e3285094-b091-4883-8885-93ba7e621136",
+        "name": "LIVE_STREAMING_ACTION_RESULT"
+      }
+    ]
+  },
+  "camera_rest": {
+    "base_url": "https://192.168.54.1/",
+    "auth": "POST /auth {AppInfo,Uuid,FriendlyName} -> Data.AuthToken ; 之后 Authorization: Bearer <token>",
+    "endpoints": [
+      {
+        "path": "(url)",
+        "verb": "GET",
+        "auth": "none",
+        "streaming": false
+      },
+      {
+        "path": "app_version.json",
+        "verb": "GET",
+        "auth": "none",
+        "streaming": false
+      },
+      {
+        "path": "auth",
+        "verb": "POST",
+        "auth": "none",
+        "streaming": false
+      },
+      {
+        "path": "auto-transfer/get-content-info",
+        "verb": "POST",
+        "auth": "Bearer",
+        "streaming": false
+      },
+      {
+        "path": "community/creator",
+        "verb": "POST",
+        "auth": "none",
+        "streaming": false
+      },
+      {
+        "path": "community/creators",
+        "verb": "POST",
+        "auth": "none",
+        "streaming": false
+      },
+      {
+        "path": "community/creators/countries",
+        "verb": "POST",
+        "auth": "none",
+        "streaming": false
+      },
+      {
+        "path": "community/genres",
+        "verb": "POST",
+        "auth": "none",
+        "streaming": false
+      },
+      {
+        "path": "community/lut",
+        "verb": "POST",
+        "auth": "none",
+        "streaming": false
+      },
+      {
+        "path": "community/luts/download",
+        "verb": "POST",
+        "auth": "none",
+        "streaming": true
+      },
+      {
+        "path": "community/luts/filter",
+        "verb": "POST",
+        "auth": "none",
+        "streaming": false
+      },
+      {
+        "path": "community/luts/top",
+        "verb": "POST",
+        "auth": "none",
+        "streaming": false
+      },
+      {
+        "path": "firmware_list.json",
+        "verb": "GET",
+        "auth": "none",
+        "streaming": false
+      },
+      {
+        "path": "firmware/abort-send",
+        "verb": "POST",
+        "auth": "Bearer",
+        "streaming": false
+      },
+      {
+        "path": "firmware/send",
+        "verb": "POST",
+        "auth": "Bearer",
+        "streaming": false
+      },
+      {
+        "path": "firmware/send-prepare",
+        "verb": "POST",
+        "auth": "Bearer",
+        "streaming": false
+      },
+      {
+        "path": "lut/abort-send",
+        "verb": "POST",
+        "auth": "Bearer",
+        "streaming": false
+      },
+      {
+        "path": "lut/delete",
+        "verb": "POST",
+        "auth": "Bearer",
+        "streaming": false
+      },
+      {
+        "path": "lut/file",
+        "verb": "POST",
+        "auth": "Bearer",
+        "streaming": false
+      },
+      {
+        "path": "lut/info",
+        "verb": "POST",
+        "auth": "Bearer",
+        "streaming": false
+      },
+      {
+        "path": "lut/rearrange",
+        "verb": "POST",
+        "auth": "Bearer",
+        "streaming": false
+      },
+      {
+        "path": "lut/rename",
+        "verb": "POST",
+        "auth": "Bearer",
+        "streaming": false
+      },
+      {
+        "path": "lut/send",
+        "verb": "POST",
+        "auth": "Bearer",
+        "streaming": false
+      },
+      {
+        "path": "lut/send-prepare",
+        "verb": "POST",
+        "auth": "Bearer",
+        "streaming": false
+      },
+      {
+        "path": "lut/set-display-setting",
+        "verb": "POST",
+        "auth": "Bearer",
+        "streaming": false
+      },
+      {
+        "path": "media/burst/info",
+        "verb": "POST",
+        "auth": "Bearer",
+        "streaming": false
+      },
+      {
+        "path": "media/gallery/count",
+        "verb": "POST",
+        "auth": "Bearer",
+        "streaming": false
+      },
+      {
+        "path": "media/gallery/current-sd",
+        "verb": "POST",
+        "auth": "Bearer",
+        "streaming": false
+      },
+      {
+        "path": "media/gallery/info",
+        "verb": "POST",
+        "auth": "Bearer",
+        "streaming": false
+      },
+      {
+        "path": "media/gallery/thumbnail",
+        "verb": "POST",
+        "auth": "Bearer",
+        "streaming": true
+      },
+      {
+        "path": "media/image",
+        "verb": "POST",
+        "auth": "Bearer",
+        "streaming": true
+      },
+      {
+        "path": "media/transfer/count",
+        "verb": "POST",
+        "auth": "Bearer",
+        "streaming": false
+      },
+      {
+        "path": "media/transfer/info",
+        "verb": "POST",
+        "auth": "Bearer",
+        "streaming": false
+      },
+      {
+        "path": "media/transfer/notify",
+        "verb": "POST",
+        "auth": "Bearer",
+        "streaming": false
+      },
+      {
+        "path": "photostyle/change",
+        "verb": "POST",
+        "auth": "Bearer",
+        "streaming": false
+      },
+      {
+        "path": "photostyle/get-display-setting",
+        "verb": "POST",
+        "auth": "Bearer",
+        "streaming": false
+      },
+      {
+        "path": "photostyle/get-myphotostyle-setting",
+        "verb": "POST",
+        "auth": "Bearer",
+        "streaming": false
+      },
+      {
+        "path": "photostyle/get-setting",
+        "verb": "POST",
+        "auth": "Bearer",
+        "streaming": false
+      },
+      {
+        "path": "photostyle/load-preset-setting",
+        "verb": "POST",
+        "auth": "Bearer",
+        "streaming": false
+      },
+      {
+        "path": "photostyle/rearrange",
+        "verb": "POST",
+        "auth": "Bearer",
+        "streaming": false
+      },
+      {
+        "path": "photostyle/rename",
+        "verb": "POST",
+        "auth": "Bearer",
+        "streaming": false
+      },
+      {
+        "path": "photostyle/restore-to-default",
+        "verb": "POST",
+        "auth": "Bearer",
+        "streaming": false
+      },
+      {
+        "path": "photostyle/save-current-setting",
+        "verb": "POST",
+        "auth": "Bearer",
+        "streaming": false
+      },
+      {
+        "path": "photostyle/set-display-setting",
+        "verb": "POST",
+        "auth": "Bearer",
+        "streaming": false
+      },
+      {
+        "path": "photostyle/set-myphotostyle-setting",
+        "verb": "POST",
+        "auth": "Bearer",
+        "streaming": false
+      },
+      {
+        "path": "photostyle/start-stream",
+        "verb": "POST",
+        "auth": "Bearer",
+        "streaming": false
+      },
+      {
+        "path": "remote/camcmd",
+        "verb": "POST",
+        "auth": "Bearer",
+        "streaming": false
+      },
+      {
+        "path": "remote/camctrl",
+        "verb": "POST",
+        "auth": "Bearer",
+        "streaming": false
+      },
+      {
+        "path": "remote/get-lvport",
+        "verb": "POST",
+        "auth": "Bearer",
+        "streaming": false
+      },
+      {
+        "path": "remote/get-setting",
+        "verb": "POST",
+        "auth": "Bearer",
+        "streaming": false
+      },
+      {
+        "path": "remote/get-state",
+        "verb": "POST",
+        "auth": "Bearer",
+        "streaming": false
+      },
+      {
+        "path": "remote/set-setting",
+        "verb": "POST",
+        "auth": "Bearer",
+        "streaming": false
+      },
+      {
+        "path": "remote/start-stream",
+        "verb": "POST",
+        "auth": "Bearer",
+        "streaming": false
+      },
+      {
+        "path": "remote/stop-stream",
+        "verb": "POST",
+        "auth": "Bearer",
+        "streaming": false
+      }
+    ]
+  },
+  "cloud_rest": {
+    "base_url": "https://lumix-base.jpn.panasonic.com/lutapi/v2/",
+    "headers": [
+      "Authorization: Basic base64(':')",
+      "lutapp-api-key: 111"
+    ],
+    "note": "社区 LUT 公共 API；不应在客户端硬编码凭据"
+  },
+  "support_rest": {
+    "base_url": "https://panasonic.jp/support/share/eww/com/software/lumix_lab/",
+    "headers": [
+      "Authorization: Basic base64('sub-avcweb:1qaz')"
+    ]
+  },
+  "remote_commands": [
+    {
+      "field": "unknow",
+      "wire": "unknow"
+    },
+    {
+      "field": "photostyle",
+      "wire": "photostyle"
+    },
+    {
+      "field": "basePhotostyle",
+      "wire": "base_photostyle"
+    },
+    {
+      "field": "quality",
+      "wire": "quality"
+    },
+    {
+      "field": "videoquality",
+      "wire": "videoquality"
+    },
+    {
+      "field": "aspectratio",
+      "wire": "aspectratio"
+    },
+    {
+      "field": "drivemode",
+      "wire": "drivemode"
+    },
+    {
+      "field": "selftimer",
+      "wire": "selftimer"
+    },
+    {
+      "field": "setting",
+      "wire": "setting"
+    },
+    {
+      "field": "exposure",
+      "wire": "exposure"
+    },
+    {
+      "field": "shtrspeed",
+      "wire": "shtrspeed"
+    },
+    {
+      "field": "focal",
+      "wire": "focal"
+    },
+    {
+      "field": "iso",
+      "wire": "iso"
+    },
+    {
+      "field": "sensitivityDb",
+      "wire": "sensitivity_db"
+    },
+    {
+      "field": "whitebalance",
+      "wire": "whitebalance"
+    },
+    {
+      "field": "recmode2",
+      "wire": "recmode2"
+    },
+    {
+      "field": "recmode2C3CustomMode",
+      "wire": "recmode2C3CustomMode"
+    },
+    {
+      "field": "recmode2C4CustomMode",
+      "wire": "recmode2C4CustomMode"
+    },
+    {
+      "field": "recmode2C4AnimationExposure",
+      "wire": "recmode2C4AnimationExposure"
+    },
+    {
+      "field": "lightmetering",
+      "wire": "lightmetering"
+    },
+    {
+      "field": "liveviewsize",
+      "wire": "liveviewsize"
+    },
+    {
+      "field": "focusmode",
+      "wire": "focusmode"
+    },
+    {
+      "field": "pictureFormat",
+      "wire": "pictureformat"
+    },
+    {
+      "field": "jpegHeif",
+      "wire": "jpeg_heif"
+    },
+    {
+      "field": "jpegHeifQuality",
+      "wire": "jpeg_heif_quality"
+    },
+    {
+      "field": "recmode1",
+      "wire": "recmode1"
+    },
+    {
+      "field": "realtimelut",
+      "wire": "realtimelut"
+    },
+    {
+      "field": "operatepriority",
+      "wire": "operatepriority"
+    },
+    {
+      "field": "videoformat",
+      "wire": "videoformat"
+    },
+    {
+      "field": "videoqualityModelsAfterMc501",
+      "wire": "videoqualityModelsAfterMc501"
+    },
+    {
+      "field": "shtrspeedSyncro",
+      "wire": "shtrspeedSyncro"
+    },
+    {
+      "field": "shtrspeedAngle",
+      "wire": "shtrspeed_angle"
+    },
+    {
+      "field": "autoTransImage",
+      "wire": "autoTransImage"
+    },
+    {
+      "field": "camctrl",
+      "wire": "camctrl"
+    },
+    {
+      "field": "capture",
+      "wire": "capture"
+    },
+    {
+      "field": "captureCancel",
+      "wire": "capture_cancel"
+    },
+    {
+      "field": "videoRecstart",
+      "wire": "video_recstart"
+    },
+    {
+      "field": "videoRecstop",
+      "wire": "video_recstop"
+    },
+    {
+      "field": "touchafrelease",
+      "wire": "touchafrelease"
+    },
+    {
+      "field": "recAndPlayMode",
+      "wire": "recAndPlayMode"
+    },
+    {
+      "field": "lcdOn",
+      "wire": "lcdOn"
+    },
+    {
+      "field": "programShift",
+      "wire": "program_shift"
+    },
+    {
+      "field": "startStream",
+      "wire": "startStream"
+    },
+    {
+      "field": "stopStream",
+      "wire": "stopStream"
+    },
+    {
+      "field": "cropzoom",
+      "wire": "crop_zoom"
+    },
+    {
+      "field": "finish",
+      "wire": "finish"
+    }
+  ],
+  "capability_keys": [
+    "base_photostyle",
+    "crop_zoom",
+    "Result",
+    "exposure",
+    "shtrspeed",
+    "focal",
+    "iso",
+    "whitebalance",
+    "recmode1",
+    "recmode2",
+    "photostyle",
+    "focusmode",
+    "quality",
+    "aspectratio",
+    "drivemode",
+    "selftimer",
+    "lightmetering",
+    "liveviewsize",
+    "realtimelut",
+    "operatepriority",
+    "videoformat",
+    "videoquality",
+    "sensitivity_db",
+    "shtrspeed_syncro",
+    "shtrspeed_angle",
+    "pictureformat",
+    "jpeg_heif",
+    "jpeg_heif_quality"
+  ],
+  "liveview_header": [
+    {
+      "group": "base",
+      "fields": [
+        [
+          "totalsize",
+          2
+        ],
+        [
+          "version",
+          2
+        ],
+        [
+          "seqno",
+          4
+        ],
+        [
+          "dataflag",
+          1
+        ],
+        [
+          "srcid",
+          6
+        ],
+        [
+          "srcsubid",
+          1
+        ],
+        [
+          "datatype",
+          1
+        ],
+        [
+          "reserve1",
+          1
+        ],
+        [
+          "pts",
+          4
+        ],
+        [
+          "totaldatasize",
+          4
+        ],
+        [
+          "dataoffset",
+          4
+        ],
+        [
+          "exheadersize",
+          2
+        ],
+        [
+          "exheadertype",
+          2
+        ]
+      ]
+    },
+    {
+      "group": "zoom",
+      "fields": [
+        [
+          "crntzoomval",
+          2
+        ],
+        [
+          "crntzoompos",
+          1
+        ],
+        [
+          "zoommaxchgcount",
+          1
+        ],
+        [
+          "opticalzoommaxpos",
+          1
+        ],
+        [
+          "exzoommaxpos",
+          1
+        ],
+        [
+          "iazoommaxpos",
+          1
+        ],
+        [
+          "digitalzoommaxpos",
+          1
+        ],
+        [
+          "rotation",
+          1
+        ]
+      ]
+    },
+    {
+      "group": "camera",
+      "fields": [
+        [
+          "camstatus",
+          1
+        ],
+        [
+          "recmode",
+          1
+        ],
+        [
+          "exflag",
+          1
+        ],
+        [
+          "exflag2",
+          1
+        ],
+        [
+          "numfocusframe",
+          1
+        ],
+        [
+          "Av_max_1",
+          2
+        ],
+        [
+          "Av_max_2",
+          2
+        ],
+        [
+          "Av_min_1",
+          2
+        ],
+        [
+          "Av_min_2",
+          2
+        ],
+        [
+          "Av_current_1",
+          2
+        ],
+        [
+          "Av_current_2",
+          2
+        ],
+        [
+          "Tv_max_1",
+          2
+        ],
+        [
+          "Tv_max_2",
+          2
+        ],
+        [
+          "Tv_min_1",
+          2
+        ],
+        [
+          "Tv_min_2",
+          2
+        ],
+        [
+          "Tv_current_1",
+          2
+        ],
+        [
+          "Tv_current_2",
+          2
+        ],
+        [
+          "Sv_max_1",
+          2
+        ],
+        [
+          "Sv_max_2",
+          2
+        ],
+        [
+          "Sv_min_1",
+          2
+        ],
+        [
+          "Sv_min_2",
+          2
+        ],
+        [
+          "Sv_current_1",
+          2
+        ],
+        [
+          "Sv_current_2",
+          2
+        ],
+        [
+          "currentexposure",
+          1
+        ],
+        [
+          "crntfocaldist",
+          2
+        ],
+        [
+          "crntEXzoom",
+          2
+        ],
+        [
+          "numIconCont",
+          1
+        ],
+        [
+          "processingstate",
+          1
+        ],
+        [
+          "assist_ID",
+          2
+        ],
+        [
+          "touch_AE_button",
+          1
+        ],
+        [
+          "Shut_state",
+          1
+        ],
+        [
+          "noise_reduction_time",
+          2
+        ],
+        [
+          "exflag3_vh",
+          1
+        ],
+        [
+          "exflag3",
+          1
+        ],
+        [
+          "buff_size",
+          2
+        ],
+        [
+          "touchaf_button",
+          1
+        ],
+        [
+          "interval_state",
+          1
+        ],
+        [
+          "lens_mount",
+          1
+        ],
+        [
+          "reserve0C",
+          14
+        ],
+        [
+          "numSettingValue",
+          1
+        ],
+        [
+          "numIconCont2",
+          1
+        ],
+        [
+          "numPhotoStyleCont",
+          1
+        ]
+      ]
+    },
+    {
+      "group": "focus_frame[]",
+      "fields": [
+        [
+          "focusframeleft",
+          2
+        ],
+        [
+          "focusframetop",
+          2
+        ],
+        [
+          "focusframeright",
+          2
+        ],
+        [
+          "focusframebottom",
+          2
+        ],
+        [
+          "focusframecolor_r",
+          1
+        ],
+        [
+          "focusframecolor_g",
+          1
+        ],
+        [
+          "focusframecolor_b",
+          1
+        ],
+        [
+          "focusframeshape",
+          1
+        ],
+        [
+          "focustriangledisp",
+          1
+        ],
+        [
+          "focal_length",
+          1
+        ],
+        [
+          "focasframe_transparency",
+          1
+        ],
+        [
+          "focus_reserve",
+          1
+        ]
+      ]
+    },
+    {
+      "group": "status_icon[]",
+      "fields": [
+        [
+          "sdIcon1",
+          1
+        ],
+        [
+          "sdIcon2",
+          1
+        ],
+        [
+          "sdIcon",
+          1
+        ],
+        [
+          "shootNum",
+          4
+        ],
+        [
+          "shootTime",
+          4
+        ],
+        [
+          "battery",
+          1
+        ],
+        [
+          "batteryBase",
+          1
+        ],
+        [
+          "batteryBackgroud",
+          1
+        ],
+        [
+          "shootingIcon",
+          1
+        ]
+      ]
+    },
+    {
+      "group": "status_icon2[]",
+      "fields": [
+        [
+          "sdArrow",
+          1
+        ],
+        [
+          "batteryGrip",
+          1
+        ],
+        [
+          "batteryWink",
+          1
+        ],
+        [
+          "usbPower",
+          1
+        ],
+        [
+          "batteryBaseWink",
+          1
+        ],
+        [
+          "batteryBGWink",
+          1
+        ]
+      ]
+    },
+    {
+      "group": "setting[]",
+      "fields": [
+        [
+          "exposure",
+          2
+        ],
+        [
+          "ss_angle",
+          2
+        ],
+        [
+          "iso",
+          4
+        ],
+        [
+          "db",
+          2
+        ],
+        [
+          "whitebalance",
+          2
+        ],
+        [
+          "recmode1",
+          2
+        ],
+        [
+          "recmode2",
+          2
+        ],
+        [
+          "recmode2value2",
+          2
+        ],
+        [
+          "photostyle",
+          2
+        ],
+        [
+          "focusmode",
+          2
+        ],
+        [
+          "quality",
+          2
+        ],
+        [
+          "videoformat",
+          2
+        ],
+        [
+          "videoquality",
+          2
+        ],
+        [
+          "aspectratio",
+          2
+        ],
+        [
+          "drivemode",
+          2
+        ],
+        [
+          "selftimer",
+          2
+        ],
+        [
+          "lightmetering",
+          2
+        ],
+        [
+          "liveviewsize",
+          1
+        ],
+        [
+          "realtimelut",
+          1
+        ],
+        [
+          "operatepriority",
+          1
+        ],
+        [
+          "selftimercustom",
+          1
+        ],
+        [
+          "afmode",
+          2
+        ],
+        [
+          "burst1speed",
+          2
+        ],
+        [
+          "burst2speed",
+          2
+        ],
+        [
+          "intervalMotionState",
+          2
+        ],
+        [
+          "sqFPS",
+          2
+        ],
+        [
+          "dualNativeIso",
+          2
+        ],
+        [
+          "hrsMode",
+          2
+        ],
+        [
+          "photoFormat",
+          2
+        ],
+        [
+          "jpegAndHeifMode",
+          2
+        ],
+        [
+          "jpegAndHeifQuality",
+          2
+        ],
+        [
+          "exposureAssist",
+          2
+        ],
+        [
+          "selftimerCountDown",
+          2
+        ],
+        [
+          "shtrspeedCanSet",
+          1
+        ],
+        [
+          "focalCanSet",
+          1
+        ],
+        [
+          "programShift",
+          1
+        ],
+        [
+          "customModeDetailInfo",
+          2
+        ],
+        [
+          "HDMIRAWflag",
+          2
+        ],
+        [
+          "EVStep",
+          2
+        ],
+        [
+          "focusStacking",
+          1
+        ],
+        [
+          "cropZoomFlag",
+          1
+        ]
+      ]
+    },
+    {
+      "group": "photostyle[]",
+      "fields": [
+        [
+          "photostyle",
+          2
+        ],
+        [
+          "base_photostyle",
+          2
+        ],
+        [
+          "contrast",
+          2
+        ],
+        [
+          "highlight",
+          2
+        ],
+        [
+          "shadow",
+          2
+        ],
+        [
+          "saturation",
+          2
+        ],
+        [
+          "color_tone",
+          2
+        ],
+        [
+          "hue",
+          2
+        ],
+        [
+          "filter_effect",
+          2
+        ],
+        [
+          "grain_effect",
+          2
+        ],
+        [
+          "color_noise",
+          2
+        ],
+        [
+          "sharpness",
+          2
+        ],
+        [
+          "noise_reduction",
+          2
+        ],
+        [
+          "dual",
+          2
+        ],
+        [
+          "iso",
+          4
+        ],
+        [
+          "sensitivity_db",
+          2
+        ],
+        [
+          "whitebalance",
+          2
+        ],
+        [
+          "lut1",
+          1
+        ],
+        [
+          "lut1_opacity",
+          2
+        ],
+        [
+          "lut2",
+          1
+        ],
+        [
+          "lut2_opacity",
+          2
+        ]
+      ]
+    }
+  ],
+  "database": {
+    "name": "lumixlab_db",
+    "version": 9,
+    "tables": [
+      {
+        "table": "camera_info",
+        "columns": 13,
+        "primary_key": "`cam_id` INTEGER PRIMARY KEY",
+        "column_list": [
+          "cam_id",
+          "cam_wifi_ssid",
+          "cam_wifi_pwd",
+          "cam_device_name",
+          "cam_index",
+          "cam_location",
+          "cam_time_sync",
+          "cam_auto_send",
+          "cam_slot",
+          "cam_bluetooth_address",
+          "cam_public_bt_address",
+          "cam_model",
+          "cam_destination_sub"
+        ]
+      },
+      {
+        "table": "community_info",
+        "columns": 3,
+        "primary_key": "`community_id` INTEGER PRIMARY KEY",
+        "column_list": [
+          "community_id",
+          "community_code",
+          "community_praise"
+        ]
+      },
+      {
+        "table": "edit_info",
+        "columns": 88,
+        "primary_key": "`edit_id` INTEGER PRIMARY KEY",
+        "column_list": [
+          "edit_id",
+          "edit_photostyle_id",
+          "edit_photostyle_raw_index",
+          "edit_lut_id",
+          "edit_lut_intensity",
+          "edit_lut2_id",
+          "edit_lut2_intensity",
+          "edit_lut_adjustment",
+          "edit_status",
+          "edit_ratio",
+          "edit_crop_bean",
+          "edit_true_width",
+          "edit_true_height",
+          "edit_enlarge",
+          "edit_crop_frame",
+          "edit_crop_offset",
+          "edit_rotate",
+          "edit_portrait",
+          "edit_file_start",
+          "edit_crop_start",
+          "edit_crop_length_width",
+          "edit_cut_start",
+          "edit_cut_end",
+          "edit_exposure",
+          "edit_brightness",
+          "edit_contrast",
+          "edit_highlight",
+          "edit_shadow",
+          "edit_hsl_color",
+          "edit_hsl_json",
+          "edit_saturation",
+          "edit_whitebalance",
+          "edit_white_balance_tint",
+          "edit_tone_color",
+          "edit_tone_point_white",
+          "edit_tone_point_red",
+          "edit_tone_point_green",
+          "edit_tone_point_blue",
+          "edit_splite_type",
+          "edit_splite_shadow_hue",
+          "edit_splite_shadow_color",
+          "edit_splite_shadow_luminance",
+          "edit_splite_middle_hue",
+          "edit_splite_middle_color",
+          "edit_splite_middle_luminance",
+          "edit_splite_highlight_hue",
+          "edit_splite_highlight_color",
+          "edit_splite_highlight_luminance",
+          "edit_sharp",
+          "edit_granular",
+          "edit_vignette",
+          "edit_batch_id",
+          "file_path",
+          "edit_hsl_red_hue",
+          "edit_hsl_orange_hue",
+          "edit_hsl_yellow_hue",
+          "edit_hsl_green_hue",
+          "edit_hsl_deep_sky_blue_hue",
+          "edit_hsl_blue_hue",
+          "edit_hsl_purple_hue",
+          "edit_hsl_orchid_hue",
+          "edit_hsl_red_saturation",
+          "edit_hsl_orange_saturation",
+          "edit_hsl_yellow_saturation",
+          "edit_hsl_green_saturation",
+          "edit_hsl_deep_sky_blue_saturation",
+          "edit_hsl_blue_saturation",
+          "edit_hsl_purple_saturation",
+          "edit_hsl_orchid_saturation",
+          "edit_hsl_red_luminance",
+          "edit_hsl_orange_luminance",
+          "edit_hsl_yellow_luminance",
+          "edit_hsl_green_luminance",
+          "edit_hsl_deep_sky_blue_luminance",
+          "edit_hsl_blue_luminance",
+          "edit_hsl_purple_luminance",
+          "edit_hsl_orchid_luminance",
+          "edit_is_used_raw_sdk",
+          "edit_wt_level",
+          "edit_bk_level",
+          "edit_noise_c",
+          "edit_noise_c_flag",
+          "edit_natural_sat",
+          "edit_rpf_level",
+          "edit_sq_type",
+          "edit_sq_speed",
+          "edit_sq_points",
+          "edit_sq_temp"
+        ]
+      },
+      {
+        "table": "gallery_info",
+        "columns": 21,
+        "primary_key": "`file_key_id` INTEGER PRIMARY KEY",
+        "column_list": [
+          "file_key_id",
+          "file_id",
+          "file_name",
+          "file_create_time",
+          "file_import_time",
+          "file_modify_time",
+          "file_type",
+          "file_edit_id",
+          "file_time",
+          "file_path",
+          "file_edit_path",
+          "file_size",
+          "file_rating",
+          "file_location",
+          "file_resolution",
+          "file_orientation",
+          "file_burst_type",
+          "file_burst_count",
+          "file_hireso_mode",
+          "file_synthesis",
+          "file_is_temporary_insert"
+        ]
+      },
+      {
+        "table": "lut_info",
+        "columns": 14,
+        "primary_key": "`lut_id` INTEGER PRIMARY KEY",
+        "column_list": [
+          "lut_id",
+          "lut_name",
+          "lut_index",
+          "lut_download_time",
+          "lut_path",
+          "lut_code",
+          "lut_photostyle_id",
+          "lut_source",
+          "lut_adjustment",
+          "lut_grain_effect",
+          "lut_color_noise",
+          "lut_sharpness",
+          "lut_noise_reduction",
+          "lut_cube_ver"
+        ]
+      },
+      {
+        "table": "push_info",
+        "columns": 16,
+        "primary_key": "`push_id` INTEGER PRIMARY KEY",
+        "column_list": [
+          "push_id",
+          "push_titile",
+          "push_text",
+          "push_type",
+          "push_link",
+          "push_startday",
+          "push_finishday",
+          "push_author",
+          "push_image",
+          "push_fwup_camera",
+          "push_fwup_lens",
+          "push_fwup_version",
+          "push_status",
+          "push_insertday",
+          "push_delivery_id",
+          "push_message_id"
+        ]
+      },
+      {
+        "table": "camera_record_info",
+        "columns": 5,
+        "primary_key": "`cam_connection_id` INTEGER PRIMARY KEY",
+        "column_list": [
+          "cam_connection_id",
+          "cam_connection_device_name",
+          "cam_connection_name",
+          "cam_connection_fwversion",
+          "cam_connection_info"
+        ]
+      },
+      {
+        "table": "lens_record_info",
+        "columns": 5,
+        "primary_key": "`lens_connection_id` INTEGER PRIMARY KEY",
+        "column_list": [
+          "lens_connection_id",
+          "lens_connection_device_name",
+          "lens_connection_name",
+          "lens_connection_fwversion",
+          "lens_connection_info"
+        ]
+      },
+      {
+        "table": "update_info",
+        "columns": 36,
+        "primary_key": "`update_id` INTEGER PRIMARY KEY",
+        "column_list": [
+          "update_id",
+          "update_file_version",
+          "update_device_id",
+          "update_device_name",
+          "update_device_code",
+          "update_device_type",
+          "update_device_thumbnail_path",
+          "update_device_thumbnail_width",
+          "update_device_thumbnail_height",
+          "update_device_enable",
+          "update_name",
+          "update_version",
+          "update_date",
+          "update_size",
+          "update_url",
+          "update_download_path",
+          "update_status",
+          "update_eula_url_en",
+          "update_history_url_en",
+          "update_eula_url_ja",
+          "update_history_url_ja",
+          "update_eula_url_de",
+          "update_history_url_de",
+          "update_eula_url_fr",
+          "update_history_url_fr",
+          "update_eula_url_es",
+          "update_history_url_es",
+          "update_eula_url_it",
+          "update_history_url_it",
+          "update_eula_url_nl",
+          "update_history_url_nl",
+          "update_eula_url_ru",
+          "update_history_url_ru",
+          "update_eula_url_ko",
+          "update_history_url_ko",
+          "update_required_version"
+        ]
+      },
+      {
+        "table": "frame_info",
+        "columns": 56,
+        "primary_key": "`frame_id` INTEGER PRIMARY KEY",
+        "column_list": [
+          "frame_id",
+          "edit_id",
+          "frame_saved_time",
+          "frame_name",
+          "frame_order",
+          "template_type",
+          "template_edit_status",
+          "camera_show_status",
+          "lens_show_status",
+          "focal_length_status",
+          "f_show_status",
+          "s_s_show_status",
+          "iso_show_status",
+          "photo_style_show_status",
+          "lut_1_show_status",
+          "lut_2_show_status",
+          "title_show_status",
+          "photographer_show_status",
+          "location_show_status",
+          "shooting_day_show_status",
+          "time_show_status",
+          "logo_show_status",
+          "aspect_ratio",
+          "frame_color",
+          "text_color",
+          "text_position",
+          "frame_position",
+          "frame_thickness",
+          "text_font",
+          "blur_brightness",
+          "blur_density",
+          "saved_frame_thumbnail",
+          "is_my_frame",
+          "camera_text",
+          "lens_text",
+          "focal_length_text",
+          "f_text",
+          "s_s_text",
+          "iso_text",
+          "photo_style_text",
+          "lut_1_text",
+          "lut_2_text",
+          "title_text",
+          "photographer_text",
+          "location_text",
+          "shooting_day_text",
+          "time_text",
+          "text_before_camera",
+          "text_before_lens",
+          "base_frame_id",
+          "logo_show_status_for_show",
+          "text_color_show_status",
+          "is_edit_lut_1_text",
+          "is_edit_lut_2_text",
+          "is_edit_photographer_text",
+          "scale_trans_info"
+        ]
+      },
+      {
+        "table": "color_picker_info",
+        "columns": 3,
+        "primary_key": "PRIMARY KEY(`edit_id`)",
+        "column_list": [
+          "edit_id",
+          "camera_text",
+          "color_picker_hsl_json"
+        ]
+      },
+      {
+        "table": "room_master_table",
+        "columns": 0,
+        "primary_key": null,
+        "column_list": null
+      }
+    ]
+  },
+  "assets": {
+    "photo_style_lut_dirs": [
+      "G9M2",
+      "GH7",
+      "L10",
+      "S1M2",
+      "S1M2E",
+      "S1RM2",
+      "S5M2",
+      "S9"
+    ],
+    "psl1_header": "u32 magic 'PSL1' | u8 kind(0=1D,1=3D) | i32 size | u8 encoding(1=fp16) | char name[64] | u8 reserved[14] = 88 bytes",
+    "magic_lut_model": "assets/models/PI_3D_LUT_v1.0.0_model_B_fp16.ort; input 'image' [1,3,224,224] float32 CHW /255; output 33^3 3D LUT",
+    "merge_lut": "assets/models/mergeLut/*.cube (13 个 PhotoStyle -> V-Log)",
+    "shaders": 36
+  }
+}
