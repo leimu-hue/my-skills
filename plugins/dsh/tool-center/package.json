@@ -1,0 +1,43 @@
+{
+  "name": "@local/dsh-tool-center",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "Tool center for DeepSeek Harness — scenes, MCP servers, skills and prompts in one panel: one panel listing every skill root, per-skill enable/disable without touching source files, same-name priority, detail preview, create/edit/delete with trash, single-skill and ZIP import/export. Scope (session/workspace) layering is a reserved interface.",
+  "exports": {
+    ".": "./dist/host/index.js",
+    "./client": "./dist/client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "dist",
+    "locale/*.json",
+    "icon.svg",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test \"test/*.test.mjs\"",
+    "typecheck:host": "tsc -p tsconfig.json --noEmit",
+    "typecheck:client": "tsc -p tsconfig.client.json"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.6.0"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-locale"
+      ]
+    }
+  }
+}

@@ -1,0 +1,10 @@
+# Skill Manager: one Host row.
+#
+# `stateFile` is left to the plugin default ($DSH_HOME/skill-manager/state.json).
+# `dataFile` here only pins the DSH home indirection so an override in the user
+# profile is a one-line change (same idiom as @local/dsh-related-projects).
+- insert:
+    - id: tool-center
+      name: '@local/dsh-tool-center'
+      config:
+        dshHome: !!js dshHomePath('')

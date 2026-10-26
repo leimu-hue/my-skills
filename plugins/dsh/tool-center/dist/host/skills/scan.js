@@ -1,0 +1,222 @@
+/**
+ * 扫描，以及被替换那个插件没有的缓存层。
+ *
+ * 这个模块围绕的成本模型：
+ *   * 一次目录遍历 = `readdir` + 每条目一个 `stat`；
+ *   * 读并解析 `SKILL.md` 才是贵的（一次文件读 + YAML），而它只用来拿名字 / 描述 / 开关；
+ *   * 正文只在有人真要这条技能时才需要。
+ *
+ * 所以：每次都遍历 + stat，解析结果按 mtime/size 复用，正文只有显式 `readBody()` 才读。
+ * 同一来源的并发读取共享一次遍历。`maxDepth` 限定遍历深度；`maxEntries` /
+ * `maxDirectories` 让病态目录报 `truncated`，而不是卡死。
+ */
+import { lstat, readdir } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
+import { readTextOrNull, statOrNull } from '../shared/fs.js';
+import { parseSkillFile, strictBoolean } from './frontmatter.js';
+const DEFAULT_OPTIONS = {
+    maxDepth: 3,
+    maxEntries: 5_000,
+    maxDirectories: 2_000,
+    parseCacheMax: 4_000,
+};
+export function createScanner(userOptions = {}) {
+    const options = { ...DEFAULT_OPTIONS, ...userOptions };
+    /**
+     * 只做**合流**：同一拍里两个消费者要同一个来源时，共享一次遍历。
+     * 它**不是**结果缓存 —— 遍历完成后条目会被丢掉，所以在外部编辑器里改文件，
+     * 下一次读就能看到，而不是等某个 TTL 过期。真正贵的部分（读 + 解析 SKILL.md）
+     * 由下面的缓存按文件 mtime 与 size 复用，于是一次遍历的代价只是
+     * 「`readdir` + 每条目一个 `stat`」。
+     */
+    const inflight = new Map();
+    const parseCache = new Map();
+    let generation = 0;
+    const rememberParsed = (path, value) => {
+        if (parseCache.size >= options.parseCacheMax) {
+            const oldest = parseCache.keys().next();
+            if (!oldest.done)
+                parseCache.delete(oldest.value);
+        }
+        parseCache.set(path, value);
+    };
+    /**
+     * 解析一个候选文档。`stat` 就是缓存键：mtime 与 size 都没变，frontmatter 不可能变
+     * （只改正文也会推高 mtime，代价只是多解析一次）。
+     */
+    async function parseDoc(path) {
+        const info = await statOrNull(path);
+        if (info === null || !info.isFile())
+            return undefined;
+        const cached = parseCache.get(path);
+        if (cached !== undefined && cached.mtimeMs === info.mtimeMs && cached.size === info.size) {
+            return cached.doc;
+        }
+        const text = await readTextOrNull(path);
+        if (text === null) {
+            return {
+                declaredName: '',
+                description: '',
+                docPath: path,
+                entryPath: dirname(path),
+                declaresModelInvocable: true,
+                declaresUserInvocable: true,
+                loadable: false,
+                problem: 'unreadable',
+            };
+        }
+        const parsed = parseSkillFile(text);
+        const declaredRaw = parsed.data.name;
+        const descriptionRaw = parsed.data.description;
+        const description = typeof descriptionRaw === 'string' ? descriptionRaw.trim() : '';
+        const whenToUseRaw = parsed.data.whenToUse;
+        const modelFlag = strictBoolean(parsed.data['disable-model-invocation']);
+        const userFlag = strictBoolean(parsed.data['user-invocable']);
+        // 拼写不合法时绝不能静默放行某个调用面：把它记成面板可见的问题，并让这条技能
+        // 进不了模型目录。
+        const modelFlagValid = parsed.data['disable-model-invocation'] === undefined || modelFlag !== undefined;
+        const userFlagValid = parsed.data['user-invocable'] === undefined || userFlag !== undefined;
+        const problems = [];
+        if (parsed.problem !== undefined)
+            problems.push(parsed.problem);
+        if (!parsed.hasFrontmatter)
+            problems.push('no frontmatter');
+        if (description === '')
+            problems.push('missing description');
+        if (!modelFlagValid)
+            problems.push('invalid disable-model-invocation');
+        if (!userFlagValid)
+            problems.push('invalid user-invocable');
+        const doc = {
+            declaredName: typeof declaredRaw === 'string' && declaredRaw.trim() !== '' ? declaredRaw.trim() : '',
+            description,
+            whenToUse: typeof whenToUseRaw === 'string' && whenToUseRaw.trim() !== '' ? whenToUseRaw.trim() : undefined,
+            docPath: path,
+            entryPath: dirname(path),
+            declaresModelInvocable: modelFlagValid ? modelFlag !== true : false,
+            declaresUserInvocable: userFlagValid ? userFlag !== false : false,
+            loadable: problems.length === 0,
+            problem: problems.length === 0 ? undefined : problems.join('; '),
+        };
+        rememberParsed(path, { mtimeMs: info.mtimeMs, size: info.size, doc });
+        return doc;
+    }
+    /** 把解析结果拼成一条完整条目：名字取自路径，`linked` / `nested` 由遍历位置决定。 */
+    async function entryOf(path, name, form, placement) {
+        const doc = await parseDoc(path);
+        if (doc === undefined)
+            return undefined;
+        return {
+            ...doc,
+            name,
+            form,
+            // 声明名缺失时退回目录名 / 文件名，调用方不必各自兜一遍。
+            declaredName: doc.declaredName === '' ? name : doc.declaredName,
+            linked: placement.linked,
+            nested: placement.nested,
+        };
+    }
+    async function scanRoot(root) {
+        const cacheKey = root.key + '\u0000' + root.path;
+        const running = inflight.get(cacheKey);
+        if (running !== undefined)
+            return running;
+        const promise = walkRoot(root);
+        inflight.set(cacheKey, promise);
+        try {
+            return await promise;
+        }
+        finally {
+            if (inflight.get(cacheKey) === promise)
+                inflight.delete(cacheKey);
+        }
+    }
+    async function walkRoot(root) {
+        const entries = [];
+        let truncated = false;
+        let visited = 0;
+        let error;
+        const walk = async (directory, depth) => {
+            if (truncated)
+                return;
+            visited += 1;
+            if (visited > options.maxDirectories) {
+                truncated = true;
+                return;
+            }
+            let dirents;
+            try {
+                dirents = await readdir(directory, { withFileTypes: true });
+            }
+            catch (cause) {
+                const code = cause.code;
+                // ENOENT 是正常的（来源目录还没建）。其余是真实失败，面板必须能看到，
+                // 不能表现成一个安静的空目录。
+                if (code !== 'ENOENT' && depth === 0)
+                    error = String(cause.message ?? cause);
+                return;
+            }
+            for (const dirent of dirents) {
+                if (entries.length >= options.maxEntries) {
+                    truncated = true;
+                    return;
+                }
+                if (dirent.name.startsWith('.') || dirent.name === 'node_modules')
+                    continue;
+                const entryPath = join(directory, dirent.name);
+                let isDirectory = dirent.isDirectory();
+                let isFile = dirent.isFile();
+                const linked = dirent.isSymbolicLink();
+                if (linked) {
+                    // 指向目录的 junction 在 Node 里读作符号链接；解析它，好把里面的技能列出来
+                    // （被替换的那个插件把这种条目整个跳过了）。
+                    const info = await statOrNull(entryPath);
+                    if (info === null)
+                        continue;
+                    isDirectory = info.isDirectory();
+                    isFile = info.isFile();
+                }
+                const placement = { linked, nested: depth > 0 };
+                if (isDirectory) {
+                    const doc = join(entryPath, 'SKILL.md');
+                    const docInfo = await lstat(doc).catch(() => null);
+                    if (docInfo !== null && docInfo.isFile()) {
+                        const entry = await entryOf(doc, dirent.name, 'bundle', placement);
+                        if (entry !== undefined)
+                            entries.push(entry);
+                        continue;
+                    }
+                    if (depth + 1 < options.maxDepth)
+                        await walk(entryPath, depth + 1);
+                    continue;
+                }
+                if (!isFile)
+                    continue;
+                if (!dirent.name.toLowerCase().endsWith('.md'))
+                    continue;
+                if (dirent.name.toLowerCase() === 'skill.md')
+                    continue;
+                const entry = await entryOf(entryPath, dirent.name.replace(/\.md$/i, ''), 'flat', placement);
+                if (entry !== undefined)
+                    entries.push(entry);
+            }
+        };
+        await walk(root.path, 0);
+        entries.sort((left, right) => left.name.localeCompare(right.name));
+        return { entries, error, truncated: truncated || undefined };
+    }
+    return {
+        scan: scanRoot,
+        async readBody(entry) {
+            const text = await readTextOrNull(entry.docPath);
+            return text === null ? '' : parseSkillFile(text).body;
+        },
+        invalidate(_rootKey) {
+            // 没有需要丢掉的持久状态：解析缓存自己按文件 mtime 与 size 校验，遍历结果从不复用。
+            // 代号仍然要推进，好让界面能说清「这份视图比那份新」。
+            generation += 1;
+        },
+        generation: () => generation,
+        stats: () => ({ roots: inflight.size, parsed: parseCache.size }),
+    };
+}
