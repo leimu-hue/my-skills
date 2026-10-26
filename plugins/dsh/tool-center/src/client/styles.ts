@@ -101,4 +101,9 @@ export const CSS = `
 .dsk-trash-meta{font-size:11px;color:var(--dsw-alias-label-tertiary,#8a8f99);word-break:break-all}
 .dsk-trash-actions{display:flex;gap:6px}
 .dsk-muted{color:var(--dsw-alias-label-tertiary,#8a8f99);font-size:11px}
+/* 主栏面板的外壳：挂在 sidebar.panellist + main 上，所以整块占满、自己滚动、自己负责内边距
+   （设置页那边的 .dsk-root 内边距在这里被归零，两处复用同一套页签与域视图）。 */
+.dsk-page{display:flex;flex-direction:column;gap:12px;padding:20px 24px;width:100%;box-sizing:border-box;min-width:0;height:100%;overflow:auto;overscroll-behavior:contain}
+[data-platform=darwin] .dsk-page{padding-top:calc(20px + var(--dsh-frame-top-clearance,0px))}
+.dsk-page .dsk-root{padding:0;min-height:0}
 `

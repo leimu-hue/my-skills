@@ -1,16 +1,22 @@
 /**
  * Slot 接线。这里不渲染任何东西：每次注册都指向一个自己通过 API 模块取数据的组件。
  *
+ * 挂载点是**左侧栏**，不是设置页：一个侧栏图标 + 一个主栏面板，两个栏位用同一个 id
+ * （`tool-center`）配对 —— 点图标就在主栏打开面板。
+ *
  * 只有 `slots` 是硬依赖（没有它就没有地方挂）。`locale` 通过 `ctx.inject` 附加，
  * 所以缺了 locale 服务的代价只是少一份词典，而不是整个面板挂不上。
  */
 import { CSS } from './styles.js'
 import { setReact, h, type ReactLike } from './core/runtime.js'
 import { NS, dictionaries, dictionaryFor, translateWith } from './i18n/index.js'
-import { ToolCenterPage, setDictionary } from './page.js'
+import { ToolCenterPanel } from './shell/panel.js'
+import { ToolCenterIcon } from './shell/icon.js'
+import { setDictionary } from './page.js'
 
-export const PAGE_ID = 'tool-center'
-const PAGE_ORDER = 17
+export const PANEL_ID = 'tool-center'
+/** 排在「关联项目」（order 30）之后。 */
+const PANEL_ORDER = 31
 
 interface SlotsLike {
   inject(key: string, callback: () => () => void): () => void
@@ -77,18 +83,30 @@ export function createPlugin(React: unknown): Plugin {
 
       const slots = ctx.get('slots') as SlotsLike | undefined
       if (slots === undefined || slots === null) {
-        console.warn('[tool-center] slots service unavailable; the settings page cannot mount')
+        console.warn('[tool-center] slots service unavailable; the panel cannot mount')
         return
       }
 
-      ctx.effect(() => slots.inject('settings.section', () => slots.register({
-        name: 'settings.section',
-        id: PAGE_ID,
-        order: PAGE_ORDER,
-        // 标签 thunk 每次投影都会重新求值，所以能跟着语言切换。
-        label: (): string => translateWith(dictionaryFor(activeLocaleOf(ctx)), 'nav.title'),
+      const mount = (name: string, options: Record<string, unknown>, component: unknown): void => {
+        ctx.effect(() => slots.inject(name, () => slots.register(
+          { name, ...options },
+          (props: Record<string, unknown>) => h(component as never, props),
+        )), `tool-center: ${name}`)
+      }
+
+      /* 侧栏图标：标签 thunk 每次投影都重新求值，所以能跟着语言切换。 */
+      mount('sidebar.panellist', {
+        id: PANEL_ID,
+        order: PANEL_ORDER,
         locale: NS,
-      }, (props: Record<string, unknown>) => h(ToolCenterPage as never, props))), 'tool-center: settings page')
+        label: () => translateWith(dictionaryFor(activeLocaleOf(ctx)), 'nav.title'),
+      }, ToolCenterIcon)
+
+      /* 主栏面板：和上面的图标用同一个 id 配对。 */
+      mount('main', {
+        key: PANEL_ID,
+        locale: NS,
+      }, ToolCenterPanel)
     },
   }
 }

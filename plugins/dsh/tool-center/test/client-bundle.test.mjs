@@ -75,7 +75,7 @@ test('the client bundle registers itself with the module loader id', async () =>
   assert.equal(typeof bundle.factory, 'function')
 })
 
-test('the client plugin mounts a settings.section registration', async () => {
+test('the client plugin mounts a sidebar icon and its main panel under one id', async () => {
   const { bundle } = await loadBundle()
   const React = fakeReact()
   const plugin = bundle.factory((id) => {
@@ -126,15 +126,23 @@ test('the client plugin mounts a settings.section registration', async () => {
 
   plugin.apply(ctx)
 
-  assert.equal(injections.length, 1)
-  assert.equal(injections[0], 'settings.section')
-  assert.equal(registrations.length, 1)
-  assert.equal(registrations[0].options.name, 'settings.section')
-  assert.equal(registrations[0].options.id, 'tool-center')
-  assert.equal(registrations[0].options.order, 17)
-  assert.equal(registrations[0].options.locale, 'tool-center')
-  assert.equal(typeof registrations[0].options.label(), 'string')
-  assert.equal(registrations[0].options.label(), '工具中心')
+  // 挂载点是左侧栏（图标 + 主栏面板），不再是设置页的 settings.section。
+  assert.equal(injections.includes('settings.section'), false, 'the panel must not live in the settings page')
+  assert.equal(injections.includes('sidebar.panellist'), true)
+  assert.equal(injections.includes('main'), true)
+  assert.equal(registrations.length, 2)
+
+  const sidebar = registrations.find((entry) => entry.options.name === 'sidebar.panellist').options
+  assert.equal(sidebar.id, 'tool-center')
+  assert.equal(sidebar.locale, 'tool-center')
+  assert.equal(typeof sidebar.order, 'number')
+  assert.equal(sidebar.label(), '工具中心')
+
+  // 两个栏位靠同一个 id 配对：点侧栏图标就打开这块面板。
+  const main = registrations.find((entry) => entry.options.name === 'main').options
+  assert.equal(main.key, sidebar.id, 'the main panel must pair with the sidebar entry by id')
+  assert.equal(main.locale, 'tool-center')
+  assert.equal(typeof registrations.find((entry) => entry.options.name === 'main').component, 'function')
 
   // zh 词典是键集的事实来源，必须覆盖面板用到的键。
   assert.equal(dictionaries.length, 1)

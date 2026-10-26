@@ -1,10 +1,10 @@
 # @local/dsh-tool-center · 工具中心
 
-DeepSeek Harness 的一个设置面板：**场景 / MCP / 技能 / 提示词** 四个域放在同一处管，另带一个
+DeepSeek Harness 的一个左侧栏面板：**场景 / MCP / 技能 / 提示词** 四个域放在同一处管，另带一个
 模型可读的技能工具（`skill_list`；启停仍归用户）。
 
 ```
-设置 → 工具中心
+左栏「插件」区 → 工具中心
 ```
 
 它和 `dsh-plugin-tool-management` 管的是同一类事，但实现上刻意避开了那个插件的坑：
@@ -98,7 +98,7 @@ cd $env:USERPROFILE\.dsh\profiles\desktop
 npm install --no-audit --no-fund
 ```
 
-**重启桌面应用**，然后打开 `设置 → 工具中心`。
+**重启桌面应用**，然后点左栏「插件」区里的 `工具中心`（在「关联项目」旁边）。
 
 ## 插件清单元数据
 
@@ -209,8 +209,9 @@ src/host/
     server.ts           那条具名路由的请求处理与状态码映射
 src/client/
   main.ts               ModuleLoader 入口
-  plugin.ts             slots.inject('settings.section') + 词典注册
+  plugin.ts             slots 装配：sidebar.panellist（图标）+ main（面板），同一 id 配对
   page.ts               页签外壳（场景 / MCP / 技能 / 提示词）
+  shell/                panel.ts（主栏容器）+ icon.ts（侧栏单色图标）
   styles.ts             全部 `.dsk-*` 样式（成对使用宿主 --dsw-* token）
   core/
     runtime.ts          React 访问器与 hooks
@@ -253,7 +254,7 @@ src/client/
 | `mcp.test.mjs` | patch 解析、显式 `disabled:false` 覆盖、幂等、删除连覆盖行、拒绝只读覆盖 |
 | `scenes.test.mjs` | 三域应用、切换回滚只回滚自己动过的、退出、活动场景不可删 |
 | `wiring.test.mjs` | 真实 `apply()` 接线、门禁头、op 分发、预留作用域、卸载清理 |
-| `client-bundle.test.mjs` | 浏览器半在 vm 里加载、`settings.section` 注册、词典覆盖、渲染一次不抛错 |
+| `client-bundle.test.mjs` | 浏览器半在 vm 里加载、侧栏图标 + 主栏面板配对、词典覆盖、渲染一次不抛错 |
 | `client-views.test.mjs` | 四个域视图各自单独打包后各渲染一次（空状态不抛错） |
 
 ## 已知边界

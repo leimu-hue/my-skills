@@ -95,6 +95,11 @@
 .dsk-trash-meta{font-size:11px;color:var(--dsw-alias-label-tertiary,#8a8f99);word-break:break-all}
 .dsk-trash-actions{display:flex;gap:6px}
 .dsk-muted{color:var(--dsw-alias-label-tertiary,#8a8f99);font-size:11px}
+/* \u4E3B\u680F\u9762\u677F\u7684\u5916\u58F3\uFF1A\u6302\u5728 sidebar.panellist + main \u4E0A\uFF0C\u6240\u4EE5\u6574\u5757\u5360\u6EE1\u3001\u81EA\u5DF1\u6EDA\u52A8\u3001\u81EA\u5DF1\u8D1F\u8D23\u5185\u8FB9\u8DDD
+   \uFF08\u8BBE\u7F6E\u9875\u90A3\u8FB9\u7684 .dsk-root \u5185\u8FB9\u8DDD\u5728\u8FD9\u91CC\u88AB\u5F52\u96F6\uFF0C\u4E24\u5904\u590D\u7528\u540C\u4E00\u5957\u9875\u7B7E\u4E0E\u57DF\u89C6\u56FE\uFF09\u3002 */
+.dsk-page{display:flex;flex-direction:column;gap:12px;padding:20px 24px;width:100%;box-sizing:border-box;min-width:0;height:100%;overflow:auto;overscroll-behavior:contain}
+[data-platform=darwin] .dsk-page{padding-top:calc(20px + var(--dsh-frame-top-clearance,0px))}
+.dsk-page .dsk-root{padding:0;min-height:0}
 `;
 
   // src/client/core/runtime.ts
@@ -1870,9 +1875,50 @@
     );
   }
 
+  // src/client/shell/panel.ts
+  function ToolCenterPanel(props) {
+    return h(
+      "div",
+      { className: "dsk-page" },
+      h(ToolCenterPage, props)
+    );
+  }
+
+  // src/client/shell/icon.ts
+  function ToolCenterIcon(props) {
+    const size = typeof props.size === "number" ? props.size : 16;
+    return h(
+      "svg",
+      {
+        width: size,
+        height: size,
+        viewBox: "0 0 16 16",
+        fill: "none",
+        "aria-hidden": true
+      },
+      h("rect", {
+        x: "2.1",
+        y: "2.1",
+        width: "11.8",
+        height: "11.8",
+        rx: "3",
+        stroke: "currentColor",
+        strokeWidth: "1.2"
+      }),
+      h("path", { d: "M4.9 5.6h6.2M4.9 8.2h3.5", stroke: "currentColor", strokeWidth: "1.2", strokeLinecap: "round" }),
+      h("path", {
+        d: "M5.6 10.9l1.5 1.4 3.2-3.3",
+        stroke: "currentColor",
+        strokeWidth: "1.2",
+        strokeLinecap: "round",
+        strokeLinejoin: "round"
+      })
+    );
+  }
+
   // src/client/plugin.ts
-  var PAGE_ID = "tool-center";
-  var PAGE_ORDER = 17;
+  var PANEL_ID = "tool-center";
+  var PANEL_ORDER = 31;
   function activeLocaleOf(ctx) {
     try {
       const locale = ctx.get("locale");
@@ -1913,17 +1959,25 @@
         else mountDictionary(ctx);
         const slots = ctx.get("slots");
         if (slots === void 0 || slots === null) {
-          console.warn("[tool-center] slots service unavailable; the settings page cannot mount");
+          console.warn("[tool-center] slots service unavailable; the panel cannot mount");
           return;
         }
-        ctx.effect(() => slots.inject("settings.section", () => slots.register({
-          name: "settings.section",
-          id: PAGE_ID,
-          order: PAGE_ORDER,
-          // 标签 thunk 每次投影都会重新求值，所以能跟着语言切换。
-          label: () => translateWith(dictionaryFor(activeLocaleOf(ctx)), "nav.title"),
+        const mount = (name, options, component) => {
+          ctx.effect(() => slots.inject(name, () => slots.register(
+            { name, ...options },
+            (props) => h(component, props)
+          )), `tool-center: ${name}`);
+        };
+        mount("sidebar.panellist", {
+          id: PANEL_ID,
+          order: PANEL_ORDER,
+          locale: NS,
+          label: () => translateWith(dictionaryFor(activeLocaleOf(ctx)), "nav.title")
+        }, ToolCenterIcon);
+        mount("main", {
+          key: PANEL_ID,
           locale: NS
-        }, (props) => h(ToolCenterPage, props))), "tool-center: settings page");
+        }, ToolCenterPanel);
       }
     };
   }
