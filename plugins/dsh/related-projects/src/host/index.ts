@@ -1,70 +1,37 @@
 /**
- * Host entry: wiring only.
+ * Host 入口：只做接线。
  *
- * Layers (each knows as little as it can):
- *   store.ts    persistence + validation rules (no framework, no HTTP)
- *   prompt.ts   the exact text the model reads
- *   context.ts  "which workspace am I in" and "what may I write"
- *   sessions.ts per-session prompt channels (section + one-shot notice)
- *   routes.ts   the JSON route the UI calls
- *   tool.ts     the agent-facing tool
- *   http.ts     request plumbing
+ * 分层（每层知道的越少越好）：
+ *   shared/    我们探测的 Cordis 切片、路径身份、视图类型、JSON 管道
+ *   registry/  持久化 + 「什么才算关联项目」的规则
+ *   prompt/    模型读到的确切文本，以及按会话区分的通道
+ *   files/     `@` 菜单背后的文件索引
+ *   workspace/ 「我在哪个工作区」和「我能写什么」
+ *   api/       那条 JSON 路由、它的处理器，以及面向 agent 的工具
  */
 import { spawn } from 'node:child_process'
-import type { IncomingMessage, ServerResponse } from 'node:http'
-import { Registry, RegistryError } from './store.js'
-import { isTrusted, readJsonBody, sendJson } from './http.js'
-import { createHandlers } from './routes.js'
-import { SessionRegistry } from './sessions.js'
-import { createTool } from './tool.js'
-import type { HostContext } from './context.js'
+import { Registry } from './registry/service.js'
+import { SessionRegistry } from './prompt/sessions.js'
+import { createHandlers } from './api/routes.js'
+import { ROUTE_PATH, createRequestHandler } from './api/server.js'
+import { createTool } from './api/tools.js'
+import type { AgentsService, HostContext, ToolsService, WebServerService } from './shared/context.js'
+import type { AgentLike } from './shared/context.js'
 
 export const name = 'related-projects'
 export const inject = ['webServer']
-
-const ROUTE_PREFIX = '/related-projects/api'
-
-interface ToolsService {
-  register(definition: unknown): () => void
-}
-
-interface WebServerService {
-  register(route: {
-    kind: 'exact' | 'prefix'
-    path: string
-    handler: (req: IncomingMessage, res: ServerResponse) => void | Promise<void>
-  }): () => void
-}
 
 interface PluginConfig {
   dataFile?: unknown
 }
 
-/**
- * The Host half of `ctx.connection`: `requestRejection()` applies the same
- * Host/Origin checks and browser-session authentication the shipped `/api`
- * bridge uses. Named `webServer` routes get none of that automatically.
- */
-interface ConnectionService {
-  requestRejection?(request: IncomingMessage): number | undefined
-}
-
-function connectionOf(ctx: HostContext): ConnectionService | undefined {
-  try {
-    const value = ctx.get('connection')
-    return value !== undefined && value !== null && typeof value === 'object' ? value as ConnectionService : undefined
-  } catch {
-    return undefined
-  }
-}
-
+/** 在操作系统文件管理器里打开目录；失败不是调用方的问题。 */
 function openInFileManager(target: string): void {
   const command = process.platform === 'win32' ? 'explorer' : (process.platform === 'darwin' ? 'open' : 'xdg-open')
-  try {
-    const child = spawn(command, [target], { detached: true, stdio: 'ignore' })
-    child.on('error', () => { /* nothing useful to report to the caller */ })
-    child.unref()
-  } catch { /* ignore */ }
+  /* 缺少可执行文件时 spawn 通过 'error' 事件报告，而不是抛错。 */
+  const child = spawn(command, [target], { detached: true, stdio: 'ignore' })
+  child.on('error', () => { /* 没有值得告知调用方的信息 */ })
+  child.unref()
 }
 
 export function apply(ctx: HostContext, config?: PluginConfig): void {
@@ -73,94 +40,58 @@ export function apply(ctx: HostContext, config?: PluginConfig): void {
     : undefined
   const registry = new Registry(dataFile)
   const sessions = new SessionRegistry(ctx, registry)
-  const handlers = createHandlers({ ctx, registry, sessions, openInFileManager })
 
-  /* ------------------------------- route ------------------------------- */
+  installRoute(ctx, registry, sessions)
+  installTool(ctx, registry, sessions)
+  trackSessions(ctx, sessions)
+}
 
-  /* The carrier authenticates nothing for named routes, so this one applies
-     Connection's documented fence (Host/Origin + browser session) whenever the
-     Web composition provides it; `isTrusted` is the fallback for a Host that
-     mounts `webServer` without `connection`. */
-  let connection = connectionOf(ctx)
-  const rejectionOf = (req: IncomingMessage): number | undefined => {
-    if (connection === undefined) connection = connectionOf(ctx)
-    if (connection !== undefined && typeof connection.requestRejection === 'function') {
-      try {
-        const status = connection.requestRejection(req)
-        return typeof status === 'number' ? status : (status === undefined || status === null ? undefined : 403)
-      } catch {
-        return 403
-      }
-    }
-    return isTrusted(req) === true ? undefined : 403
-  }
+/* --------------------------------- 路由 --------------------------------- */
 
-  const handle = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
-    const rejection = rejectionOf(req)
-    if (rejection !== undefined) {
-      sendJson(res, rejection, {
-        ok: false,
-        error: {
-          code: rejection === 401 ? 'unauthorized' : 'forbidden',
-          message: rejection === 401 ? 'browser session required' : 'forbidden',
-        },
-      })
-      return
-    }
-    if (req.method !== 'POST') {
-      sendJson(res, 405, { ok: false, error: { code: 'method', message: 'POST required' } })
-      return
-    }
-    const pathname = new URL(req.url === undefined ? '/' : req.url, 'http://dsh.internal').pathname
-    const method = pathname.startsWith(ROUTE_PREFIX + '/') ? pathname.slice(ROUTE_PREFIX.length + 1) : ''
-    const handler = Object.prototype.hasOwnProperty.call(handlers, method) ? handlers[method] : undefined
-    if (handler === undefined || method.includes('/')) {
-      sendJson(res, 404, { ok: false, error: { code: 'not-found', message: 'unknown method ' + method } })
-      return
-    }
-    try {
-      const payload = await readJsonBody(req)
-      sendJson(res, 200, { ok: true, data: await handler(payload) })
-    } catch (error) {
-      if (error instanceof RegistryError) {
-        sendJson(res, 400, { ok: false, error: { code: error.code, message: error.code } })
-        return
-      }
-      const message = error instanceof Error ? error.message : String(error)
-      sendJson(res, 500, { ok: false, error: { code: 'internal', message } })
-    }
-  }
-
+function installRoute(ctx: HostContext, registry: Registry, sessions: SessionRegistry): void {
   const webServer = ctx.get('webServer') as WebServerService | undefined
-  if (webServer !== undefined && webServer !== null && typeof webServer.register === 'function') {
-    ctx.effect(() => webServer.register({ kind: 'prefix', path: ROUTE_PREFIX, handler: handle }), 'related-projects: routes')
+  if (webServer === undefined || webServer === null || typeof webServer.register !== 'function') return
+  const handler = createRequestHandler({
+    ctx,
+    handlers: createHandlers({ ctx, registry, sessions, openInFileManager }),
+  })
+  ctx.effect(() => webServer.register({ kind: 'prefix', path: ROUTE_PATH, handler }), 'related-projects: routes')
+}
+
+/* ---------------------------------- 工具 ---------------------------------- */
+
+/**
+ * 工具是可选的 —— Host 可能在没有 `tools` 服务的情况下挂载本插件，所以它不在
+ * `inject` 里。`inject()` 仍然要紧：否则在 apply 跑完之后才提供 `tools` 的组合
+ * 就永远看不到这个工具。
+ */
+function installTool(ctx: HostContext, registry: Registry, sessions: SessionRegistry): void {
+  const register = (scoped: HostContext): void => {
+    const tools = scoped.get('tools') as ToolsService | undefined
+    if (tools === undefined || tools === null || typeof tools.register !== 'function') return
+    scoped.effect(() => tools.register(createTool(scoped, registry, sessions)), 'related-projects: tool')
   }
+  if (typeof ctx.inject === 'function') ctx.inject(['tools'], register)
+  else register(ctx)
+}
 
-  /* -------------------------------- tool -------------------------------- */
+/* -------------------------------- 会话 -------------------------------- */
 
-  const tools = ctx.get('tools') as ToolsService | undefined
-  if (tools !== undefined && tools !== null && typeof tools.register === 'function') {
-    ctx.effect(() => tools.register(createTool(ctx, registry, sessions)), 'related-projects: tool')
-  }
-
-  /* ------------------------------ sessions ------------------------------ */
-
+/**
+ * 每个活跃会话都会拿到那段固定文本。本插件（重新）加载时已经存在的会话 —— 包括
+ * 正在跑这段代码的那个 —— 通过 agents 注册表接管，因为它们的 `agent/created`
+ * 事件早就过去了。
+ */
+function trackSessions(ctx: HostContext, sessions: SessionRegistry): void {
   if (typeof ctx.on === 'function') {
-    ctx.on('agent/created', (data) => {
-      sessions.attach((data as { agent?: never })?.agent)
-    })
-    ctx.on('agent/disposed', (data) => {
-      sessions.detach((data as { agent?: never })?.agent)
-    })
+    ctx.on('agent/created', (data) => sessions.attach((data as { agent?: AgentLike })?.agent))
+    ctx.on('agent/disposed', (data) => sessions.detach((data as { agent?: AgentLike })?.agent))
   }
-
-  /* Sessions that already existed when the plugin (re)loaded — including the
-     one running this very code. */
   try {
-    const agents = ctx.get('agents') as { list?(): Iterable<unknown> } | undefined
+    const agents = ctx.get('agents') as AgentsService | undefined
     const list = agents !== undefined && typeof agents.list === 'function' ? agents.list() : null
-    if (list !== null) for (const agent of list) sessions.attach(agent as never)
-  } catch { /* no live-agent registry on this host */ }
+    if (list !== null) for (const agent of list) sessions.attach(agent as AgentLike)
+  } catch { /* 这个 Host 上没有活 agent 注册表 */ }
 
   ctx.effect(() => () => sessions.disposeAll(), 'related-projects: session cleanup')
 }

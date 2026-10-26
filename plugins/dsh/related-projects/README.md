@@ -20,6 +20,7 @@
 cd D:\custom_project\ai-project\my-skills\plugins\dsh\related-projects
 npm install          # 只装 devDependencies：typescript / esbuild / @types/node
 npm run build        # src/ -> dist/（Host 用 tsc，Client 用 esbuild 打成单文件）
+npm test             # 可选：Host 行为测试，导入 dist/ 运行
 ```
 
 产物：
@@ -48,7 +49,7 @@ plugin_manager(action: "install_bundle", target: "D:\\custom_project\\ai-project
 | 改动 | 需要的动作 |
 |---|---|
 | `src/host/**`（服务端逻辑） | 重载该行插件（见下），无需刷新页面 |
-| `src/client/**` 或 `src/client/styles.ts` | 重新构建 + **刷新页面** |
+| `src/client/**`（含 `styles.ts`） | 重新构建 + **刷新页面** |
 | `package.json` 的 `exports` / `version` | 先 `remove_bundle` 再 `install_bundle`（入口会被重新解析） |
 
 重载插件行（`include:related-projects` 是 `Config.listConfigs` 报出的 entryId）：
@@ -140,34 +141,62 @@ await fetch('related-projects/api/prompt', {
 
 ## 代码结构
 
+两端都按**功能**分目录，不再是"一层一个平铺文件"。`src/host` 用 tsc 逐文件产出 ESM，`src/client` 由 esbuild 打成单文件，因此两端的类型是**各自镜像**的（浏览器半侧不能 import Host 的构建产物）；镜像点在两端各自的 `types.ts`，靠两边的 typecheck 抓漂移。
+
 ```
 src/host/
-  types.ts      共享类型
-  store.ts      注册表：持久化 + 校验规则（不依赖框架/HTTP）
-  files.ts      关联项目内部的文件索引与搜索（有上限、跳过产物目录）
-  prompt.ts     模型读到的全部文案
-  context.ts    "我在哪个工作区" 与 "我能写哪里"
-  sessions.ts   每会话的 prompt section（冻结）+ 变更的追加式通知
-  routes.ts     UI 调用的 JSON 路由
-  tool.ts       related_projects 工具
-  http.ts       请求管道（Connection 信任边界 + 回环兜底、JSON 解析）
-  index.ts      装配（apply）
+  index.ts              装配（apply）：路由、工具、会话跟踪，仅接线
+  shared/               半端内共享，不含业务
+    context.ts          Cordis 上下文的极小结构切片 + 服务探测（缺服务只降级）
+    paths.ts            路径身份：规范化、比较键、根/主目录判定、相对/包含关系
+    types.ts            领域与视图类型（Project / ProjectView / Snapshot / StateValue…）
+    errors.ts           RegistryError（唯一一种业务异常，路由按 code 转 HTTP）
+    http.ts             JSON 收发、错误信封、Host/Origin 兜底栅栏
+  registry/service.ts   注册表：持久化 + 校验规则（不依赖框架/HTTP），视图构建
+  prompt/
+    text.ts             模型读到的全部文案（section / 通知 / 可写边界 / 变更描述）
+    sessions.ts         每会话的 prompt section（冻结）+ 变更的追加式通知
+  files/service.ts      关联项目内部的文件索引与搜索（有上限、跳过产物目录、越界拒绝）
+  workspace/service.ts  "我在哪个工作区"、"我能写哪里"、面板要列的工作区行
+  api/
+    server.ts           路由分发：信任栅栏 → 方法查表 → JSON 回执
+    routes.ts           方法表（state / files / list / add / update / remove / copy /
+                        settings / open / pick / prompt）
+    tools.ts            related_projects 工具（只读 + 新增）
 src/client/
-  main.ts       __ModuleLoader__ 入口（唯一被 Web 加载的文件）
-  plugin.ts     slot 注册 + `@` 源注册
-  trigger.ts    InputTriggerSource：把关联项目喂给官方 @ 菜单
-  dock.ts       输入框下方条 + 弹层 + 侧栏图标
-  panel.ts      管理面板
-  session.ts    客户端会话清单 → 会话目录（旧会话首屏解析工作区）
-  api.ts        Client→Host 唯一通道
-  state.ts      客户端缓存 store
-  locale.ts     双语文案 + 当前语言解析（组件的 `t` 由 slot 的 locale 命名空间提供）
-  mention.ts    @ 引用插入
-  ui.ts         共享控件
-  styles.ts     唯一一份 CSS（只用 --dsw-alias-* token）
-scripts/build.mjs  构建脚本
+  main.ts               __ModuleLoader__ 入口（唯一被 Web 加载的文件）
+  plugin.ts             slot / 字典 / `@` 源注册，仅接线
+  styles.ts             唯一一份 CSS（只用 --dsw-alias-* token）
+  core/                 半端内共享，不含业务
+    runtime.ts          React 访问器 + h()
+    api.ts              Client→Host 唯一通道 + 会话态请求体
+    types.ts            Host 视图类型的镜像 + 默认 limits
+    store.ts            通用快照 store（含"工作区未解析"的退避重试）+ 全量失效
+    session.ts          客户端会话清单 → 会话目录（旧会话首屏解析工作区）
+    reference.ts        路径拼写与 @ 引用语法（唯一实现：菜单、插入、面板标题共用）
+    ui.ts               共享控件（Toggle / 两步删除 / Spinner / 错误文案）
+  i18n/                 词条按功能分文件，index.ts 只做合并与当前语言解析
+    common.ts           通用词条、错误码文案、手动输入路径
+    panel.ts / dock.ts / menu.ts
+  dock/                 输入框下方条：view.ts（行 + 弹层）、store.ts（每会话一份）
+  panel/                管理面板：view.ts（工作区分节）、row.ts（项目行）、
+                        icon.ts（侧栏图标）、store.ts
+  menu/                 官方 @ 菜单的 source
+    types.ts            InputTriggerSource 契约
+    query.ts            查询 → 目录（drill）/ 项目排序（名称 > 路径 > 备注）
+    rows.ts             项目行 / 文件行 / 面包屑的载荷
+    source.ts           缓存 + candidates / header / onPick / codec / lexicon
+scripts/build.mjs       构建脚本
+test/host.test.mjs      Host 行为测试（导入 dist/，即运行时的真实产物）
 ```
 
-改动后的自检：`npm run typecheck:host`、`npm run typecheck:client`。
+改动后的自检：
+
+```powershell
+npm run build          # 必须：test/ 与运行时都读 dist/
+npm test               # Host 行为测试（注册表规则、prompt 文案、文件索引、路由与栅栏）
+npm run typecheck:host
+npm run typecheck:client
+```
 
 

@@ -1,0 +1,8 @@
+export class RegistryError extends Error {
+    code;
+    constructor(code) {
+        super(code);
+        this.code = code;
+        this.name = 'RegistryError';
+    }
+}

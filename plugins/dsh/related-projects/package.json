@@ -1,6 +1,6 @@
 {
   "name": "@local/dsh-related-projects",
-  "version": "0.6.7",
+  "version": "0.7.0",
   "private": true,
   "type": "module",
   "description": "Per-workspace related projects: the agent knows which sibling projects a change touches, and the composer can insert their paths.",
@@ -19,6 +19,7 @@
   ],
   "scripts": {
     "build": "node scripts/build.mjs",
+    "test": "node --test \"test/*.test.mjs\"",
     "typecheck:host": "tsc -p tsconfig.json --noEmit",
     "typecheck:client": "tsc -p tsconfig.client.json"
   },

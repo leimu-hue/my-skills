@@ -1,15 +1,23 @@
 /**
- * Slot wiring. Nothing here renders — each registration points at a component
- * that owns its own data through the stores.
+ * slot 装配。这里不渲染任何东西——每个注册都指向一个通过 store 自己管数据的
+ * 组件。
+ *
+ * 刻意用了两种延迟绑定：
+ *   - `inject` 用于组合可能在本 apply 跑完之后才提供的服务
+ *     （locale 字典、`@` 流水线）；
+ *   - `slots` 不用延迟绑定，它是硬依赖：没有它就没有东西可挂载，
+ *     所以缺 `slots` 时 apply 直接结束。
  */
 import { CSS } from './styles.js'
-import { setReact, h } from './runtime.js'
-import { NS, EN, ZH, translate } from './locale.js'
-import { DockRow, PanelIcon } from './dock.js'
-import { Panel } from './panel.js'
-import { sessionWorkspace } from './session.js'
-import { dockStoreFor } from './state.js'
-import { createTriggerSource, type TriggerSource } from './trigger.js'
+import { setReact, h } from './core/runtime.js'
+import { NS, EN, ZH, translate, type Translate } from './i18n/index.js'
+import { workspaceHintOf } from './core/session.js'
+import { dockStoreFor } from './dock/store.js'
+import { DockRow } from './dock/view.js'
+import { Panel } from './panel/view.js'
+import { PanelIcon } from './panel/icon.js'
+import { createTriggerSource } from './menu/source.js'
+import type { TriggerSource } from './menu/types.js'
 
 export const PANEL_ID = 'related-projects'
 const DOCK_ORDER = 60
@@ -43,124 +51,126 @@ export function createPlugin(React: unknown): Plugin {
   setReact(React as never)
 
   return {
-    /* Only `slots` is a hard dependency: without it there is nothing to mount.
-       `locale` is deliberately NOT declared here — the registrations below keep
-       working when it is missing, they just lose their dictionary (see the
-       `withFallback` seat below), and a hard inject would take the whole plugin
-       down over a degraded translation. The dictionary registration attaches
-       through `ctx.inject` instead, so it happens whenever the service appears. */
+    /* 只有 `slots` 是硬依赖：没有它就没有可挂载的东西。`locale` 和
+       `inputTriggers` 走下面的 `ctx.inject` 挂接，因此晚到的服务照样能完成注册，
+       而缺失时只降级对应功能（`fallbackT` 这一项保证文案仍可读）。 */
     inject: ['slots'],
     apply(ctx) {
-      const style = document.createElement('style')
-      style.setAttribute('data-dsh-related-projects', '')
-      style.textContent = CSS
-      document.head.appendChild(style)
-      ctx.effect(() => () => { style.remove() }, 'related-projects: styles')
+      installStyles(ctx)
 
-      /* The dictionaries behind the `t` seat of every `locale: NS` registration.
-         `inject` (not a bare `get`) because a service that is not yet provided is
-         invisible to `get`, and a skipped registration is silent: the seat then
-         renders raw keys (`dock.label`, `panel.title`). A stale duplicate — a hot
-         reload whose predecessor's effect is still alive — throws "namespace
-         already has locale", and the dictionaries are already in place, so it must
-         not abort the rest of this apply. */
-      const mountDictionaries = (scoped: PluginContext): void => {
+      whenProvided(ctx, ['locale'], (scoped) => {
+        /* 每个 `locale: NS` 注册里 `t` 那一项背后的字典。重复的旧实例——热重载
+           时前任的 effect 还活着——会抛 "namespace already has locale"，而字典
+           其实已经就位，所以不能让这件事中断本次 apply 的其余部分。 */
         const locale = scoped.get('locale') as LocaleLike | undefined
         if (locale === undefined || locale === null || typeof locale.register !== 'function') {
-          console.warn('[related-projects] locale service unavailable; UI copy falls back to the bundled dictionaries')
+          warn('locale service unavailable; UI copy falls back to the bundled dictionaries')
           return
         }
-        scoped.effect(() => {
-          try {
-            return locale.register(NS, { zh: ZH, en: EN })
-          } catch (error) {
-            console.warn('[related-projects] locale dictionaries already registered (stale reload)', error)
-            return () => {}
-          }
-        }, 'related-projects: dictionaries')
-      }
-      if (typeof ctx.inject === 'function') ctx.inject(['locale'], mountDictionaries)
-      else mountDictionaries(ctx)
+        scoped.effect(() => guarded(
+          () => locale.register(NS, { zh: ZH, en: EN }),
+          'locale dictionaries already registered (stale reload)',
+        ), 'related-projects: dictionaries')
+      })
 
-      /* The `@` source: feeds the official trigger menu, which owns all of the UI.
-         `inject` (not a bare get) because the pipeline service may be provided
-         after this apply runs; the callback fires when it exists. registerSource
-         throws when the same (trigger, name) is already registered — which happens
-         on a hot reload while the previous module's effect is still alive — so a
-         stale duplicate must not abort the rest of this apply. */
-      const mountTrigger = (scoped: PluginContext): void => {
+      whenProvided(ctx, ['inputTriggers'], (scoped) => {
+        /* `@` 源：喂给官方触发菜单，UI 全归它管。同一个 (trigger, name) 已注册
+           时 `registerSource` 会抛错——同样是热重载重复——所以不能让这件事中断
+           本次 apply 的其余部分。 */
         const triggers = scoped.get('inputTriggers') as InputTriggersLike | undefined
         if (triggers === undefined || triggers === null || typeof triggers.registerSource !== 'function') {
-          console.warn('[related-projects] inputTriggers service unavailable; @ menu disabled')
+          warn('inputTriggers service unavailable; @ menu disabled')
           return
         }
+        const hint = workspaceHintOf(ctx)
         scoped.effect(() => {
-          let dispose = (): void => {}
-          try {
-            dispose = triggers.registerSource(createTriggerSource(
-              (sessionId) => sessionWorkspace(ctx, sessionId),
-              (key, values) => translate(ctx, key, values),
-            ))
-          } catch (error) {
-            console.warn('[related-projects] @ source already registered (stale reload)', error)
+          const dispose = guarded(
+            () => triggers.registerSource(createTriggerSource(hint, (key, values) => translate(ctx, key, values))),
+            '@ source already registered (stale reload)',
+          )
+          return () => {
+            try {
+              dispose()
+            } catch {
+              /* 已经没了 */
+            }
           }
-          return () => { try { dispose() } catch { /* already gone */ } }
         }, 'related-projects: @ source')
-      }
-      if (typeof ctx.inject === 'function') ctx.inject(['inputTriggers'], mountTrigger)
-      else mountTrigger(ctx)
+      })
 
       const slots = ctx.get('slots') as SlotsLike | undefined
       if (slots === undefined || slots === null) return
 
-      /* Composer row: session-scoped, so its workspace comes from the session.
-         The per-session store is created in the registration's inject world (the
-         documented place for entry-private data), never from the component. */
-      ctx.effect(() => slots.inject('conversation.composer.dock', () => slots.register({
-        name: 'conversation.composer.dock',
+      const hint = workspaceHintOf(ctx)
+      const fallbackT: Translate = (key, values) => translate(ctx, key, values)
+      const mount = (name: string, options: Record<string, unknown>, component: unknown): void => {
+        ctx.effect(() => slots.inject(name, () => slots.register(
+          { name, ...options },
+          (props: Record<string, unknown>) => h(component, props),
+        )), 'related-projects: ' + name)
+      }
+
+      /* 输入框行：会话级，所以工作区来自会话。每会话的 store 建在注册的 inject
+         世界里（文档规定的条目私有数据存放处），绝不从组件里创建。 */
+      mount('conversation.composer.dock', {
         id: PANEL_ID,
         order: DOCK_ORDER,
         locale: NS,
         inject: (sessionId: string) => ({
-          dockStore: dockStoreFor(sessionId, (id) => sessionWorkspace(ctx, id)),
-          workspaceHint: (id: unknown) => sessionWorkspace(ctx, id),
-          /* The framework seat answers with the key when the namespace has no
-             dictionary; this keeps a readable label on screen in that case. */
-          fallbackT: (key: string, values?: Record<string, unknown>) => translate(ctx, key, values),
+          dockStore: dockStoreFor(sessionId, hint),
+          workspaceHint: (id: unknown) => hint(String(id ?? '')),
+          /* 命名空间没有字典时框架会把 key 原样返回；这一项保证那种情况下屏幕上
+             仍有可读的标签。 */
+          fallbackT,
         }),
-      }, (props) => h(DockRow as never, props))), 'related-projects: composer row')
+      }, DockRow)
 
-      /* Left rail icon + the panel it opens (the same id on both slots). */
-      ctx.effect(() => slots.inject('sidebar.panellist', () => slots.register({
-        name: 'sidebar.panellist',
+      /* 左侧栏图标 + 它打开的面板（两个 slot 用同一个 id）。 */
+      mount('sidebar.panellist', {
         id: PANEL_ID,
         order: ICON_ORDER,
-        label: () => translateLabel(ctx, 'panel.title'),
-      }, PanelIcon as never)), 'related-projects: sidebar icon')
+        label: () => translate(ctx, 'panel.title'),
+      }, PanelIcon)
 
-      ctx.effect(() => slots.inject('main', () => slots.register({
-        name: 'main',
+      mount('main', {
         key: PANEL_ID,
         locale: NS,
-        inject: () => ({
-          fallbackT: (key: string, values?: Record<string, unknown>) => translate(ctx, key, values),
-        }),
-      }, (props) => h(Panel as never, props))), 'related-projects: panel')
+        inject: () => ({ fallbackT }),
+      }, Panel)
     },
   }
 }
 
-/** Label thunks are re-read on every projection, so they follow the locale. */
-function translateLabel(ctx: PluginContext, key: string): string {
-  const dict = (): Record<string, string> => {
-    try {
-      const locale = ctx.get('locale') as { getSnapshot?(): { active?: string } } | undefined
-      const active = String(locale?.getSnapshot?.().active ?? '')
-      return active.toLowerCase().startsWith('zh') ? ZH : EN
-    } catch {
-      return EN
-    }
+function installStyles(ctx: PluginContext): void {
+  const style = document.createElement('style')
+  style.setAttribute('data-dsh-related-projects', '')
+  style.textContent = CSS
+  document.head.appendChild(style)
+  ctx.effect(() => () => {
+    style.remove()
+  }, 'related-projects: styles')
+}
+
+/**
+ * 服务已存在就立刻跑 `mount`，否则等组合提供它时再跑。尚未提供的服务对裸 `get`
+ * 是不可见的，而漏掉的注册是静默的——那样这个位置就会渲染出原始的 key。
+ */
+function whenProvided(ctx: PluginContext, names: string[], mount: (scoped: PluginContext) => void): void {
+  if (typeof ctx.inject === 'function') ctx.inject(names, mount)
+  else mount(ctx)
+}
+
+/** 一次允许在跟陈旧热重载抢跑时正常输掉的注册。 */
+function guarded(register: () => () => void, duplicateMessage: string): () => void {
+  try {
+    return register()
+  } catch (error) {
+    warn(duplicateMessage, error)
+    return () => {}
   }
-  const bag = dict()
-  return bag[key] ?? EN[key] ?? key
+}
+
+function warn(message: string, error?: unknown): void {
+  if (error === undefined) console.warn('[related-projects] ' + message)
+  else console.warn('[related-projects] ' + message, error)
 }

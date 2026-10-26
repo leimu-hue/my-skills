@@ -1,9 +1,9 @@
 /**
- * One stylesheet, injected once by `apply` and removed with the plugin.
+ * 一份样式表，由 `apply` 注入一次，随插件一起移除。
  *
- * Only `--dsw-alias-*` tokens are used, except artwork. Note: the brand token is
- * near-white in the default dark theme, so "primary" is an OUTLINE — a filled
- * brand button would be white text on a white block.
+ * 除图形外，只用 `--dsw-alias-*` 令牌。注意：默认暗色主题下品牌令牌
+ * 接近白色，所以「primary」做成描边——填充的品牌色按钮会变成
+ * 白底白字。
  */
 export const CSS = `
 .rprj-dock{display:flex;flex-direction:column;gap:6px;padding:2px 4px;font-size:12px;color:var(--dsw-alias-label-secondary);position:relative}
@@ -33,7 +33,6 @@ export const CSS = `
 .rprj-panel-head{display:flex;flex-direction:column;gap:4px}
 .rprj-title{font-size:16px;font-weight:600;margin:0}
 .rprj-sub{margin:0;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:1.5}
-.rprj-h3{font-size:12px;font-weight:600;margin:0;color:var(--dsw-alias-label-secondary)}
 .rprj-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .rprj-select,.rprj-input,.rprj-textarea{background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);border:1px solid var(--dsw-alias-border-l1);border-radius:8px;padding:5px 8px;font-size:12px;font-family:inherit}
 .rprj-select{max-width:420px}
@@ -62,8 +61,8 @@ export const CSS = `
 .rprj-toggle-knob{position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:var(--dsw-alias-label-secondary);transition:left .15s ease,background .15s ease}
 .rprj-toggle[aria-checked=true] .rprj-toggle-knob{left:16px;background:var(--dsw-alias-brand-primary)}
 .rprj-btn-delete:hover{background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 12%,transparent);border-color:color-mix(in srgb,var(--dsw-alias-state-error-primary) 45%,transparent);color:var(--dsw-alias-state-error-primary)}
-/* The armed delete strip: consequence, then the two answers, in one row that can
-   wrap on a narrow panel. A tinted border makes it read as a state, not a button. */
+/* 待确认的删除条：先说后果，再给两个答案，排成一行，
+   窄面板下会折行。带色调的边框让它读起来像一个状态，而不是按钮。 */
 .rprj-confirm{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;padding:4px 6px 4px 10px;border:1px solid color-mix(in srgb,var(--dsw-alias-state-error-primary) 45%,transparent);border-radius:8px;background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 9%,var(--dsw-alias-bg-layer-1));animation:rprj-confirm-in .12s ease-out}
 .rprj-confirm-text{font-size:12px;line-height:16px;color:var(--dsw-alias-label-primary);max-width:34ch}
 .rprj-confirm .rprj-btn{padding:2px 10px}

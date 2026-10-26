@@ -1,11 +1,11 @@
 /**
- * Build the two artifacts the Harness actually loads.
+ * 构建 Harness 实际加载的两个产物。
  *
- *   Host   src/host/*.ts     -> dist/host/*.js   (tsc, native ESM, one file per module)
- *   Client src/client/main.ts -> dist/client.js   (esbuild bundle: the Web shell
- *                                                  loads exactly one file per plugin)
+ *   Host   src/host/*.ts     -> dist/host/*.js   (tsc、原生 ESM、每个模块一个文件)
+ *   Client src/client/main.ts -> dist/client.js   (esbuild bundle：Web 外壳
+ *                                                  每个插件只加载一个文件)
  *
- * Run with: npm run build
+ * 运行方式：npm run build
  */
 import { build } from 'esbuild'
 import { spawnSync } from 'node:child_process'

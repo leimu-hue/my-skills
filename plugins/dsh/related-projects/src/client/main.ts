@@ -1,9 +1,9 @@
 /**
- * Bundle entry: the one file the Web shell loads.
+ * 打包入口：Web shell 加载的那一个文件。
  *
- * The host module loader provides `require`; React comes from its module table,
- * never from this bundle. See scripts/build.mjs — esbuild bundles the rest of
- * `src/client/` into this single file.
+ * Host 的模块加载器提供 `require`；React 来自它的模块表，
+ * 不来自这个包。见 scripts/build.mjs——esbuild 把 `src/client/` 的其余
+ * 部分打进这一个文件。
  */
 import { createPlugin } from './plugin.js'
 
