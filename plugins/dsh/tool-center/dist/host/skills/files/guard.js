@@ -11,9 +11,10 @@ import { copyFile, lstat, mkdir, readdir } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
 import { DomainError } from '../../shared/result.js';
 import { isInside } from '../../shared/paths.js';
-const SKILL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+import { isHostSkillName } from '../frontmatter.js';
+/** 与宿主一致的命名规则；定义在 `frontmatter.ts`，扫描与写入共用同一份。 */
 export function isValidSkillName(name) {
-    return SKILL_NAME.test(name);
+    return isHostSkillName(name);
 }
 /** 技能名必须是 kebab-case；否则报一个面板能直接显示的错误。 */
 export function assertSkillName(name) {

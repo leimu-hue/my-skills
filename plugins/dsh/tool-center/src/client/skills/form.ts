@@ -1,10 +1,15 @@
-/** 新建 / 编辑技能的模态表单。编辑时来源与名字都不可改（改名另走 update 的名字参数）。 */
+/**
+ * 新建 / 编辑技能的模态表单。
+ *
+ * 没有「落到哪个来源」的下拉：`import` 与 `local` 这两个键名对用户没有意义，新建就是放进
+ * 自己的技能目录（见 `view.ts` 的 `createTargetOf`）。编辑时名字与来源同样不可改。
+ */
 import type { Translate } from '../i18n/index.js'
-import type { RootView } from '../core/types.js'
-import { buttonOf, fieldOf, inputOf, modalOf, selectOf, textAreaOf } from '../core/ui.js'
+import { buttonOf, fieldOf, inputOf, modalOf, textAreaOf } from '../core/ui.js'
 
 export interface FormState {
   mode: 'create' | 'edit'
+  /** 落点来源键（不显示在表单里，由 view 决定）。 */
   root: string
   name: string
   description: string
@@ -14,7 +19,6 @@ export interface FormState {
 
 export interface FormHandlers {
   form: FormState
-  roots: RootView[]
   busy: string
   onChange(patch: Partial<FormState>): void
   onCancel(): void
@@ -27,13 +31,6 @@ export function renderForm(t: Translate, props: FormHandlers): unknown {
   return modalOf(
     create ? t('form.createTitle') : t('form.editTitle'),
     [
-      create
-        ? fieldOf(t('form.root'), selectOf({
-          value: form.root,
-          onChange: (root) => props.onChange({ root }),
-          options: props.roots.map((root) => ({ value: root.key, label: `${root.label} (${root.key})` })),
-        }))
-        : null,
       fieldOf(t('form.name'), inputOf({
         value: form.name,
         placeholder: 'my-skill',

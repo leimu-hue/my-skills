@@ -16,7 +16,7 @@ export const NS = 'tool-center'
 
 export type Translate = (key: string, values?: Record<string, unknown>) => string
 
-export const ZH: Record<string, string> = {
+const ZH: Record<string, string> = {
   ...ZH_COMMON,
   ...ZH_SKILLS,
   ...ZH_PROMPTS,
@@ -24,7 +24,7 @@ export const ZH: Record<string, string> = {
   ...ZH_SCENES,
 }
 
-export const EN: Record<string, string> = {
+const EN: Record<string, string> = {
   ...EN_COMMON,
   ...EN_SKILLS,
   ...EN_PROMPTS,

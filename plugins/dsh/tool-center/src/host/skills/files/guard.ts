@@ -12,11 +12,11 @@ import { basename, dirname, join, resolve } from 'node:path'
 import type { SkillRoot, SkillRow } from '../../shared/types.js'
 import { DomainError } from '../../shared/result.js'
 import { isInside } from '../../shared/paths.js'
+import { isHostSkillName } from '../frontmatter.js'
 
-const SKILL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
-
+/** 与宿主一致的命名规则；定义在 `frontmatter.ts`，扫描与写入共用同一份。 */
 export function isValidSkillName(name: string): boolean {
-  return SKILL_NAME.test(name)
+  return isHostSkillName(name)
 }
 
 /** 技能名必须是 kebab-case；否则报一个面板能直接显示的错误。 */

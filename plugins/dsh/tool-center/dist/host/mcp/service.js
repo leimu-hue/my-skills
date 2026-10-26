@@ -18,10 +18,11 @@
  * 不引入 YAML 依赖：这里只认 `id` / `name` / `disabled` / `config.*` 与 `args` 列表这几种
  * 形状；多行文本、锚点之类的结构一律不动它们，只做整块定位。
  */
-import { mkdir, readdir, rm } from 'node:fs/promises';
+import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { DomainError } from '../shared/result.js';
 import { readTextOrNull } from '../shared/fs.js';
+import { writeBackup } from '../shared/backups.js';
 import { writeFileAtomic } from '../shared/paths.js';
 const MCP_CLIENT_PACKAGE = '@deepseek-ai/dsh-mcp-client';
 const SECTION_START = '# >>> tool-center:mcp >>>';
@@ -31,7 +32,7 @@ const MAX_BACKUPS = 10;
 export function patchPathOf(dshHome) {
     return join(dshHome, 'cordis.patch.yml');
 }
-export function backupsDirOf(dshHome) {
+function backupsDirOf(dshHome) {
     return join(dshHome, 'tool-center', 'backups');
 }
 /** 解析出所有行（只认我们关心的字段），并标出哪些落在本插件的段落里。 */
@@ -178,17 +179,12 @@ async function backupPatch(dshHome) {
     const text = await readTextOrNull(patchPathOf(dshHome));
     if (text === null)
         return null;
-    const dir = backupsDirOf(dshHome);
-    await mkdir(dir, { recursive: true });
-    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const fileName = `cordis.patch.yml.bak-${stamp}`;
-    await writeFileAtomic(join(dir, fileName), text);
-    const names = (await readdir(dir).catch(() => []))
-        .filter((entry) => entry.startsWith('cordis.patch.yml.bak-'))
-        .sort();
-    for (const stale of names.slice(0, Math.max(0, names.length - MAX_BACKUPS))) {
-        await rm(join(dir, stale), { force: true }).catch(() => undefined);
-    }
+    const { fileName } = await writeBackup({
+        dir: backupsDirOf(dshHome),
+        baseName: 'cordis.patch.yml.bak',
+        content: text,
+        keep: MAX_BACKUPS,
+    });
     return fileName;
 }
 /** 把本插件的段落整块取出来（不含标记行）。 */

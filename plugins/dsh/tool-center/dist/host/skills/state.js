@@ -17,7 +17,8 @@
 import { readFile, rename } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
 import { pathId, writeFileAtomic } from '../shared/paths.js';
-export const STATE_VERSION = 1;
+import { isRecord } from '../shared/json.js';
+const STATE_VERSION = 1;
 export function defaultState() {
     return {
         version: STATE_VERSION,
@@ -91,7 +92,7 @@ export function normalizeState(value) {
         warnings.push(`状态文件版本是 ${String(record.version)}，按 v${STATE_VERSION} 读取`);
     }
     if (record.sources !== undefined) {
-        if (isPlainObject(record.sources)) {
+        if (isRecord(record.sources)) {
             for (const [key, flag] of Object.entries(record.sources)) {
                 if (typeof flag === 'boolean' && key !== '')
                     state.sources[key] = flag;
@@ -107,7 +108,7 @@ export function normalizeState(value) {
     else if (record.removedSources !== undefined) {
         warnings.push('removedSources 字段不是数组，已忽略');
     }
-    if (isPlainObject(record.hiddenSkills)) {
+    if (isRecord(record.hiddenSkills)) {
         for (const [key, names] of Object.entries(record.hiddenSkills)) {
             if (key === '' || !Array.isArray(names))
                 continue;
@@ -119,7 +120,7 @@ export function normalizeState(value) {
     else if (record.hiddenSkills !== undefined) {
         warnings.push('hiddenSkills 字段不是对象，已忽略');
     }
-    if (isPlainObject(record.preferredSkills)) {
+    if (isRecord(record.preferredSkills)) {
         for (const [name, rootKey] of Object.entries(record.preferredSkills)) {
             if (name !== '' && typeof rootKey === 'string' && rootKey !== '')
                 state.preferredSkills[name] = rootKey;
@@ -131,7 +132,7 @@ export function normalizeState(value) {
     if (Array.isArray(record.customRoots)) {
         const seen = new Set();
         for (const item of record.customRoots) {
-            if (!isPlainObject(item))
+            if (!isRecord(item))
                 continue;
             const path = typeof item.path === 'string' ? item.path : '';
             const key = typeof item.key === 'string' ? item.key : '';
@@ -148,13 +149,13 @@ export function normalizeState(value) {
             });
         }
     }
-    if (isPlainObject(record.ranks)) {
+    if (isRecord(record.ranks)) {
         for (const [key, rank] of Object.entries(record.ranks)) {
             if (key !== '' && typeof rank === 'number' && Number.isFinite(rank))
                 state.ranks[key] = rank;
         }
     }
-    if (isPlainObject(record.layers)) {
+    if (isRecord(record.layers)) {
         state.layers = {
             sessions: layersOf(record.layers.sessions),
             workspaces: layersOf(record.layers.workspaces),
@@ -164,13 +165,13 @@ export function normalizeState(value) {
 }
 function layersOf(value) {
     const out = {};
-    if (!isPlainObject(value))
+    if (!isRecord(value))
         return out;
     for (const [key, layer] of Object.entries(value)) {
-        if (key === '' || !isPlainObject(layer))
+        if (key === '' || !isRecord(layer))
             continue;
         const clean = {};
-        if (isPlainObject(layer.sources)) {
+        if (isRecord(layer.sources)) {
             const sources = {};
             for (const [rootKey, flag] of Object.entries(layer.sources)) {
                 if (typeof flag === 'boolean')
@@ -178,7 +179,7 @@ function layersOf(value) {
             }
             clean.sources = sources;
         }
-        if (isPlainObject(layer.hiddenSkills)) {
+        if (isRecord(layer.hiddenSkills)) {
             const hidden = {};
             for (const [rootKey, names] of Object.entries(layer.hiddenSkills)) {
                 if (Array.isArray(names))
@@ -186,7 +187,7 @@ function layersOf(value) {
             }
             clean.hiddenSkills = hidden;
         }
-        if (isPlainObject(layer.preferredSkills)) {
+        if (isRecord(layer.preferredSkills)) {
             const preferred = {};
             for (const [name, rootKey] of Object.entries(layer.preferredSkills)) {
                 if (typeof rootKey === 'string' && rootKey !== '')
@@ -326,9 +327,6 @@ export function uniqueStrings(values) {
         out.push(trimmed);
     }
     return out.sort();
-}
-export function isPlainObject(value) {
-    return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 /** 由绝对路径派生自定义来源的键（跨次运行稳定）。 */
 export async function customRootKey(path) {

@@ -38,12 +38,27 @@ DeepSeek Harness 的一个左侧栏面板：**场景 / MCP / 技能 / 提示词*
 
 ### 技能
 
-来源一览、逐条启停、同名优先级、详情、新建/编辑/删除（进回收站）、单技能与 ZIP 导入导出。
+来源一览、逐条启停、同名优先级、详情、新建/编辑/删除（进回收站）、单技能与 ZIP 导入导出。新建固定落到「DSH 技能」，导入固定落到「导入技能」—— 不让人在两个内部键名（`import` / `local`）之间做没有意义的选择。
 
 - **停用不改源文件**：注册自己的 provider，被停用的技能以 `modelInvocable: false` 的低 rank
   候选压过宿主条目；
 - 技能自己的 `disable-model-invocation` / `user-invocable` 照旧生效，插件的开关叠加在上；
 - 同名多份时按 rank（项目 > 导入 > DSH > agents > codex > claude > 自定义），可一键「设为首选」；
+- **导入用「＋ 选择技能文件夹…」，先看再导**：选完先调 host 的 `import-scan`（只读，不写盘）列出包里有哪些技能、哪些已存在，用户勾选后才 `import-zip`；不再有「手填本机路径」那一栏。浏览器拿不到磁盘真实路径（Electron 不再暴露 `File.path`），所以选中的文件在前端打成 store-only ZIP 再上传，嵌套的 `references/`、平铺 `.md` 都照旧处理；
+- **不猜技能目录，改从宿主注册表读**：宿主把技能装在哪是它自己的实现细节（`skill-filesystem.customSkillDirs`、应用自带的官方技能包等），写死路径迟早会错。所以本插件读一次 `ctx.skills.list()`，从中反推「宿主已经在发布、但我们没有对应来源」的目录，补成只读来源（`kind=host`，标题取目录名）：
+
+  - 宿主路径变了，下一次读取自然跟上；宿主不再发布，它就自动消失；
+  - `skills.list()` 的摘要**只有 `resourceBase`**（技能自己的目录），没有 `path` / `locator`。bundle 的 `resourceBase` 是 `<root>/<skill>`，父目录才是来源；平铺技能的 `resourceBase` 就是来源本身，不再往上猜（否则会把 `~/.claude` 当成来源）；
+  - 系统容器（`%TEMP%`、家目录、`$DSH_HOME`、进程工作目录）本身或它们的祖先永远不会被自动加成来源 —— Windows ACL 诊断技能会把自己解包到 `%TEMP%\dsh-acl-skill-*`，正是它让「反推」误把整个 Temp 扫成了技能列表；
+  - 已经在我们已知来源里的目录（`$DSH_HOME/skills`、`~/.agents/skills` 等）不会被重复列出；
+  - 这些来源是 `hostScans: true` —— 宿主本来就在发，我们只在策略变化时补一条覆盖候选，绝不在里面写文件；
+  - **事件驱动，不在读路径上探测**：宿主注册表变化时会发 `skills/change`（provider 注册 / 失效、文件监听都会触发），插件订阅它并防抖 250ms 重探一次；启动时也先探一次。面板读取只碰缓存 —— 进入技能页不会再为「宿主还在发布什么」跑一遍全部 provider；写技能不影响宿主目录集合，所以不因此重探；另有 60 秒兜底后台探测（只在事件没到且缓存过期时补一次，不挡读取）；
+  - **provider 自己绝不探测注册表**：`skills.list()` 会回调本插件的 `provider.list()`，而 provider 也要读视图 —— 若在视图里再调 `skills.list()`，就是「面板 → 宿主 → 面板」的无限递归（症状是面板永远停在「正在加载技能…」、硬盘被反复读）。所以 provider 那条读取路径只读缓存（`ReadOptions.probeHost: false`），面板 / 工具那条路径才探测，且同一时刻只探一次、最多等 1.5 秒（超时先用旧值返回，探测在后台继续）；
+  - **面板改完策略，`/` 菜单也跟着刷新**：DSH 的 `ui-skill` 按 session 缓存 `remote.skills.list()`，只认两个事件 —— `agent-preset/selected`（远端，第一个参数是 sessionId）与 `connection/reset`（浏览器本地）；这一版的 remote 转发白名单里没有 `skills/change`。所以每次 `skills/change`（防抖 250ms）我们补发一次 `agent-preset/selected`（sessionId, preset）：它只被 `ui-skill` 清技能缓存、`ui-commands` 重置该 session 的命令目录消费，宿主侧没有任何监听，不改会话 preset、不写会话日志。DSH 将来把 `skills/change` 转发到浏览器后，这段可以删掉；
+- **只发宿主会收的候选**：宿主在 `skills.list()` 的 provider 返回值上硬校验形状（名字必须 `kebab-case`、描述非空），而且校验在 try/catch 之外 —— 一条不合规的候选不是「跳过这一条」，而是让整次 list() 抛错，用户看到的是「本轮运行失败 skill provider "tool-center" returned invalid skill name …」。所以扫描器把不合规的名字标成 `结构不完整 / invalid name`，provider 再逐条挡掉，绝不把无效技能塞进 harness；
+- **覆盖候选固定 rank = 1**：宿主的 provider rank 是一整片，不是「400 一档」—— project 100/200、runtime 250、custom 300、user 400、agents 500、bundled 600。覆盖候选必须比该名字的**每一个**宿主候选都小，否则「在面板里关掉」只对一部分来源生效（典型症状：office 来自 custom 目录 rank 300，旧的 399 压不住它，关了还能在 `/` 里搜到）。组内只有一个赢家会被发布，不同名字之间不会互相竞争，所以固定 1 就够，并有测试守着；
+- **每个 agent 的作用域里也注册一份覆盖 provider**：宿主按查看方的 scope 链合并技能，**更近的层直接压过全局层，rank 不参与跨层比较**。只在全局注册的话，宿主在 agent / preset 层发布的同名技能（office 就是这样）永远压着我们 —— 所以 `agent/created` 时把 `service.makeProvider()` 再注册进 `agent.ctx` 的作用域（`Agent.id` 是 `SessionId` 字符串，别只认数字），agent 卸载时随之拆除；
+- **来源可折叠**：每个来源头部有折叠三角，来源里条目多时收起来，才不用滑很久才看到下一个来源（Codex / Claude 这些）。折叠状态只记在本机 `localStorage`，不写进技能策略，换台机器不会跟着走；
 - 只在该介入时才发候选：本机实测 70 条技能里只发 4 条候选（宿主看不见的那些），
   28 条同名副本一条都不发。
 
@@ -183,8 +198,10 @@ src/host/
     result.ts           OpResult + DomainError（一份领域异常，不再每域一个类）
     paths.ts            路径身份、原子写、唯一写锁、旧布局迁移
     fs.ts               「出错就当没有」的读法（exists / statOrNull / readTextOrNull）
+    json.ts             isRecord：非 null、非数组的「普通对象」判断（原先各处手写）
+    backups.ts          带时间戳的备份 + 保留最近 N 份（提示词 / MCP 共用）
     http.ts             请求管道：POST、门禁头、JSON 体与大小上限、回环兜底
-    zip.ts              零依赖 ZIP 读写
+    zip.ts              零依赖 ZIP 读写（CRC 表与浏览器侧 core/zip.ts 各一份，改动时两处一起改）
     log.ts              插件日志（512 KiB 滚动）
   skills/               技能域（本插件的核心）
     frontmatter.ts      SKILL.md 解析；编辑只改目标键，其余字节原样保留
@@ -219,6 +236,7 @@ src/client/
     types.ts            Host 视图形状在浏览器半侧的镜像
     domain.ts           useDomain：读一次 / 写一次 / busy / error / 提示语
     ui.ts               共用渲染原子（页头、分组、模态框、字段、按钮、开关）
+    zip.ts              浏览器侧 store-only ZIP 写入（选文件夹后打包用）
   i18n/
     index.ts            词典合并、translateWith、按语言挑词典
     common.ts           页签名与通用动作

@@ -62,11 +62,25 @@ export function groupOf(key: string, head: unknown[], children: unknown[]): unkn
   return h('div', { className: 'dsk-group', key }, h('div', { className: 'dsk-group-head' }, ...head), ...children)
 }
 
-export function groupLineOf(name: string, badges: unknown[], actions: unknown | null): unknown {
+/** 分组头的一行：可选的展开/折叠按钮、名字、徽章、操作。 */
+export function groupLineOf(name: string, badges: unknown[], actions: unknown | null, leading?: unknown): unknown {
   return h('div', { className: 'dsk-group-line' },
+    leading ?? null,
     h('span', { className: 'dsk-group-name' }, name),
     ...badges,
     actions)
+}
+
+/** 折叠三角：`open=false` 时朝右。 */
+export function disclosureOf(spec: { open: boolean; title: string; onClick(): void }): unknown {
+  return h('button', {
+    className: 'dsk-disclosure',
+    type: 'button',
+    'data-open': String(spec.open),
+    'aria-expanded': String(spec.open),
+    title: spec.title,
+    onClick: spec.onClick,
+  }, spec.open ? '▾' : '▸')
 }
 
 export function groupPathOf(text: string, title?: string): unknown {
@@ -182,7 +196,7 @@ export function errorAlertOf(t: Translate, failure: DomainFailure): unknown {
 }
 
 /** 错误码 → 词典；词典里没有就退回原文。 */
-export function translateCode(t: Translate, code: string, fallback: string): string {
+function translateCode(t: Translate, code: string, fallback: string): string {
   const translated = t(code)
   return translated === code ? fallback : translated
 }

@@ -20,15 +20,12 @@
 .dsk-tab{height:26px;padding:0 10px;border:1px solid transparent;border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary,#5c6068);font-size:12px;cursor:pointer}
 .dsk-tab:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(38,49,72,.06))}
 .dsk-tab[data-active='true']{background:var(--dsw-alias-bg-layer-2,#f2f3f5);color:var(--dsw-alias-label-primary,#1f2329);font-weight:600}
-.dsk-tab-count{color:var(--dsw-alias-label-tertiary,#8a8f99);font-weight:400}
 
-.dsk-scope{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 8px;border:1px solid var(--dsw-alias-border-l2,#e5e6eb);border-radius:8px;background:var(--dsw-alias-bg-layer-2,#f7f8fa)}
 .dsk-check{display:inline-flex;align-items:center;gap:6px;font-size:12px;line-height:18px;color:var(--dsw-alias-label-primary,#1f2329);cursor:pointer;white-space:nowrap}
 .dsk-check input{margin:0;flex:none}
 /* MCP \u670D\u52A1\u5668\u90A3\u9897\u80F6\u56CA\uFF1A\u52FE\u9009\u6846\u4E0E\u6587\u5B57\u5FC5\u987B\u540C\u4E00\u6761\u57FA\u7EBF */
 .dsk-file{display:inline-flex;align-items:center;gap:6px;line-height:18px}
 .dsk-file input{margin:0;flex:none}
-.dsk-select-inline{width:auto;min-width:220px;max-width:46ch}
 .dsk-toolbar{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .dsk-search{flex:1 1 200px;min-width:140px;height:28px;padding:0 8px;border:1px solid var(--dsw-alias-border-l2,#d9dbe0);border-radius:6px;background:var(--dsw-alias-bg-layer-1,#fff);color:inherit;font-size:12px}
 .dsk-actions{display:flex;align-items:center;gap:6px;flex:none}
@@ -40,10 +37,21 @@
 .dsk-btn-danger{color:var(--dsw-alias-state-error-primary,#c9414a);border-color:var(--dsw-alias-border-l3,rgba(201,65,74,.4))}
 .dsk-btn-danger:hover{background:var(--dsw-alias-interactive-bg-hover-danger,rgba(201,65,74,.08))}
 .dsk-btn-sm{height:24px;padding:0 8px;font-size:11px}
+/* \u8BA9 <label> \u5192\u5145\u6309\u94AE\uFF1A\u771F\u6B63\u7684\u63A7\u4EF6\uFF08file input\uFF09\u85CF\u5728\u91CC\u9762\u4E14\u4E0D\u53EF\u89C1\u3002 */
+.dsk-pick{display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+/* \u5BFC\u5165\u5019\u9009\uFF1A\u4E00\u4E2A\u53EF\u6EDA\u52A8\u7684\u52FE\u9009\u5217\u8868\uFF0C\u6761\u76EE\u591A\u65F6\u4E0D\u628A\u6A21\u6001\u6846\u6491\u7834\u3002 */
+.dsk-candidates{display:flex;flex-direction:column;gap:2px;max-height:240px;overflow:auto;padding:4px;border:1px solid var(--dsw-alias-border-l2,#e5e6eb);border-radius:8px;background:var(--dsw-alias-bg-layer-2,#f7f8fa)}
+.dsk-candidate{display:flex;align-items:center;gap:8px;width:100%;padding:3px 4px;border-radius:6px;box-sizing:border-box}
+.dsk-candidate:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(38,49,72,.06))}
+.dsk-candidate[data-disabled='true']{opacity:.55}
+.dsk-candidate-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:var(--dsw-alias-label-primary,#1f2329)}
 
 .dsk-list{display:flex;flex-direction:column;gap:10px;min-height:0}
 .dsk-group{border:1px solid var(--dsw-alias-border-l2,#e5e6eb);border-radius:8px;overflow:hidden;background:var(--dsw-alias-bg-layer-1,#fff)}
 .dsk-group-line{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
+/* \u5206\u7EC4\u5934\u7684\u6298\u53E0\u4E09\u89D2\uFF1A\u538B\u5230\u6309\u94AE\u4EE5\u4E0B\u3001\u53EA\u5360\u4E00\u4E2A\u5B57\u5F62\u7684\u4F4D\u7F6E\uFF0C\u522B\u628A\u300C\u540D\u79F0 + \u5FBD\u7AE0\u300D\u6324\u8D70\u3002 */
+.dsk-disclosure{flex:none;width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;padding:0;border:0;border-radius:4px;background:transparent;color:var(--dsw-alias-label-tertiary,#8a8f99);font-size:10px;line-height:1;cursor:pointer}
+.dsk-disclosure:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(38,49,72,.06));color:var(--dsw-alias-label-primary,#1f2329)}
 .dsk-group-head{display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--dsw-alias-bg-layer-2,#f7f8fa);border-bottom:1px solid var(--dsw-alias-border-l2,#e5e6eb);flex-wrap:wrap}
 .dsk-group-name{font-weight:600;font-size:12px;white-space:nowrap}
 .dsk-group-path{width:100%;color:var(--dsw-alias-label-tertiary,#8a8f99);font-size:11px;font-family:var(--ds-font-family-code,ui-monospace,Consolas,monospace);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:44ch;flex:1 1 180px;min-width:0}
@@ -64,10 +72,18 @@
 .dsk-switch[data-on='true']::after{transform:translateX(14px);background:var(--dsw-alias-label-primary-inverted,#fff)}
 .dsk-switch:disabled{opacity:.45;cursor:default}
 
-.dsk-panel{position:fixed;top:0;right:0;bottom:0;width:min(560px,92%);background:var(--dsw-alias-bg-layer-1,#fff);border-left:1px solid var(--dsw-alias-border-l2,#e5e6eb);box-shadow:var(--dsw-elevation-panel,-8px 0 24px rgba(0,0,0,.08));display:flex;flex-direction:column;z-index:20}
-.dsk-panel-head{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--dsw-alias-border-l2,#e5e6eb);flex-wrap:wrap}
-.dsk-panel-title{font-weight:600;font-size:13px;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.dsk-panel-actions{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}
+/* \u8BE6\u60C5\u62BD\u5C49\uFF1A\u906E\u7F69\u94FA\u6EE1\u7A97\u53E3\uFF0C\u62BD\u5C49\u9760\u53F3\uFF1B\u62BD\u5C49\u81EA\u5DF1\u8D1F\u8D23\u9AD8\u5EA6\u4E0E\u6EDA\u52A8\u3002
+   \u65E9\u5148\u662F position:fixed \u76F4\u63A5\u8D34\u5728\u7A97\u53E3\u53F3\u8FB9\u3001\u6CA1\u6709\u906E\u7F69 \u2014\u2014 \u4F1A\u628A\u5DE6\u4FA7\u5217\u8868\u538B\u6389\u4E00\u5757\uFF0C
+   \u800C\u4E14\u770B\u8D77\u6765\u50CF\u300C\u98D8\u5728\u7A97\u53E3\u53F3\u4FA7\u7684\u4E00\u6761\u300D\uFF0C\u70B9\u522B\u5904\u4E5F\u5173\u4E0D\u6389\u3002 */
+/* \u906E\u7F69\u53EA\u76D6\u5185\u5BB9\u533A\uFF1A\u4E0A\u8FB9\u754C\u7531 shell/panel.ts \u5B9E\u6D4B\u540E\u5199\u8FDB --dsk-content-top\uFF0C
+   \u8FD9\u6837\u539F\u751F\u6807\u9898\u680F\uFF08\u542B\u53F3\u4E0A\u89D2\u6700\u5C0F\u5316/\u6700\u5927\u5316/\u5173\u95ED\uFF09\u4E0D\u4F1A\u88AB\u76D6\u4F4F\uFF0C\u7528\u6237\u4E5F\u4E0D\u4F1A\u8BEF\u4EE5\u4E3A
+   \u90A3\u4E09\u4E2A\u6309\u94AE\u5C5E\u4E8E\u62BD\u5C49\u3002 */
+.dsk-panel-mask{position:fixed;inset:var(--dsk-content-top,0px) 0 0 var(--dsk-content-left,0px);display:flex;justify-content:flex-end;align-items:stretch;padding:8px 0;box-sizing:border-box;background:var(--dsw-alias-bg-mask,rgba(8,10,14,.32));z-index:20}
+.dsk-panel{position:relative;display:flex;flex-direction:column;min-height:0;width:min(560px,100%);max-width:100%;background:var(--dsw-alias-bg-layer-1,#fff);border:1px solid var(--dsw-alias-border-l2,#e5e6eb);border-right:0;border-radius:12px 0 0 12px;box-shadow:var(--dsw-elevation-panel,-8px 0 24px rgba(0,0,0,.12))}
+.dsk-panel-head{display:flex;flex-direction:column;gap:8px;padding:10px 12px;border-bottom:1px solid var(--dsw-alias-border-l2,#e5e6eb)}
+.dsk-panel-title-row{display:flex;align-items:center;gap:8px}
+.dsk-panel-title{flex:1;min-width:0;font-weight:600;font-size:13px;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dsk-panel-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
 .dsk-panel-body{flex:1;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:12px}
 .dsk-kv{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 10px;font-size:12px}
 .dsk-kv-key{color:var(--dsw-alias-label-tertiary,#8a8f99);white-space:nowrap}
@@ -168,6 +184,8 @@
     "root.count": "{n} \u6761",
     "root.remove": "\u4E0D\u518D\u8BFB\u53D6",
     "root.restore": "\u6062\u590D\u8BFB\u53D6",
+    "root.collapse": "\u6298\u53E0\u8FD9\u4E2A\u6765\u6E90",
+    "root.expand": "\u5C55\u5F00\u8FD9\u4E2A\u6765\u6E90",
     "row.preferred": "\u9996\u9009",
     "row.shadowed": "\u88AB {root} \u8986\u76D6",
     "row.manualOnly": "\u4EC5\u624B\u52A8",
@@ -196,7 +214,6 @@
     "form.description": "\u63CF\u8FF0\uFF08\u5FC5\u586B\uFF09",
     "form.whenToUse": "\u4F55\u65F6\u4F7F\u7528\uFF08\u53EF\u9009\uFF09",
     "form.body": "\u6B63\u6587\uFF08Markdown\uFF09",
-    "form.root": "\u843D\u5230\u54EA\u4E2A\u6765\u6E90",
     "form.required": "\u540D\u79F0\u4E0E\u63CF\u8FF0\u90FD\u5FC5\u987B\u586B\u5199",
     "trash.title": "\u56DE\u6536\u7AD9",
     "trash.empty": "\u56DE\u6536\u7AD9\u662F\u7A7A\u7684\u3002",
@@ -208,13 +225,24 @@
     "trash.confirmEmpty": "\u6E05\u7A7A\u56DE\u6536\u7AD9\u4F1A\u6C38\u4E45\u5220\u9664\u5168\u90E8\u6761\u76EE\uFF0C\u786E\u5B9A\uFF1F",
     "import.title": "\u5BFC\u5165\u6280\u80FD",
     "import.root": "\u5BFC\u5165\u5230",
-    "import.pathLabel": "\u672C\u5730\u76EE\u5F55\u6216 .md \u8DEF\u5F84\uFF08\u5BFC\u5165\u8BE5\u76EE\u5F55\u4E0B\u7684\u6280\u80FD\uFF09",
-    "import.pathPlaceholder": "D:\\path\\to\\skills",
-    "import.byPath": "\u6309\u8DEF\u5F84\u5BFC\u5165",
-    "import.byZip": "\u4E0A\u4F20 ZIP",
+    "import.pickTitle": "\u9009\u62E9\u8981\u5BFC\u5165\u7684\u6280\u80FD",
+    "import.pickFolder": "\uFF0B \u9009\u62E9\u6280\u80FD\u6587\u4EF6\u5939\u2026",
+    "import.pickZip": "\u9009\u62E9 ZIP \u6587\u4EF6\u2026",
+    "import.scanning": "\u626B\u63CF\u4E2D\u2026",
+    "import.folder": "\u6587\u4EF6\u5939",
+    "import.source": "\u6765\u6E90 {name}",
+    "import.candidates": "{n} \u4E2A\u6280\u80FD",
+    "import.selectAll": "\u5168\u9009",
+    "import.selectNone": "\u5168\u4E0D\u9009",
+    "import.selected": "\u5DF2\u9009 {n} / {total}",
+    "import.fileCount": "{n} \u4E2A\u6587\u4EF6",
+    "import.exists": "\u5DF2\u5B58\u5728",
+    "import.rejectedTitle": "\u65E0\u6CD5\u8BC6\u522B\u7684\u90E8\u5206",
+    "import.confirm": "\u5BFC\u5165\u9009\u4E2D\uFF08{n}\uFF09",
+    "import.tooLarge": "\u6240\u9009\u6587\u4EF6\u8FC7\u5927\uFF08\u4E0A\u9650 32 MiB\uFF09\uFF0C\u8BF7\u5206\u6210\u51E0\u6B21\u5BFC\u5165",
     "import.done": "\u5BFC\u5165\u5B8C\u6210\uFF1A{imported} \u4E2A\uFF0C\u8DF3\u8FC7 {skipped} \u4E2A",
     "import.skipped": "\u8DF3\u8FC7\u7684\u6761\u76EE",
-    "import.needTarget": "\u8BF7\u5148\u9009\u62E9\u4E00\u4E2A\u53EF\u5199\u7684\u6765\u6E90",
+    "import.needTarget": "\u627E\u4E0D\u5230\u53EF\u7528\u7684\u5BFC\u5165\u76EE\u5F55\uFF08tool-center/skills\uFF09\uFF0C\u8BF7\u5148\u786E\u8BA4\u5B83\u53EF\u5199",
     "import.close": "\u5173\u95ED",
     "toast.saved": "\u5DF2\u4FDD\u5B58",
     "toast.deleted": "\u5DF2\u79FB\u5165\u56DE\u6536\u7AD9",
@@ -230,8 +258,7 @@
     "error.network": "\u8BF7\u6C42\u6CA1\u6709\u53D1\u51FA\u53BB",
     "error.protocol": "\u5BBF\u4E3B\u8FD4\u56DE\u4E86\u975E JSON \u5185\u5BB9",
     "error.scope.reserved": "\u4F1A\u8BDD/\u5DE5\u4F5C\u533A\u5206\u5C42\u5DF2\u9884\u7559\uFF0C\u6682\u672A\u542F\u7528",
-    "error.root.readonly": "\u8FD9\u4E2A\u76EE\u5F55\u662F\u53EA\u8BFB\u7684",
-    "error.unknown": "\u672A\u77E5\u9519\u8BEF"
+    "error.root.readonly": "\u8FD9\u4E2A\u76EE\u5F55\u662F\u53EA\u8BFB\u7684"
   };
   var EN_SKILLS = {
     "page.subtitle": "Roots, switches, priority and file operations. A switch writes this plugin's own policy \u2014 skill files are never modified.",
@@ -259,6 +286,8 @@
     "root.count": "{n}",
     "root.remove": "Stop reading",
     "root.restore": "Read again",
+    "root.collapse": "Collapse this root",
+    "root.expand": "Expand this root",
     "row.preferred": "preferred",
     "row.shadowed": "shadowed by {root}",
     "row.manualOnly": "manual only",
@@ -287,7 +316,6 @@
     "form.description": "Description (required)",
     "form.whenToUse": "When to use (optional)",
     "form.body": "Body (Markdown)",
-    "form.root": "Root",
     "form.required": "Name and description are required",
     "trash.title": "Trash",
     "trash.empty": "The trash is empty.",
@@ -299,13 +327,24 @@
     "trash.confirmEmpty": "This deletes every trashed item forever. Continue?",
     "import.title": "Import skills",
     "import.root": "Import into",
-    "import.pathLabel": "Local directory or .md path (skills inside it are imported)",
-    "import.pathPlaceholder": "D:\\path\\to\\skills",
-    "import.byPath": "Import by path",
-    "import.byZip": "Upload ZIP",
+    "import.pickTitle": "What to import",
+    "import.pickFolder": "+ Choose a skill folder\u2026",
+    "import.pickZip": "Choose a ZIP file\u2026",
+    "import.scanning": "Scanning\u2026",
+    "import.folder": "folder",
+    "import.source": "from {name}",
+    "import.candidates": "{n} skills",
+    "import.selectAll": "Select all",
+    "import.selectNone": "Select none",
+    "import.selected": "{n} / {total} selected",
+    "import.fileCount": "{n} files",
+    "import.exists": "already here",
+    "import.rejectedTitle": "Not recognised",
+    "import.confirm": "Import selected ({n})",
+    "import.tooLarge": "That selection is too large (32 MiB max); import it in a few batches",
     "import.done": "Imported {imported}, skipped {skipped}",
     "import.skipped": "Skipped",
-    "import.needTarget": "Pick a writable root first",
+    "import.needTarget": "No writable import directory (tool-center/skills); check that it exists and is writable",
     "import.close": "Close",
     "toast.saved": "Saved",
     "toast.deleted": "Moved to trash",
@@ -321,8 +360,7 @@
     "error.network": "The request did not leave the browser",
     "error.protocol": "The host returned something that is not JSON",
     "error.scope.reserved": "Session/workspace layers are reserved but not enabled yet",
-    "error.root.readonly": "That directory is read-only",
-    "error.unknown": "Unknown error"
+    "error.root.readonly": "That directory is read-only"
   };
 
   // src/client/i18n/prompts.ts
@@ -553,18 +591,6 @@
     if (params !== void 0) error.params = params;
     return error;
   }
-  function readFileAsBase64(file) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onerror = () => reject(new Error("\u8BFB\u53D6\u6587\u4EF6\u5931\u8D25"));
-      reader.onload = () => {
-        const result = String(reader.result ?? "");
-        const comma = result.indexOf(",");
-        resolve(comma >= 0 ? result.slice(comma + 1) : result);
-      };
-      reader.readAsDataURL(file);
-    });
-  }
   function downloadBase64(filename, base64) {
     const binary = atob(base64);
     const bytes = new Uint8Array(binary.length);
@@ -578,6 +604,107 @@
     anchor.click();
     anchor.remove();
     setTimeout(() => URL.revokeObjectURL(url), 2e3);
+  }
+
+  // src/client/core/zip.ts
+  var CRC_TABLE = (() => {
+    const table = new Int32Array(256);
+    for (let index = 0; index < 256; index += 1) {
+      let value = index;
+      for (let bit = 0; bit < 8; bit += 1) {
+        value = (value & 1) !== 0 ? value >>> 1 ^ 3988292384 : value >>> 1;
+      }
+      table[index] = value;
+    }
+    return table;
+  })();
+  function crc32(data) {
+    let crc = -1;
+    for (let index = 0; index < data.length; index += 1) {
+      crc = crc >>> 8 ^ CRC_TABLE[(crc ^ data[index]) & 255];
+    }
+    return (crc ^ -1) >>> 0;
+  }
+  var LOCAL_SIGNATURE = 67324752;
+  var CENTRAL_SIGNATURE = 33639248;
+  var EOCD_SIGNATURE = 101010256;
+  function buildZip(files) {
+    const encoder = new TextEncoder();
+    const locals = [];
+    const centrals = [];
+    let offset = 0;
+    for (const file of files) {
+      const nameBytes = encoder.encode(file.name);
+      const checksum = crc32(file.data);
+      const size = file.data.length;
+      const local = new Uint8Array(30 + nameBytes.length);
+      const localView = new DataView(local.buffer);
+      localView.setUint32(0, LOCAL_SIGNATURE, true);
+      localView.setUint16(4, 20, true);
+      localView.setUint16(6, 2048, true);
+      localView.setUint16(8, 0, true);
+      localView.setUint16(10, 0, true);
+      localView.setUint16(12, 23073, true);
+      localView.setUint32(14, checksum, true);
+      localView.setUint32(18, size, true);
+      localView.setUint32(22, size, true);
+      localView.setUint16(26, nameBytes.length, true);
+      localView.setUint16(28, 0, true);
+      local.set(nameBytes, 30);
+      locals.push(local, file.data);
+      const central = new Uint8Array(46 + nameBytes.length);
+      const centralView = new DataView(central.buffer);
+      centralView.setUint32(0, CENTRAL_SIGNATURE, true);
+      centralView.setUint16(4, 20, true);
+      centralView.setUint16(6, 20, true);
+      centralView.setUint16(8, 2048, true);
+      centralView.setUint16(10, 0, true);
+      centralView.setUint16(12, 0, true);
+      centralView.setUint16(14, 23073, true);
+      centralView.setUint32(16, checksum, true);
+      centralView.setUint32(20, size, true);
+      centralView.setUint32(24, size, true);
+      centralView.setUint16(28, nameBytes.length, true);
+      centralView.setUint16(30, 0, true);
+      centralView.setUint16(32, 0, true);
+      centralView.setUint16(34, 0, true);
+      centralView.setUint16(36, 0, true);
+      centralView.setUint32(38, 0, true);
+      centralView.setUint32(42, offset, true);
+      central.set(nameBytes, 46);
+      centrals.push(central);
+      offset += local.length + file.data.length;
+    }
+    const centralSize = centrals.reduce((sum, part) => sum + part.length, 0);
+    const eocd = new Uint8Array(22);
+    const eocdView = new DataView(eocd.buffer);
+    eocdView.setUint32(0, EOCD_SIGNATURE, true);
+    eocdView.setUint16(4, 0, true);
+    eocdView.setUint16(6, 0, true);
+    eocdView.setUint16(8, files.length, true);
+    eocdView.setUint16(10, files.length, true);
+    eocdView.setUint32(12, centralSize, true);
+    eocdView.setUint32(16, offset, true);
+    eocdView.setUint16(20, 0, true);
+    return concat([...locals, ...centrals, eocd]);
+  }
+  function base64Of(bytes) {
+    const chunk = 32768;
+    let binary = "";
+    for (let index = 0; index < bytes.length; index += chunk) {
+      binary += String.fromCharCode(...bytes.subarray(index, index + chunk));
+    }
+    return btoa(binary);
+  }
+  function concat(parts) {
+    const total = parts.reduce((sum, part) => sum + part.length, 0);
+    const out = new Uint8Array(total);
+    let cursor = 0;
+    for (const part of parts) {
+      out.set(part, cursor);
+      cursor += part.length;
+    }
+    return out;
   }
 
   // src/client/core/domain.ts
@@ -672,14 +799,25 @@
   function groupOf(key, head, children) {
     return h("div", { className: "dsk-group", key }, h("div", { className: "dsk-group-head" }, ...head), ...children);
   }
-  function groupLineOf(name, badges, actions) {
+  function groupLineOf(name, badges, actions, leading) {
     return h(
       "div",
       { className: "dsk-group-line" },
+      leading ?? null,
       h("span", { className: "dsk-group-name" }, name),
       ...badges,
       actions
     );
+  }
+  function disclosureOf(spec) {
+    return h("button", {
+      className: "dsk-disclosure",
+      type: "button",
+      "data-open": String(spec.open),
+      "aria-expanded": String(spec.open),
+      title: spec.title,
+      onClick: spec.onClick
+    }, spec.open ? "\u25BE" : "\u25B8");
   }
   function groupPathOf(text, title) {
     return h("div", { className: "dsk-group-path", title: title ?? text }, text);
@@ -794,6 +932,11 @@
         })])
       ], []);
     }
+    const disclosure = disclosureOf({
+      open: !handlers.collapsed,
+      title: handlers.collapsed ? t("root.expand") : t("root.collapse"),
+      onClick: handlers.onToggleCollapsed
+    });
     return groupOf(root.key, [
       // 第一行：名字 + 徽章 + 操作；路径单独一行 —— 路径一长就把按钮挤到第二行，看着像错位。
       groupLineOf(root.label, [
@@ -801,15 +944,15 @@
         badgeOf(t("root.rank", { rank: root.rank }), "off"),
         badgeOf(t("root.count", { n: root.skills.length }), "off"),
         root.writable ? badgeOf(t("root.writable"), "ok") : badgeOf(t("root.readonly"), "off")
-      ], actions),
+      ], actions, disclosure),
       groupPathOf(root.path)
     ], [
       root.error === void 0 ? null : h("div", { className: "dsk-alert dsk-alert-err" }, root.error),
-      handlers.rows.length === 0 ? emptyOf(root.skills.length === 0 ? t("page.empty") : t("page.noMatch")) : h("div", { className: "dsk-rows" }, handlers.rows.map((row) => renderRow(t, row, root, handlers)))
+      handlers.collapsed ? null : handlers.rows.length === 0 ? emptyOf(root.skills.length === 0 ? t("page.empty") : t("page.noMatch")) : h("div", { className: "dsk-rows" }, handlers.rows.map((row) => renderRow(t, row, root, handlers)))
     ]);
   }
   function removableRoot(root) {
-    return root.kind !== "local" && root.kind !== "import" && root.project !== true;
+    return root.kind !== "local" && root.kind !== "import" && root.kind !== "host" && root.project !== true;
   }
   function renderRow(t, row, root, handlers) {
     const on = row.policy.modelInvocable;
@@ -862,25 +1005,38 @@
     });
     return h(
       "div",
-      { className: "dsk-panel" },
+      { className: "dsk-panel-mask", onClick: props.onClose },
       h(
         "div",
-        { className: "dsk-panel-head" },
-        h("h4", { className: "dsk-panel-title" }, row?.declaredName ?? props.selected.name),
+        {
+          className: "dsk-panel",
+          role: "dialog",
+          "aria-modal": "true",
+          onClick: (event) => event.stopPropagation()
+        },
         h(
           "div",
-          { className: "dsk-panel-actions" },
-          row !== void 0 && row.rootWritable ? action(t("detail.edit"), props.onEdit) : null,
-          row !== void 0 ? action(row.preferred ? t("detail.unprefer") : t("detail.prefer"), () => props.onPrefer(row.preferred !== true)) : null,
-          row !== void 0 ? action(t("detail.export"), props.onExport) : null,
-          row !== void 0 && row.rootWritable ? action(t("detail.delete"), props.onDelete, true) : null,
-          buttonOf({ label: t("detail.close"), small: true, onClick: props.onClose })
+          { className: "dsk-panel-head" },
+          h(
+            "div",
+            { className: "dsk-panel-title-row" },
+            h("h4", { className: "dsk-panel-title" }, row?.declaredName ?? props.selected.name),
+            buttonOf({ label: t("detail.close"), small: true, onClick: props.onClose })
+          ),
+          h(
+            "div",
+            { className: "dsk-panel-actions" },
+            row !== void 0 && row.rootWritable ? action(t("detail.edit"), props.onEdit) : null,
+            row !== void 0 ? action(row.preferred ? t("detail.unprefer") : t("detail.prefer"), () => props.onPrefer(row.preferred !== true)) : null,
+            row !== void 0 ? action(t("detail.export"), props.onExport) : null,
+            row !== void 0 && row.rootWritable ? action(t("detail.delete"), props.onDelete, true) : null
+          )
+        ),
+        h(
+          "div",
+          { className: "dsk-panel-body" },
+          ...props.detail === null ? [emptyOf(t("detail.busy"))] : bodyOf(t, props.detail)
         )
-      ),
-      h(
-        "div",
-        { className: "dsk-panel-body" },
-        ...props.detail === null ? [emptyOf(t("detail.busy"))] : bodyOf(t, props.detail)
       )
     );
   }
@@ -930,11 +1086,6 @@
     return modalOf(
       create ? t("form.createTitle") : t("form.editTitle"),
       [
-        create ? fieldOf(t("form.root"), selectOf({
-          value: form.root,
-          onChange: (root) => props.onChange({ root }),
-          options: props.roots.map((root) => ({ value: root.key, label: `${root.label} (${root.key})` }))
-        })) : null,
         fieldOf(t("form.name"), inputOf({
           value: form.name,
           placeholder: "my-skill",
@@ -962,38 +1113,104 @@
   }
 
   // src/client/skills/import.ts
+  function supportsFolderPick() {
+    return typeof document !== "undefined" && "webkitdirectory" in document.createElement("input");
+  }
+  function pickerProps(busy, onPicked) {
+    return {
+      type: "file",
+      disabled: busy,
+      style: { display: "none" },
+      onChange: (event) => {
+        const input = event.target;
+        const picked = Array.from(input.files ?? []);
+        input.value = "";
+        if (picked.length > 0) onPicked(picked);
+      }
+    };
+  }
   function renderImport(t, props) {
     const state = props.state;
+    const busy = props.busy !== "";
+    const missingTarget = props.target === void 0;
+    const importable = state.candidates.filter((candidate) => !candidate.exists);
+    const pickedCount = state.picked.filter((name) => importable.some((candidate) => candidate.name === name)).length;
     const body = [];
-    if (props.roots.length === 0) {
-      body.push(alertOf(t("import.needTarget")));
-    } else {
-      body.push(
-        fieldOf(t("import.root"), selectOf({
-          value: state.root,
-          onChange: (root) => props.onChange({ root }),
-          options: props.roots.map((root) => ({ value: root.key, label: root.label }))
-        })),
-        fieldOf(t("import.pathLabel"), h(
+    if (missingTarget) body.push(alertOf(t("import.needTarget")));
+    else body.push(mutedOf(`${t("import.root")}\uFF1A${props.target?.label ?? ""}`));
+    body.push(fieldOf(t("import.pickTitle"), h(
+      "div",
+      { className: "dsk-actions" },
+      supportsFolderPick() ? h(
+        "label",
+        { className: "dsk-btn dsk-btn-primary dsk-pick" },
+        busy ? t("import.scanning") : t("import.pickFolder"),
+        h("input", {
+          ...pickerProps(busy, props.onPickFolder),
+          // 非标准属性，Chromium 支持（桌面版宿主就是 Chromium）。
+          webkitdirectory: "",
+          directory: "",
+          multiple: true
+        })
+      ) : null,
+      h(
+        "label",
+        { className: "dsk-btn dsk-pick" },
+        t("import.pickZip"),
+        h("input", {
+          ...pickerProps(busy, (picked) => {
+            const file = picked[0];
+            if (file !== void 0) props.onPickZip(file);
+          }),
+          accept: ".zip"
+        })
+      )
+    )));
+    if (state.candidates.length > 0) {
+      body.push(h(
+        "div",
+        { className: "dsk-section" },
+        h(
+          "p",
+          { className: "dsk-section-title" },
+          `${t("import.candidates", { n: state.candidates.length })} \xB7 ${t("import.source", { name: state.source })}`
+        ),
+        h(
           "div",
           { className: "dsk-toolbar" },
-          inputOf({
-            value: state.path,
-            placeholder: t("import.pathPlaceholder"),
-            onChange: (path) => props.onChange({ path })
-          }),
-          buttonOf({ label: t("import.byPath"), disabled: props.busy !== "", onClick: props.onImportPath })
-        )),
-        fieldOf(t("import.byZip"), h("input", {
-          className: "dsk-input",
-          type: "file",
-          accept: ".zip",
-          onChange: (event) => {
-            const file = event.target.files?.[0];
-            if (file !== void 0) props.onImportZip(file);
-          }
+          buttonOf({ label: t("import.selectAll"), small: true, disabled: busy, onClick: () => props.onToggleAll(true) }),
+          buttonOf({ label: t("import.selectNone"), small: true, disabled: busy, onClick: () => props.onToggleAll(false) }),
+          mutedOf(t("import.selected", { n: pickedCount, total: importable.length }))
+        ),
+        h("div", { className: "dsk-candidates" }, state.candidates.map((candidate) => {
+          const checked = state.picked.includes(candidate.name) && !candidate.exists;
+          return h(
+            "label",
+            {
+              className: "dsk-check dsk-candidate",
+              key: candidate.name,
+              "data-disabled": String(candidate.exists)
+            },
+            h("input", {
+              type: "checkbox",
+              checked,
+              disabled: busy || candidate.exists,
+              onChange: () => props.onToggle(candidate.name)
+            }),
+            h("span", { className: "dsk-candidate-name" }, candidate.name),
+            mutedOf(candidate.flat === true ? ".md" : t("import.fileCount", { n: candidate.files })),
+            candidate.exists ? badgeOf(t("import.exists"), "off") : null
+          );
         }))
-      );
+      ));
+    }
+    if (state.rejected.length > 0) {
+      body.push(h(
+        "div",
+        { className: "dsk-section" },
+        h("p", { className: "dsk-section-title" }, t("import.rejectedTitle")),
+        h("pre", { className: "dsk-pre" }, state.rejected.map((item) => `${item.name} \u2014 ${item.reason}`).join("\n"))
+      ));
     }
     if (state.result !== null) {
       body.push(h(
@@ -1008,7 +1225,14 @@
         ) : null
       ));
     }
+    const canConfirm = !missingTarget && !busy && state.base64 !== null && state.result === null;
     return modalOf(t("import.title"), body, [
+      canConfirm ? buttonOf({
+        label: t("import.confirm", { n: pickedCount }),
+        variant: "primary",
+        disabled: pickedCount === 0,
+        onClick: props.onConfirm
+      }) : null,
       buttonOf({ label: t("import.close"), onClick: props.onClose })
     ]);
   }
@@ -1047,9 +1271,18 @@
   }
 
   // src/client/skills/view.ts
+  var COLLAPSED_KEY = "tool-center:collapsed";
   function writableRoots(view) {
     return (view?.roots ?? []).filter((root) => root.writable && !root.removed);
   }
+  function createTargetOf(view) {
+    const candidates = writableRoots(view);
+    return candidates.find((root) => root.key === "local") ?? candidates[0];
+  }
+  function importTargetOf(view) {
+    return (view?.roots ?? []).find((root) => root.key === "import") ?? writableRoots(view)[0];
+  }
+  var MAX_IMPORT_BYTES = 32 * 1024 * 1024;
   function SkillsView(props) {
     const t = props.t;
     const domain = useDomain("state", props.notify);
@@ -1062,6 +1295,30 @@
     const [form, setForm] = useStateOf(null);
     const [importing, setImporting] = useStateOf(null);
     const [health, setHealth] = useStateOf(null);
+    const [collapsed, setCollapsed] = useStateOf({});
+    useClientEffect(() => {
+      try {
+        const raw = window.localStorage.getItem(COLLAPSED_KEY);
+        if (raw === null) return;
+        const parsed = JSON.parse(raw);
+        if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
+          setCollapsed(parsed);
+        }
+      } catch {
+      }
+    }, []);
+    const toggleCollapsed = (key) => {
+      setCollapsed((current) => {
+        const next = { ...current };
+        if (next[key] === true) delete next[key];
+        else next[key] = true;
+        try {
+          window.localStorage.setItem(COLLAPSED_KEY, JSON.stringify(next));
+        } catch {
+        }
+        return next;
+      });
+    };
     useClientEffect(() => {
       void callOp("health", {}).then((value) => setHealth(value)).catch(() => void 0);
     }, []);
@@ -1078,6 +1335,14 @@
       setSelected(null);
       setDetail(null);
     };
+    useClientEffect(() => {
+      if (selected === null) return void 0;
+      const onKey = (event) => {
+        if (event.key === "Escape") closeDetail();
+      };
+      window.addEventListener("keydown", onKey);
+      return () => window.removeEventListener("keydown", onKey);
+    }, [selected]);
     const openTrash = async () => {
       try {
         const value = await callOp("trash-list", {});
@@ -1102,6 +1367,77 @@
       } catch (cause) {
         domain.fail(String(cause?.message ?? cause));
       }
+    };
+    const scanArchive = async (source, base64) => {
+      const target = importTargetOf(view);
+      if (target === void 0) return;
+      setImporting({ source, base64: null, candidates: [], rejected: [], picked: [], result: null });
+      const done = await domain.act("import-scan", { root: target.key, base64 });
+      if (!done.ok) {
+        setImporting(null);
+        return;
+      }
+      const scan = done.result;
+      setImporting({
+        source,
+        base64,
+        candidates: scan.candidates,
+        rejected: scan.rejected,
+        // 默认勾上所有还能导入的（已存在的不勾、也不允许勾）。
+        picked: scan.candidates.filter((candidate) => !candidate.exists).map((candidate) => candidate.name),
+        result: null
+      });
+    };
+    const pickFolder = async (files) => {
+      const target = importTargetOf(view);
+      if (target === void 0) return;
+      try {
+        const entries = await Promise.all(files.map(async (file) => ({
+          name: relativeNameOf(file),
+          data: new Uint8Array(await file.arrayBuffer())
+        })));
+        const total = entries.reduce((sum, entry) => sum + entry.data.length, 0);
+        if (total > MAX_IMPORT_BYTES) {
+          domain.fail(t("import.tooLarge"));
+          return;
+        }
+        const source = relativeNameOf(files[0]).split("/")[0] || t("import.folder");
+        await scanArchive(source, base64Of(buildZip(entries)));
+      } catch (cause) {
+        domain.fail(String(cause?.message ?? cause));
+      }
+    };
+    const pickZip = async (file) => {
+      try {
+        await scanArchive(file.name, base64Of(new Uint8Array(await file.arrayBuffer())));
+      } catch (cause) {
+        domain.fail(String(cause?.message ?? cause));
+      }
+    };
+    const confirmImport = async () => {
+      if (importing === null || importing.base64 === null) return;
+      const target = importTargetOf(view);
+      if (target === void 0) return;
+      const done = await domain.act("import-zip", {
+        root: target.key,
+        base64: importing.base64,
+        names: importing.picked
+      });
+      if (!done.ok) return;
+      setImporting({ ...importing, candidates: [], rejected: [], picked: [], result: done.result });
+    };
+    const toggleCandidate = (name) => {
+      setImporting((current) => {
+        if (current === null) return current;
+        const picked = current.picked.includes(name) ? current.picked.filter((item) => item !== name) : [...current.picked, name];
+        return { ...current, picked };
+      });
+    };
+    const toggleAllCandidates = (selected2) => {
+      setImporting((current) => {
+        if (current === null) return current;
+        return { ...current, picked: selected2 ? current.candidates.filter((c) => !c.exists).map((c) => c.name) : [] };
+      });
     };
     const counts = view?.counts;
     const warnings = view?.warnings ?? [];
@@ -1141,7 +1477,7 @@
           disabled: busy !== "",
           onClick: () => setForm({
             mode: "create",
-            root: writableRoots(view)[0]?.key ?? "local",
+            root: createTargetOf(view)?.key ?? "local",
             name: "",
             description: "",
             whenToUse: "",
@@ -1151,7 +1487,7 @@
         buttonOf({
           label: t("page.import"),
           disabled: busy !== "",
-          onClick: () => setImporting({ root: writableRoots(view)[0]?.key ?? "import", path: "", result: null })
+          onClick: () => setImporting({ source: "", base64: null, candidates: [], rejected: [], picked: [], result: null })
         }),
         buttonOf({ label: t("page.export"), disabled: busy !== "" || view === null, onClick: () => {
           void exportSelection(void 0);
@@ -1174,7 +1510,9 @@
         },
         onOpen: (row) => {
           void openDetail(row.rootKey, row.name);
-        }
+        },
+        collapsed: collapsed[root.key] === true,
+        onToggleCollapsed: () => toggleCollapsed(root.key)
       }))),
       selected === null ? null : renderDetail(t, {
         selected,
@@ -1215,7 +1553,6 @@
       }),
       form === null ? null : renderForm(t, {
         form,
-        roots: writableRoots(view),
         busy,
         onChange: (patch) => setForm({ ...form, ...patch }),
         onCancel: () => setForm(null),
@@ -1241,24 +1578,19 @@
       }),
       importing === null ? null : renderImport(t, {
         state: importing,
-        roots: writableRoots(view),
+        target: importTargetOf(view),
         busy,
-        onChange: (patch) => setImporting({ ...importing, ...patch }),
         onClose: () => setImporting(null),
-        onImportPath: () => {
-          if (importing.path.trim() === "") return;
-          void domain.act("import-path", { root: importing.root, path: importing.path.trim() }).then((done) => {
-            if (done.ok) setImporting({ ...importing, result: done.result });
-          });
+        onPickFolder: (files) => {
+          void pickFolder(files);
         },
-        onImportZip: async (file) => {
-          try {
-            const base64 = await readFileAsBase64(file);
-            const done = await domain.act("import-zip", { root: importing.root, base64 });
-            if (done.ok) setImporting({ ...importing, result: done.result });
-          } catch (cause) {
-            domain.fail(String(cause?.message ?? cause));
-          }
+        onPickZip: (file) => {
+          void pickZip(file);
+        },
+        onToggle: toggleCandidate,
+        onToggleAll: toggleAllCandidates,
+        onConfirm: () => {
+          void confirmImport();
         }
       }),
       trash === null ? null : renderTrash(t, {
@@ -1284,6 +1616,11 @@
         }
       })
     );
+  }
+  function relativeNameOf(file) {
+    const relative = file.webkitRelativePath;
+    const name = typeof relative === "string" && relative !== "" ? relative : file.name;
+    return name.split("\\").join("/");
   }
 
   // src/client/prompts/view.ts
@@ -1559,6 +1896,7 @@
   }
 
   // src/client/scenes/view.ts
+  var refKeyOf = (root, name) => root + "\0" + name;
   function ScenesView(props) {
     const t = props.t;
     const domain = useDomain("scene-state", props.notify);
@@ -1711,7 +2049,7 @@
     const draft = props.draft;
     const needle = props.search.trim().toLowerCase();
     const visibleSkills = (needle === "" ? props.sources.skills : props.sources.skills.filter((row) => row.label.toLowerCase().includes(needle) || row.name.toLowerCase().includes(needle))).slice(0, 120);
-    const picked = new Set(draft.skills.map((ref) => ref.root + "\0" + ref.name));
+    const picked = new Set(draft.skills.map((ref) => refKeyOf(ref.root, ref.name)));
     return modalOf(
       draft.isNew ? t("scenes.new") : `${t("scenes.edit")}: ${draft.name}`,
       [
@@ -1784,7 +2122,7 @@
               onChange: props.onSearch
             }),
             props.sources.skills.length === 0 ? mutedOf(t("scenes.noSkills")) : h("div", { style: { maxHeight: "180px", overflow: "auto" } }, visibleSkills.map((row) => {
-              const key = row.root + "\0" + row.name;
+              const key = refKeyOf(row.root, row.name);
               return h(
                 "label",
                 { className: "dsk-row", key, style: { cursor: "pointer" } },
@@ -1876,10 +2214,32 @@
   }
 
   // src/client/shell/panel.ts
+  var TOP_VAR = "--dsk-content-top";
+  var LEFT_VAR = "--dsk-content-left";
   function ToolCenterPanel(props) {
+    const React = useReact();
+    const root = React.useRef(null);
+    useClientEffect(() => {
+      const publish = () => {
+        const node = root.current;
+        const rect = typeof node?.getBoundingClientRect === "function" ? node.getBoundingClientRect() : void 0;
+        const style = document.documentElement.style;
+        style.setProperty(TOP_VAR, `${Math.max(0, Math.round(rect?.top ?? 0))}px`);
+        style.setProperty(LEFT_VAR, `${Math.max(0, Math.round(rect?.left ?? 0))}px`);
+      };
+      publish();
+      const frame = typeof requestAnimationFrame === "function" ? requestAnimationFrame(publish) : 0;
+      window.addEventListener("resize", publish);
+      return () => {
+        if (frame !== 0) cancelAnimationFrame(frame);
+        window.removeEventListener("resize", publish);
+        document.documentElement.style.removeProperty(TOP_VAR);
+        document.documentElement.style.removeProperty(LEFT_VAR);
+      };
+    }, []);
     return h(
       "div",
-      { className: "dsk-page" },
+      { className: "dsk-page", ref: root },
       h(ToolCenterPage, props)
     );
   }

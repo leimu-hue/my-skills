@@ -18,10 +18,11 @@
  * 不引入 YAML 依赖：这里只认 `id` / `name` / `disabled` / `config.*` 与 `args` 列表这几种
  * 形状；多行文本、锚点之类的结构一律不动它们，只做整块定位。
  */
-import { mkdir, readdir, rm } from 'node:fs/promises'
+import { readdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { DomainError } from '../shared/result.js'
 import { readTextOrNull } from '../shared/fs.js'
+import { writeBackup } from '../shared/backups.js'
 import { writeFileAtomic } from '../shared/paths.js'
 
 export interface McpServer {
@@ -59,7 +60,7 @@ export function patchPathOf(dshHome: string): string {
   return join(dshHome, 'cordis.patch.yml')
 }
 
-export function backupsDirOf(dshHome: string): string {
+function backupsDirOf(dshHome: string): string {
   return join(dshHome, 'tool-center', 'backups')
 }
 
@@ -220,17 +221,12 @@ export async function loadMcp(dshHome: string): Promise<McpState> {
 async function backupPatch(dshHome: string): Promise<string | null> {
   const text = await readTextOrNull(patchPathOf(dshHome))
   if (text === null) return null
-  const dir = backupsDirOf(dshHome)
-  await mkdir(dir, { recursive: true })
-  const stamp = new Date().toISOString().replace(/[:.]/g, '-')
-  const fileName = `cordis.patch.yml.bak-${stamp}`
-  await writeFileAtomic(join(dir, fileName), text)
-  const names = (await readdir(dir).catch(() => [] as string[]))
-    .filter((entry) => entry.startsWith('cordis.patch.yml.bak-'))
-    .sort()
-  for (const stale of names.slice(0, Math.max(0, names.length - MAX_BACKUPS))) {
-    await rm(join(dir, stale), { force: true }).catch(() => undefined)
-  }
+  const { fileName } = await writeBackup({
+    dir: backupsDirOf(dshHome),
+    baseName: 'cordis.patch.yml.bak',
+    content: text,
+    keep: MAX_BACKUPS,
+  })
   return fileName
 }
 

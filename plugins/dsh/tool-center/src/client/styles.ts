@@ -26,15 +26,12 @@ export const CSS = `
 .dsk-tab{height:26px;padding:0 10px;border:1px solid transparent;border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary,#5c6068);font-size:12px;cursor:pointer}
 .dsk-tab:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(38,49,72,.06))}
 .dsk-tab[data-active='true']{background:var(--dsw-alias-bg-layer-2,#f2f3f5);color:var(--dsw-alias-label-primary,#1f2329);font-weight:600}
-.dsk-tab-count{color:var(--dsw-alias-label-tertiary,#8a8f99);font-weight:400}
 
-.dsk-scope{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 8px;border:1px solid var(--dsw-alias-border-l2,#e5e6eb);border-radius:8px;background:var(--dsw-alias-bg-layer-2,#f7f8fa)}
 .dsk-check{display:inline-flex;align-items:center;gap:6px;font-size:12px;line-height:18px;color:var(--dsw-alias-label-primary,#1f2329);cursor:pointer;white-space:nowrap}
 .dsk-check input{margin:0;flex:none}
 /* MCP 服务器那颗胶囊：勾选框与文字必须同一条基线 */
 .dsk-file{display:inline-flex;align-items:center;gap:6px;line-height:18px}
 .dsk-file input{margin:0;flex:none}
-.dsk-select-inline{width:auto;min-width:220px;max-width:46ch}
 .dsk-toolbar{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .dsk-search{flex:1 1 200px;min-width:140px;height:28px;padding:0 8px;border:1px solid var(--dsw-alias-border-l2,#d9dbe0);border-radius:6px;background:var(--dsw-alias-bg-layer-1,#fff);color:inherit;font-size:12px}
 .dsk-actions{display:flex;align-items:center;gap:6px;flex:none}
@@ -46,10 +43,21 @@ export const CSS = `
 .dsk-btn-danger{color:var(--dsw-alias-state-error-primary,#c9414a);border-color:var(--dsw-alias-border-l3,rgba(201,65,74,.4))}
 .dsk-btn-danger:hover{background:var(--dsw-alias-interactive-bg-hover-danger,rgba(201,65,74,.08))}
 .dsk-btn-sm{height:24px;padding:0 8px;font-size:11px}
+/* 让 <label> 冒充按钮：真正的控件（file input）藏在里面且不可见。 */
+.dsk-pick{display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+/* 导入候选：一个可滚动的勾选列表，条目多时不把模态框撑破。 */
+.dsk-candidates{display:flex;flex-direction:column;gap:2px;max-height:240px;overflow:auto;padding:4px;border:1px solid var(--dsw-alias-border-l2,#e5e6eb);border-radius:8px;background:var(--dsw-alias-bg-layer-2,#f7f8fa)}
+.dsk-candidate{display:flex;align-items:center;gap:8px;width:100%;padding:3px 4px;border-radius:6px;box-sizing:border-box}
+.dsk-candidate:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(38,49,72,.06))}
+.dsk-candidate[data-disabled='true']{opacity:.55}
+.dsk-candidate-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:var(--dsw-alias-label-primary,#1f2329)}
 
 .dsk-list{display:flex;flex-direction:column;gap:10px;min-height:0}
 .dsk-group{border:1px solid var(--dsw-alias-border-l2,#e5e6eb);border-radius:8px;overflow:hidden;background:var(--dsw-alias-bg-layer-1,#fff)}
 .dsk-group-line{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
+/* 分组头的折叠三角：压到按钮以下、只占一个字形的位置，别把「名称 + 徽章」挤走。 */
+.dsk-disclosure{flex:none;width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;padding:0;border:0;border-radius:4px;background:transparent;color:var(--dsw-alias-label-tertiary,#8a8f99);font-size:10px;line-height:1;cursor:pointer}
+.dsk-disclosure:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(38,49,72,.06));color:var(--dsw-alias-label-primary,#1f2329)}
 .dsk-group-head{display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--dsw-alias-bg-layer-2,#f7f8fa);border-bottom:1px solid var(--dsw-alias-border-l2,#e5e6eb);flex-wrap:wrap}
 .dsk-group-name{font-weight:600;font-size:12px;white-space:nowrap}
 .dsk-group-path{width:100%;color:var(--dsw-alias-label-tertiary,#8a8f99);font-size:11px;font-family:var(--ds-font-family-code,ui-monospace,Consolas,monospace);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:44ch;flex:1 1 180px;min-width:0}
@@ -70,10 +78,18 @@ export const CSS = `
 .dsk-switch[data-on='true']::after{transform:translateX(14px);background:var(--dsw-alias-label-primary-inverted,#fff)}
 .dsk-switch:disabled{opacity:.45;cursor:default}
 
-.dsk-panel{position:fixed;top:0;right:0;bottom:0;width:min(560px,92%);background:var(--dsw-alias-bg-layer-1,#fff);border-left:1px solid var(--dsw-alias-border-l2,#e5e6eb);box-shadow:var(--dsw-elevation-panel,-8px 0 24px rgba(0,0,0,.08));display:flex;flex-direction:column;z-index:20}
-.dsk-panel-head{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--dsw-alias-border-l2,#e5e6eb);flex-wrap:wrap}
-.dsk-panel-title{font-weight:600;font-size:13px;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.dsk-panel-actions{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}
+/* 详情抽屉：遮罩铺满窗口，抽屉靠右；抽屉自己负责高度与滚动。
+   早先是 position:fixed 直接贴在窗口右边、没有遮罩 —— 会把左侧列表压掉一块，
+   而且看起来像「飘在窗口右侧的一条」，点别处也关不掉。 */
+/* 遮罩只盖内容区：上边界由 shell/panel.ts 实测后写进 --dsk-content-top，
+   这样原生标题栏（含右上角最小化/最大化/关闭）不会被盖住，用户也不会误以为
+   那三个按钮属于抽屉。 */
+.dsk-panel-mask{position:fixed;inset:var(--dsk-content-top,0px) 0 0 var(--dsk-content-left,0px);display:flex;justify-content:flex-end;align-items:stretch;padding:8px 0;box-sizing:border-box;background:var(--dsw-alias-bg-mask,rgba(8,10,14,.32));z-index:20}
+.dsk-panel{position:relative;display:flex;flex-direction:column;min-height:0;width:min(560px,100%);max-width:100%;background:var(--dsw-alias-bg-layer-1,#fff);border:1px solid var(--dsw-alias-border-l2,#e5e6eb);border-right:0;border-radius:12px 0 0 12px;box-shadow:var(--dsw-elevation-panel,-8px 0 24px rgba(0,0,0,.12))}
+.dsk-panel-head{display:flex;flex-direction:column;gap:8px;padding:10px 12px;border-bottom:1px solid var(--dsw-alias-border-l2,#e5e6eb)}
+.dsk-panel-title-row{display:flex;align-items:center;gap:8px}
+.dsk-panel-title{flex:1;min-width:0;font-weight:600;font-size:13px;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dsk-panel-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
 .dsk-panel-body{flex:1;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:12px}
 .dsk-kv{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 10px;font-size:12px}
 .dsk-kv-key{color:var(--dsw-alias-label-tertiary,#8a8f99);white-space:nowrap}

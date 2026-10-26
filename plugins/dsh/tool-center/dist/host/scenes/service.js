@@ -13,24 +13,24 @@
  * 原来是什么，就足够精确回滚 —— 也就没有那个每秒自我触发的写循环。
  */
 import { join } from 'node:path';
-import { loadState, saveState } from '../skills/state.js';
 import { allRows } from '../skills/view.js';
-import { skillRefsOf } from '../skills/policy.js';
+import { rowIdOf, skillRefsOf } from '../skills/policy.js';
 import { loadMcp, setMcpEnabled } from '../mcp/service.js';
 import { DomainError, describe } from '../shared/result.js';
+import { isRecord } from '../shared/json.js';
 import { loadPrompts, promptTargetOf, setPresetEnabled } from '../prompts/service.js';
 import { readTextOrNull } from '../shared/fs.js';
 import { writeFileAtomic } from '../shared/paths.js';
 const SCENES_NAME = 'scenes.json';
 const NO_REVERT = { skills: 0, mcp: 0, prompt: false };
-export function scenesPathOf(dshHome) {
+function scenesPathOf(dshHome) {
     return join(dshHome, 'tool-center', SCENES_NAME);
 }
 function emptyDocument() {
     return { version: 2, scenes: [], active: null, applied: null };
 }
 function normaliseTargetInput(value) {
-    if (value === null || typeof value !== 'object')
+    if (!isRecord(value))
         return { scope: 'global' };
     const record = value;
     const workspace = typeof record.workspace === 'string' ? record.workspace.trim() : '';
@@ -40,12 +40,12 @@ function normaliseTargetInput(value) {
 }
 function normaliseSceneDocument(value) {
     const document = emptyDocument();
-    if (value === null || typeof value !== 'object')
+    if (!isRecord(value))
         return document;
     const record = value;
     if (Array.isArray(record.scenes)) {
         for (const item of record.scenes) {
-            if (item === null || typeof item !== 'object')
+            if (!isRecord(item))
                 continue;
             const scene = item;
             const name = typeof scene.name === 'string' ? scene.name.trim() : '';
@@ -66,25 +66,25 @@ function normaliseSceneDocument(value) {
         }
     }
     document.active = typeof record.active === 'string' && record.active !== '' ? record.active : null;
-    if (record.applied !== null && typeof record.applied === 'object') {
+    if (isRecord(record.applied)) {
         const applied = record.applied;
         const promptBefore = applied.promptBefore;
         document.applied = {
             scene: typeof applied.scene === 'string' ? applied.scene : '',
             at: typeof applied.at === 'number' ? applied.at : Date.now(),
             skills: Array.isArray(applied.skills)
-                ? applied.skills.filter((ref) => ref !== null && typeof ref === 'object'
+                ? applied.skills.filter((ref) => isRecord(ref)
                     && typeof ref.root === 'string'
                     && typeof ref.name === 'string'
                     && typeof ref.wasOn === 'boolean')
                 : [],
             mcp: Array.isArray(applied.mcp)
-                ? applied.mcp.filter((entry) => entry !== null && typeof entry === 'object'
+                ? applied.mcp.filter((entry) => isRecord(entry)
                     && typeof entry.id === 'string'
                     && typeof entry.wasOn === 'boolean')
                 : [],
             // 旧文档用过 `key` / `preset` 两个名字，读的时候一并认下来。
-            promptBefore: promptBefore !== null && typeof promptBefore === 'object'
+            promptBefore: isRecord(promptBefore)
                 ? {
                     targetKey: String(promptBefore.targetKey
                         ?? promptBefore.key
@@ -159,26 +159,10 @@ async function revertSnapshot(dshHome, service, snapshot) {
     const reverted = { skills: 0, mcp: 0, prompt: false };
     const warnings = [];
     if (snapshot.skills.length > 0) {
-        const loaded = await loadState(service.statePath);
-        const state = loaded.state;
-        let dirty = false;
-        for (const ref of snapshot.skills) {
-            const hidden = new Set(state.hiddenSkills[ref.root] ?? []);
-            if (ref.wasOn === !hidden.has(ref.name))
-                continue;
-            if (ref.wasOn)
-                hidden.delete(ref.name);
-            else
-                hidden.add(ref.name);
-            if (hidden.size === 0)
-                delete state.hiddenSkills[ref.root];
-            else
-                state.hiddenSkills[ref.root] = [...hidden].sort();
-            dirty = true;
-            reverted.skills += 1;
-        }
-        if (dirty)
-            await saveState(service.statePath, state);
+        const restored = await service.restoreSkills(snapshot.skills.map((ref) => ({ root: ref.root, name: ref.name, enabled: ref.wasOn })));
+        if (restored.ok !== true)
+            throw new DomainError('error.scene.restore', String(restored.error ?? '恢复技能失败'));
+        reverted.skills = restored.data?.updated ?? 0;
     }
     for (const entry of snapshot.mcp) {
         try {
@@ -228,13 +212,13 @@ export async function applyScene(dshHome, service, cwd, name) {
     }
     // ② 按白名单拨技能：算清要开 / 要关，然后各走一次批量写（不是一条一次写盘）。
     const rows = allRows(await service.view(cwd)).filter((row) => !row.shadowed && row.rootWritable);
-    const selected = new Set(scene.skills.map((ref) => ref.root + '\u0000' + ref.name));
+    const selected = new Set(scene.skills.map((ref) => rowIdOf(ref.root, ref.name)));
     const toEnable = [];
     const toDisable = [];
     const touched = [];
     for (const row of rows) {
         const wasOn = row.policy.skillOn;
-        const wanted = selected.has(row.rootKey + '\u0000' + row.name) ? true : (scene.exclusive ? false : wasOn);
+        const wanted = selected.has(rowIdOf(row.rootKey, row.name)) ? true : (scene.exclusive ? false : wasOn);
         if (wanted === wasOn)
             continue;
         touched.push({ root: row.rootKey, name: row.name, wasOn });

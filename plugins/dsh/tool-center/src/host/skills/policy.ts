@@ -9,6 +9,22 @@
  */
 import type { EntryPolicy, SkillEntry, SkillManagerState, SkillRef, SkillRoot, SkillRow } from '../shared/types.js'
 import { preferredRootOf, skillSwitchOf, sourceSwitchOf } from './state.js'
+import { isRecord } from '../shared/json.js'
+
+/**
+ * 所有覆盖候选的固定 rank。
+ *
+ * 宿主的 provider rank 不是「400 一档」，而是一整片：project 100 / 200、runtime 250、
+ * custom 300、user 400、agents 500、bundled 600（见 `dsh-skill-filesystem` 与
+ * `dsh-skill` 的常量）。覆盖候选必须**比该名字的每一个宿主候选都小**，否则「在面板里
+ * 关掉」在模型 / 命令面板那边毫无效果 —— 之前按「组内最优 rank − 1、上限 399」算，
+ * 遇到宿主 rank 300 的 custom 目录（office 就来自那里）就会输，于是 office 关了还能被
+ * `/` 搜到。
+ *
+ * 组内只有一个赢家会被发布（影子副本不发），所以不同名字之间不会互相竞争；固定用 1
+ * 就足以压过上述所有宿主档位，比继续维护一个「上限」更诚实。
+ */
+const OVERLAY_RANK = 1
 
 export interface RowRef {
   root: SkillRoot
@@ -30,8 +46,8 @@ export function rowMatchesRef(row: SkillRow, ref: { root?: string; name: string 
 export function skillRefsOf(value: unknown): SkillRef[] {
   if (!Array.isArray(value)) return []
   return value
-    .filter((item): item is SkillRef => item !== null && typeof item === 'object'
-      && typeof (item as SkillRef).root === 'string' && typeof (item as SkillRef).name === 'string')
+    .filter((item): item is SkillRef => isRecord(item)
+      && typeof item.root === 'string' && typeof item.name === 'string')
     .map((item) => ({ root: item.root, name: item.name }))
 }
 
@@ -58,8 +74,7 @@ export function rowOf(ref: RowRef, state: SkillManagerState, scopeKey?: string):
     declaresUserInvocable: ref.entry.declaresUserInvocable,
     policy: policyOf(ref, state, scopeKey),
     preferred: preferredRootOf(state, ref.entry.declaredName, scopeKey) === ref.root.key,
-    // 临时值；`groupRows` 会按整个同名组重新裁决。
-    overlayRank: ref.root.rank - 1,
+    overlayRank: OVERLAY_RANK,
     shadowed: false,
     winner: true,
   }
@@ -94,15 +109,12 @@ export function groupRows(rows: SkillRow[]): SkillRow[] {
     else list.push(row)
   }
   for (const list of groups.values()) {
-    // 覆盖 rank 由**组内最优 rank** 决定：我们的赢家候选必须压过所有竞争者，包括宿主
-    // 自己发布的、属于组内最低 rank 来源的那一条 —— 这正是「设为首选」能生效的原因。
-    const bestRank = Math.min(...list.map((row) => row.rootRank))
-    const overlayRank = bestRank - 1
+    // 覆盖 rank 是固定的 `OVERLAY_RANK`（比宿主的每档都小），与组内来源无关：
+    // 赢家候选要压过的是**宿主**发布的同名条目，而不是组内另一份副本。
     if (list.length === 1) {
       const only = list[0]
       only.winner = true
       only.shadowed = false
-      only.overlayRank = overlayRank
       continue
     }
     list.sort((left, right) => {
@@ -113,14 +125,12 @@ export function groupRows(rows: SkillRow[]): SkillRow[] {
     const winner = list[0]
     winner.winner = true
     winner.shadowed = false
-    winner.overlayRank = overlayRank
     delete winner.shadowedBy
     for (const loser of list.slice(1)) {
       loser.winner = false
       loser.shadowed = true
       // 永不发布：赢家候选已经压过落选者那些来源上的宿主条目，再给影子副本发候选
       // 只会给目录添噪声。
-      loser.overlayRank = overlayRank
       loser.shadowedBy = { rootKey: winner.rootKey, rootLabel: winner.rootLabel, path: winner.entryPath }
     }
   }

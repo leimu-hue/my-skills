@@ -8,15 +8,23 @@ import { apply, name as pluginName, inject } from '../dist/host/index.js'
 /** 一个最小宿主上下文：够观察插件注册了什么。 */
 function fakeHost() {
   const providers = []
+  const agentProviders = []
   const tools = []
   const routes = []
   const disposers = []
   const services = new Map()
   const events = new Map()
+  /** 插件通过 ctx.emit 发出去的事件（远端转发用）。 */
+  const emitted = []
+  /** 宿主技能注册表的摘要（`skills.list()` 的返回值）。 */
+  const registry = { candidates: [] }
 
   const ctx = {
     get(serviceName) {
       return services.get(serviceName)
+    },
+    emit(event, ...args) {
+      emitted.push({ event, args })
     },
     effect(fn) {
       const dispose = fn()
@@ -36,6 +44,9 @@ function fakeHost() {
   }
 
   services.set('skills', {
+    async list() {
+      return registry.candidates
+    },
     registerProvider(create) {
       const provider = create({ invalidate() {}, signal: new AbortController().signal })
       providers.push(provider)
@@ -61,8 +72,24 @@ function fakeHost() {
     },
   })
   services.set('agents', { list: () => [] })
+  services.set('sessions', { list: () => [{ id: 'session-abc', header: { agentPreset: 'standard' } }] })
 
-  return { ctx, providers, tools, routes, disposers }
+  /** 某个 agent 作用域里的 skills 服务（与全局那份是两个层级）。 */
+  const agentSkills = {
+    registerProvider(create) {
+      const provider = create({ invalidate() {}, signal: new AbortController().signal })
+      agentProviders.push(provider)
+      return () => {
+        agentProviders.splice(agentProviders.indexOf(provider), 1)
+      }
+    },
+  }
+
+  const emit = (event, ...args) => {
+    for (const listener of events.get(event) ?? []) listener(...args)
+  }
+
+  return { ctx, providers, agentProviders, agentSkills, tools, routes, disposers, registry, emitted, emit }
 }
 
 async function fixture() {
@@ -126,6 +153,75 @@ test('apply registers one provider, one read-only tool and one exact route', asy
   // provider 只回答宿主自己看不见的那些来源。
   const candidates = await host.providers[0].list({})
   assert.deepEqual(candidates.map((candidate) => candidate.name).sort(), ['beta'])
+})
+
+test('registers a provider into each agent scope (Agent.id is a session-id string)', async () => {
+  // 宿主把技能按查看方 agent 的作用域链合并：更近的层直接压过全局层，rank 不参与跨层比较。
+  // 所以每个 agent 都必须有自己的覆盖 provider —— 之前只把数字 id 当 agent id，而现在的
+  // Agent.id 是 SessionId 字符串，整段作用域注册被静默跳过，office 因此关不掉。
+  const host = fakeHost()
+  const f = await fixture()
+  apply(host.ctx, { dshHome: f.dshHome, claudeHome: f.claudeHome, codexHome: f.codexHome, watch: false })
+
+  const agent = {
+    id: 'session-abc',
+    ctx: { get: (name) => (name === 'skills' ? host.agentSkills : undefined) },
+  }
+  host.emit('agent/created', { agent })
+  assert.equal(host.agentProviders.length, 1, 'the agent scope gets its own tool-center provider')
+  assert.equal(host.agentProviders[0].name, 'tool-center')
+
+  // 同一个 agent 重复公告不该重复注册。
+  host.emit('agent/created', { agent })
+  assert.equal(host.agentProviders.length, 1)
+
+  host.emit('agent/disposed', { agent })
+  assert.equal(host.agentProviders.length, 0)
+})
+
+test('a skills/change event refreshes the host-published dirs (not every panel read)', async () => {
+  const host = fakeHost()
+  const f = await fixture()
+  const pack = join(f.base, 'official-skills')
+  await mkdir(join(pack, 'shipped'), { recursive: true })
+  await writeFile(join(pack, 'shipped', 'SKILL.md'), '---\nname: shipped\ndescription: d\n---\nbody\n')
+  apply(host.ctx, { dshHome: f.dshHome, claudeHome: f.claudeHome, codexHome: f.codexHome, watch: false })
+
+  const readRoots = async () => {
+    const response = fakeResponse()
+    await host.routes[0].handler(fakeRequest({ op: 'state', args: {} }), response)
+    return response.payload.data.roots
+  }
+
+  // 注册表里还没有它：面板没有宿主来源。
+  assert.equal((await readRoots()).some((root) => root.kind === 'host'), false)
+
+  // 宿主发布新目录并发 skills/change —— 我们只在那一刻重探一次。
+  host.registry.candidates = [
+    { name: 'shipped', resourceBase: { kind: 'directory', path: join(pack, 'shipped') } },
+  ]
+  host.emit('skills/change')
+  await new Promise((resolve) => setTimeout(resolve, 400))
+
+  const discovered = (await readRoots()).find((root) => root.kind === 'host')
+  assert.equal(discovered?.path, pack)
+  assert.deepEqual(discovered.skills.map((row) => row.declaredName), ['shipped'])
+})
+
+test('a skills change also nudges the browser `/` menu to refetch its cache', async () => {
+  // DSH 的 ui-skill 按 session 缓存 remote.skills.list()，只认 agent-preset/selected
+  // 与 connection/reset。策略变化后我们必须补发一次，否则面板里刚打开的技能在 `/`
+  // 里仍然搜不到（要刷新整个页面才出现）。
+  const host = fakeHost()
+  const f = await fixture()
+  apply(host.ctx, { dshHome: f.dshHome, claudeHome: f.claudeHome, codexHome: f.codexHome, watch: false })
+
+  host.emit('skills/change')
+  await new Promise((resolve) => setTimeout(resolve, 400))
+
+  const nudge = host.emitted.find((entry) => entry.event === 'agent-preset/selected')
+  assert.ok(nudge !== undefined, 'the client skill cache must be invalidated')
+  assert.equal(nudge.args[0], 'session-abc')
 })
 
 test('the route refuses a missing gate header and a wrong method', async () => {

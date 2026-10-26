@@ -39,7 +39,7 @@ export interface Domain<T> {
   fail(message: string): void
 }
 
-export function failureOf(cause: unknown): DomainFailure {
+function failureOf(cause: unknown): DomainFailure {
   const candidate = cause as OpError
   return { message: describeCause(cause), code: typeof candidate?.code === 'string' ? candidate.code : undefined }
 }

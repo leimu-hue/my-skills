@@ -204,6 +204,42 @@ test('refuses to write outside the skill root, and refuses invalid names', async
   assert.equal(duplicate.code, 'error.skill.exists')
 })
 
+test('a zip can be scanned first, then only the picked skills are imported', async () => {
+  const f = await fixture()
+  const zip = writeZip([
+    { name: 'alpha-skill/SKILL.md', data: Buffer.from('---\nname: alpha-skill\ndescription: a\n---\na\n') },
+    { name: 'alpha-skill/references/x.md', data: Buffer.from('x\n') },
+    { name: 'beta-skill/SKILL.md', data: Buffer.from('---\nname: beta-skill\ndescription: b\n---\nb\n') },
+    { name: 'flat-one.md', data: Buffer.from('---\nname: flat-one\ndescription: f\n---\n') },
+    { name: 'Bad_Name/SKILL.md', data: Buffer.from('---\nname: x\ndescription: y\n---\n') },
+  ])
+  const base64 = zip.toString('base64')
+
+  // 先扫：只读，什么都不落盘。
+  const scan = await f.service.scanImport('import', base64)
+  assert.equal(scan.ok, true)
+  assert.deepEqual(scan.data.candidates.map((entry) => entry.name).sort(), ['alpha-skill', 'beta-skill', 'flat-one'])
+  assert.equal(scan.data.candidates.every((entry) => entry.exists === false), true)
+  assert.equal(scan.data.candidates.find((entry) => entry.name === 'alpha-skill').files, 2)
+  assert.equal(scan.data.candidates.find((entry) => entry.name === 'flat-one').flat, true)
+  // 名字不合法的要如实报出来，不能静默丢。
+  assert.equal(scan.data.rejected.some((entry) => entry.name === 'Bad_Name'), true)
+  assert.equal(await stat(join(f.dshHome, 'tool-center', 'skills', 'alpha-skill')).then(() => true).catch(() => false), false, 'scan must not write')
+
+  // 再导：只导入勾选的两条。
+  const imported = await f.service.importZip('import', base64, undefined, ['alpha-skill', 'flat-one'])
+  assert.equal(imported.ok, true)
+  assert.deepEqual(imported.data.imported.map((entry) => entry.name).sort(), ['alpha-skill', 'flat-one'])
+  assert.equal(await readFile(join(f.dshHome, 'tool-center', 'skills', 'alpha-skill', 'references', 'x.md'), 'utf8'), 'x\n')
+  assert.equal(await readFile(join(f.dshHome, 'tool-center', 'skills', 'flat-one.md'), 'utf8').then((text) => text.includes('flat-one')), true)
+  // 没勾选的不能出现。
+  await assert.rejects(() => readFile(join(f.dshHome, 'tool-center', 'skills', 'beta-skill', 'SKILL.md'), 'utf8'))
+
+  // 同一份包再扫一次：已存在的那条要标出来。
+  const again = await f.service.scanImport('import', base64)
+  assert.equal(again.data.candidates.find((entry) => entry.name === 'alpha-skill').exists, true)
+  assert.equal(again.data.candidates.find((entry) => entry.name === 'beta-skill').exists, false)
+})
 test('import from a zip and export back to a zip', async () => {
   const f = await fixture()
   const zip = writeZip([
@@ -287,7 +323,7 @@ test('the provider only publishes what it must', async () => {
   const off = after.find((candidate) => candidate.name === 'local-one')
   assert.ok(off !== undefined, 'the switched-off skill now has an overlay')
   assert.equal(off.invocation.modelInvocable, false)
-  assert.equal(off.rank, 399, 'one below the group rank, so it wins the name')
+  assert.equal(off.rank, 1, 'a fixed bottom rank, so it outranks every host provider rank')
 
   // get() 能为已发布的候选取回正文。
   const loaded = await provider.get(after.find((candidate) => candidate.name === 'codex-only'))
@@ -348,4 +384,290 @@ test('deleting a flat skill moves only that file, never the whole root', async (
   assert.equal(restored.ok, true)
   const back = await readFile(join(f.dshHome, 'skills', 'flat-skill.md'), 'utf8')
   assert.match(back, /flat-skill/)
+})
+
+test('sources the host publishes but we do not scan are discovered from the registry, not guessed', async () => {
+  const base = await mkdtemp(join(tmpdir(), 'sm-host-'))
+  const dshHome = join(base, 'dsh')
+  const pack = join(base, 'tool-management', 'official-skills', 'desktop')
+  await mkdir(join(pack, 'shipped-one'), { recursive: true })
+  await writeFile(join(pack, 'shipped-one', 'SKILL.md'), '---\nname: shipped-one\ndescription: d\n---\nbody\n')
+
+  const options = (hostCandidates) => ({
+    dshHome,
+    agentsHome: join(base, 'agents'),
+    claudeHome: join(base, 'claude'),
+    codexHome: join(base, 'codex'),
+    hostCandidates,
+  })
+
+  // 没有注册表 → 不猜任何目录。
+  assert.equal((await createService(options(undefined)).view()).roots.some((r) => r.kind === 'host'), false)
+
+  // 注册表里出现一个我们没有来源的目录 → 它变成一个只读来源，里面的技能也被扫出来。
+  const withPack = await createService(options(async () => [
+    { name: 'shipped-one', docPath: join(pack, 'shipped-one', 'SKILL.md') },
+  ])).view()
+  const discovered = withPack.roots.find((root) => root.kind === 'host')
+  assert.ok(discovered !== undefined, 'a host-published directory becomes its own source')
+  assert.deepEqual(discovered.skills.map((row) => row.declaredName), ['shipped-one'])
+  assert.equal(discovered.hostScans, true, 'the host already publishes it: we only overlay on policy change')
+  assert.equal(discovered.writable, false)
+
+  // 已经是我们已知来源的目录不会被重复列出（这里模拟宿主报告 $DSH_HOME/skills 里的技能）。
+  await mkdir(join(dshHome, 'skills'), { recursive: true })
+  const localSvc = createService(options(async () => [
+    { name: 'local-one', docPath: join(dshHome, 'skills', 'local-one', 'SKILL.md') },
+  ]))
+  const localView = await localSvc.view()
+  assert.equal(localView.roots.some((root) => root.kind === 'host'), false, 'our own roots are not re-listed')
+
+  // 平铺技能（<root>/<name>.md）也能反推出正确来源。
+  const flatView = await createService(options(async () => [
+    { name: 'flat-one', docPath: join(pack, 'flat-one.md') },
+  ])).view()
+  assert.equal(flatView.roots.find((root) => root.kind === 'host')?.path, pack)
+})
+
+test('a warm host-dir cache keeps panel reads off the registry; a change is picked up on refresh', async () => {
+  const base = await mkdtemp(join(tmpdir(), 'sm-cache-'))
+  const packA = join(base, 'official-a')
+  const packB = join(base, 'official-b')
+  for (const [pack, name] of [[packA, 'one'], [packB, 'two']]) {
+    await mkdir(join(pack, name), { recursive: true })
+    await writeFile(join(pack, name, 'SKILL.md'), `---\nname: ${name}\ndescription: d\n---\nbody\n`)
+  }
+  let candidates = [{ name: 'one', skillDir: join(packA, 'one') }]
+  let calls = 0
+  const service = createService({
+    dshHome: join(base, 'dsh'),
+    agentsHome: join(base, 'agents'),
+    claudeHome: join(base, 'claude'),
+    codexHome: join(base, 'codex'),
+    hostCandidates: async () => {
+      calls += 1
+      return candidates
+    },
+  })
+
+  const first = await service.view()
+  assert.equal(calls, 1)
+  assert.equal(first.roots.find((root) => root.kind === 'host')?.path, packA)
+
+  // 第二次读取（用户每次进技能页都会读一次）：直接命中缓存，不再跑宿主 list()。
+  await service.view()
+  assert.equal(calls, 1, 'a panel read with a warm cache must not call skills.list()')
+
+  // 宿主注册表变了：事件路径重探一次，下一次读取看到新来源。
+  candidates = [...candidates, { name: 'two', skillDir: join(packB, 'two') }]
+  await service.refreshHostDirs()
+  assert.equal(calls, 2)
+  const after = await service.view()
+  assert.equal(calls, 2, 'the warm cache is reused after the refresh')
+  assert.equal(after.roots.find((root) => root.path === packB)?.key.startsWith('host-'), true)
+})
+
+test('the real host summary only carries resourceBase: a bundle still points at its parent source', async () => {
+  // ctx.skills.list() 返回的是 toSummary()：没有 path / locator，只剩 resourceBase.path。
+  // bundle 的 resourceBase 是 <root>/<skill>，所以父目录才是来源。
+  const base = await mkdtemp(join(tmpdir(), 'sm-summary-'))
+  const pack = join(base, 'official-skills')
+  await mkdir(join(pack, 'shipped-one'), { recursive: true })
+  await writeFile(join(pack, 'shipped-one', 'SKILL.md'), '---\nname: shipped-one\ndescription: d\n---\nbody\n')
+
+  const view = await createService({
+    dshHome: join(base, 'dsh'),
+    agentsHome: join(base, 'agents'),
+    claudeHome: join(base, 'claude'),
+    codexHome: join(base, 'codex'),
+    hostCandidates: async () => [
+      { name: 'shipped-one', skillDir: join(pack, 'shipped-one') },
+    ],
+  }).view()
+  assert.equal(view.roots.find((root) => root.kind === 'host')?.path, pack)
+})
+
+test('a flat skill resourceBase is not a bundle: its parent must not become a source', async () => {
+  // 平铺技能的 resourceBase 就是来源目录本身（目录里没有 SKILL.md）。
+  // 若按「往上两级」处理，~/.claude/skills 这类来源会被误推成 ~/.claude 并整目录扫描。
+  const base = await mkdtemp(join(tmpdir(), 'sm-flat-'))
+  const flatRoot = join(base, 'shared-skills')
+  await mkdir(flatRoot, { recursive: true })
+  await writeFile(join(flatRoot, 'one.md'), '---\nname: one\ndescription: d\n---\nbody\n')
+
+  const view = await createService({
+    dshHome: join(base, 'dsh'),
+    agentsHome: join(base, 'agents'),
+    claudeHome: join(base, 'claude'),
+    codexHome: join(base, 'codex'),
+    hostCandidates: async () => [{ name: 'one', skillDir: flatRoot }],
+  }).view()
+  assert.equal(view.roots.some((root) => root.kind === 'host'), false)
+  assert.equal(view.roots.some((root) => root.path === base), false, 'the parent of a flat root must never be guessed')
+})
+
+test('a skill unpacked into the system temp dir must not turn %TEMP% into a source', async () => {
+  // 真实案例：Windows ACL 诊断技能把资源解包到 %TEMP%\dsh-acl-skill-*，宿主以
+  // resourceBase=<那个目录> 发布它；反推出来的「来源」就是 %TEMP% 本身。
+  // 面板因此把整个 Temp（上千个目录 / 一堆无关 .md）扫成技能列表。
+  const base = await mkdtemp(join(tmpdir(), 'sm-acl-'))
+  const unpacked = await mkdtemp(join(tmpdir(), 'dsh-acl-skill-'))
+  await writeFile(join(unpacked, 'SKILL.md'), '---\nname: acl-skill\ndescription: d\n---\nbody\n')
+  // Temp 里的无关内容：一旦 Temp 成了来源，它们会以「结构不完整」的技能出现。
+  await mkdir(join(base, 'notes'), { recursive: true })
+  await writeFile(join(base, 'notes', 'todo.md'), 'not a skill\n')
+
+  // 两种候选形状都试：真实摘要给的 resourceBase，以及（更乐观的）文档路径。
+  const view = await createService({
+    dshHome: join(base, 'dsh'),
+    agentsHome: join(base, 'agents'),
+    claudeHome: join(base, 'claude'),
+    codexHome: join(base, 'codex'),
+    hostCandidates: async () => [
+      { name: 'acl-skill', skillDir: unpacked },
+      { name: 'acl-skill-doc', docPath: join(unpacked, 'SKILL.md') },
+    ],
+  }).view()
+  assert.equal(view.roots.some((root) => root.kind === 'host'), false, 'the temp dir is a container, not a skill source')
+})
+
+test('overlay candidates outrank every host provider rank (project 100 … bundled 600)', async () => {
+  const f = await fixture()
+  // 宿主的 rank 不止 400 一档：project 100/200、runtime 250、custom 300、user 400、
+  // agents 500、bundled 600。覆盖候选必须比**所有**档位都小，否则遇到 custom（300）
+  // 这类来源（office 就在那里）就会被宿主压住，停了还能在 `/` 里搜到。
+  await f.service.setSkill('codex', 'codex-only', false)
+  await f.service.setSkill('claude', 'deep', false)
+  const candidates = await f.service.makeProvider().list({})
+  const off = candidates.filter((entry) => !entry.invocation.modelInvocable)
+  assert.ok(off.length >= 2, 'every switched-off skill must be published')
+  for (const candidate of off) {
+    assert.ok(candidate.rank < 100, `${candidate.name} must outrank every host provider (rank ${candidate.rank})`)
+  }
+})
+
+test('a disabled skill in a host-scanned source still outranks the host custom tier (300)', async () => {
+  // office 这类技能由宿主自己的 provider 从 custom 目录（rank 300）发布。覆盖候选若按
+  // 「组内最优 − 1」算成 399，就会输给 300 —— 面板里关了，`/` 里照样能搜到。
+  const base = await mkdtemp(join(tmpdir(), 'sm-host-overlay-'))
+  const pack = join(base, 'official-skills')
+  await mkdir(join(pack, 'office'), { recursive: true })
+  await writeFile(join(pack, 'office', 'SKILL.md'), '---\nname: office\ndescription: docs\n---\nbody\n')
+  const service = createService({
+    dshHome: join(base, 'dsh'),
+    agentsHome: join(base, 'agents'),
+    claudeHome: join(base, 'claude'),
+    codexHome: join(base, 'codex'),
+    hostCandidates: async () => [{ name: 'office', skillDir: join(pack, 'office') }],
+  })
+
+  const view = await service.view()
+  const root = view.roots.find((entry) => entry.kind === 'host')
+  assert.equal(root.skills[0].declaredName, 'office')
+  await service.setSkill(root.key, 'office', false)
+
+  const candidate = (await service.makeProvider().list({})).find((entry) => entry.name === 'office')
+  assert.ok(candidate !== undefined, 'the disabled host skill must be overlaid')
+  assert.equal(candidate.invocation.modelInvocable, false)
+  assert.equal(candidate.rank, 1, 'must outrank the host custom tier (300), not just the user tier (400)')
+})
+
+test('reading host dirs does not recurse back into our own provider', async () => {
+  // 真实宿主里 skills.list() 会把每个 provider 都问一遍 —— 包括本插件注册的那个，
+  // 而 provider.list() 自己也要读视图。早先视图在读视图里再问 skills.list()，
+  // 于是「面板 → 宿主 → 面板」无限递归，面板永远停在「正在加载技能…」。
+  const base = await mkdtemp(join(tmpdir(), 'sm-reentrant-'))
+  const dshHome = join(base, 'dsh')
+  const pack = join(base, 'official-skills')
+  await mkdir(join(dshHome, 'skills', 'alpha-skill'), { recursive: true })
+  await writeFile(join(dshHome, 'skills', 'alpha-skill', 'SKILL.md'), '---\nname: alpha-skill\ndescription: a\n---\nbody\n')
+  await mkdir(join(pack, 'shipped-one'), { recursive: true })
+  await writeFile(join(pack, 'shipped-one', 'SKILL.md'), '---\nname: shipped-one\ndescription: s\n---\nbody\n')
+
+  let calls = 0
+  let service
+  const registry = {
+    async list(options = {}) {
+      calls += 1
+      // 递归一旦发生就会一直涨；这里早点炸掉，让失败的测试给出清晰原因。
+      if (calls > 5) throw new Error('host registry re-entered: reading the view must not call skills.list() again')
+      // 宿主自己发布的候选（这里模拟官方技能包）+ 本插件 provider 的候选，正是真实宿主的合成方式。
+      return [
+        { name: 'shipped-one', docPath: join(pack, 'shipped-one', 'SKILL.md') },
+        ...(await service.makeProvider().list(options)),
+      ]
+    },
+  }
+  service = createService({
+    dshHome,
+    agentsHome: join(base, 'agents'),
+    claudeHome: join(base, 'claude'),
+    codexHome: join(base, 'codex'),
+    hostCandidates: () => registry.list({}),
+  })
+
+  const view = await service.view()
+  assert.equal(calls, 1, 'one panel read asks the registry exactly once')
+  const discovered = view.roots.find((root) => root.kind === 'host')
+  assert.equal(discovered?.path, pack, 'the host-published directory is still discovered')
+
+  // provider 自己绝不探测注册表：它就是被注册表回调的那一方。
+  const before = calls
+  await service.makeProvider().list({})
+  assert.equal(calls, before, 'the provider only reads the cached host dirs')
+})
+
+test('the provider never publishes a candidate the host would reject', async () => {
+  // 宿主在 skills.list() 的 provider 返回值上硬校验，而且校验在 try/catch 之外：
+  // 一条不合规的候选会让整次 list() 抛错 —— 用户看到的是「本轮运行失败」。
+  const f = await fixture()
+  // 两条都放在 codex（hostScans=false，本来「每条都要发覆盖候选」）。
+  const chinese = join(f.codexHome, 'skills', '需求开发归档')
+  await mkdir(chinese, { recursive: true })
+  await writeFile(join(chinese, 'SKILL.md'), '---\nname: 需求开发归档\ndescription: 中文名\n---\nbody\n')
+  const noDescription = join(f.codexHome, 'skills', 'no-description')
+  await mkdir(noDescription, { recursive: true })
+  await writeFile(join(noDescription, 'SKILL.md'), '---\nname: no-description\n---\nbody\n')
+
+  const view = await f.service.view()
+  const codex = view.roots.find((root) => root.key === 'codex')
+  const invalidName = codex.skills.find((row) => row.name === '需求开发归档')
+  assert.equal(invalidName.loadable, false, 'a name the host cannot accept is not a loadable skill')
+  assert.match(invalidName.problem ?? '', /invalid name/)
+  const missingDescription = codex.skills.find((row) => row.name === 'no-description')
+  assert.equal(missingDescription.loadable, false)
+  assert.match(missingDescription.problem ?? '', /missing description/)
+
+  const candidates = await f.service.makeProvider().list({})
+  for (const candidate of candidates) {
+    assert.match(candidate.name, /^[a-z0-9]+(?:-[a-z0-9]+)*$/, `invalid candidate name: ${candidate.name}`)
+    assert.notEqual(candidate.description.trim(), '', `candidate ${candidate.name} has no description`)
+  }
+  assert.equal(candidates.some((candidate) => candidate.name === '需求开发归档'), false)
+  assert.equal(candidates.some((candidate) => candidate.name === 'no-description'), false)
+
+  // 列表之后磁盘被改坏：get() 也不能把空描述交上去（宿主的 validateDefinition 会抛错）。
+  const codexOnly = candidates.find((candidate) => candidate.name === 'codex-only')
+  assert.ok(codexOnly !== undefined)
+  await writeFile(join(f.codexHome, 'skills', 'codex-only', 'SKILL.md'), '---\nname: codex-only\ndescription: ""\n---\nbody\n')
+  assert.equal(await f.service.makeProvider().get(codexOnly), undefined, 'a skill that lost its description must report gone')
+})
+test('restoring a skill snapshot goes through the lock and invalidates once', async () => {
+  const f = await fixture()
+  let invalidated = 0
+  f.service.invalidators.add(() => { invalidated += 1 })
+
+  // 场景回滚用：同一个条目重复出现时，只有第一次算变更。
+  const off = await f.service.restoreSkills([
+    { root: 'local', name: 'local-one', enabled: false },
+    { root: 'local', name: 'local-one', enabled: false },
+  ])
+  assert.equal(off.ok, true)
+  assert.equal(off.data.updated, 1, 'a repeated entry is a no-op')
+  assert.equal(invalidated, 1, 'one write, one invalidation')
+  assert.equal((await rowOfService(f.service, 'local', 'local-one')).policy.skillOn, false)
+
+  const on = await f.service.restoreSkills([{ root: 'local', name: 'local-one', enabled: true }])
+  assert.equal(on.data.updated, 1)
+  assert.equal((await rowOfService(f.service, 'local', 'local-one')).policy.skillOn, true)
 })

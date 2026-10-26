@@ -15,6 +15,7 @@ import {
   groupLineOf,
   groupOf,
   groupPathOf,
+  disclosureOf,
   switchOf,
 } from '../core/ui.js'
 
@@ -25,6 +26,9 @@ export interface RootHandlers {
   onToggleRemoved(removed: boolean): void
   onToggleSkill(row: SkillRow, enabled: boolean): void
   onOpen(row: SkillRow): void
+  /** 这个来源是否已折叠（折叠时仍然显示头部，只是不渲染行）。 */
+  collapsed: boolean
+  onToggleCollapsed(): void
 }
 
 export function renderRoot(t: Translate, root: RootView, handlers: RootHandlers): unknown {
@@ -61,6 +65,13 @@ export function renderRoot(t: Translate, root: RootView, handlers: RootHandlers)
     ], [])
   }
 
+  /** 折叠三角：来源里条目多的时候，收起来才能一眼看到别的来源。 */
+  const disclosure = disclosureOf({
+    open: !handlers.collapsed,
+    title: handlers.collapsed ? t('root.expand') : t('root.collapse'),
+    onClick: handlers.onToggleCollapsed,
+  })
+
   return groupOf(root.key, [
     // 第一行：名字 + 徽章 + 操作；路径单独一行 —— 路径一长就把按钮挤到第二行，看着像错位。
     groupLineOf(root.label, [
@@ -68,19 +79,26 @@ export function renderRoot(t: Translate, root: RootView, handlers: RootHandlers)
       badgeOf(t('root.rank', { rank: root.rank }), 'off'),
       badgeOf(t('root.count', { n: root.skills.length }), 'off'),
       root.writable ? badgeOf(t('root.writable'), 'ok') : badgeOf(t('root.readonly'), 'off'),
-    ], actions),
+    ], actions, disclosure),
     groupPathOf(root.path),
   ], [
     root.error === undefined ? null : h('div', { className: 'dsk-alert dsk-alert-err' }, root.error),
-    handlers.rows.length === 0
-      ? emptyOf(root.skills.length === 0 ? t('page.empty') : t('page.noMatch'))
-      : h('div', { className: 'dsk-rows' }, handlers.rows.map((row) => renderRow(t, row, root, handlers))),
+    handlers.collapsed
+      ? null
+      : handlers.rows.length === 0
+        ? emptyOf(root.skills.length === 0 ? t('page.empty') : t('page.noMatch'))
+        : h('div', { className: 'dsk-rows' }, handlers.rows.map((row) => renderRow(t, row, root, handlers))),
   ])
 }
 
-/** 默认技能目录只能停用，不能整体移除。 */
+/**
+ * 哪些来源允许「不再读取」。
+ *
+ * 默认技能目录只能停用；`host` 来源不给这个动作 —— 那是宿主自己在发布的东西，我们停止读取
+ * 只是把面板遮起来，模型照样看得见，摆一个做不到的开关就是撒谎（整体停用是有效的）。
+ */
 function removableRoot(root: RootView): boolean {
-  return root.kind !== 'local' && root.kind !== 'import' && root.project !== true
+  return root.kind !== 'local' && root.kind !== 'import' && root.kind !== 'host' && root.project !== true
 }
 
 function renderRow(

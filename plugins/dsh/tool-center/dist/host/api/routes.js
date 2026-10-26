@@ -122,12 +122,6 @@ export function createHandlers(service, meta) {
                 return enabled;
             return service.setSkill(str(payload.root), str(payload.name), enabled, optional(payload.cwd), optional(payload.scope));
         },
-        'set-all': async (payload) => {
-            const enabled = requireBool(payload, 'enabled');
-            if (isResult(enabled))
-                return enabled;
-            return service.setAll(skillRefsOf(payload.items), enabled, optional(payload.cwd), optional(payload.scope));
-        },
         'set-source': async (payload) => {
             const enabled = requireBool(payload, 'enabled');
             if (isResult(enabled))
@@ -158,10 +152,13 @@ export function createHandlers(service, meta) {
         'trash-restore': async (payload) => service.trashRestore(str(payload.id)),
         'trash-purge': async (payload) => service.trashPurge(str(payload.id)),
         'trash-empty': async () => service.trashEmpty(),
+        /** 对外 API：面板没有入口，留给脚本 / 其它插件管理自定义来源。 */
         'roots-add': async (payload) => service.addRoot(str(payload.path), optional(payload.label)),
         'roots-remove': async (payload) => service.removeRoot(str(payload.key)),
-        'import-path': async (payload) => service.importPath(str(payload.root) || 'import', str(payload.path), optional(payload.cwd)),
-        'import-zip': async (payload) => service.importZip(str(payload.root) || 'import', str(payload.base64), optional(payload.cwd)),
+        /** 只看不写：列出压缩包里可导入的技能，供面板勾选。 */
+        'import-scan': async (payload) => service.scanImport(str(payload.root) || 'import', str(payload.base64), optional(payload.cwd)),
+        /** `names` 给了就只导入这些（面板勾选结果）；不给等于全导入。 */
+        'import-zip': async (payload) => service.importZip(str(payload.root) || 'import', str(payload.base64), optional(payload.cwd), Array.isArray(payload.names) ? payload.names.filter((name) => typeof name === 'string') : undefined),
         'export-zip': async (payload) => {
             const items = skillRefsOf(payload.items);
             return service.exportZip(items.length > 0 ? items : undefined, optional(payload.cwd));
@@ -185,6 +182,6 @@ export function createHandlers(service, meta) {
 }
 /** 只读的 op；其余的都会写，可能被宿主门禁拦。 */
 export const READ_OPS = new Set([
-    'state', 'detail', 'trash-list', 'export-zip', 'health',
+    'state', 'detail', 'trash-list', 'export-zip', 'health', 'import-scan',
     'prompt-state', 'prompt-read', 'prompt-targets', 'mcp-state', 'scene-state',
 ]);

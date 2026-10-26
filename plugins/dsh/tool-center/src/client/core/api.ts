@@ -58,20 +58,6 @@ function opError(message: string, code?: string, params?: Record<string, unknown
   return error
 }
 
-/** 把 File 读成 base64（ZIP 导入走这条路）。 */
-export function readFileAsBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onerror = () => reject(new Error('读取文件失败'))
-    reader.onload = () => {
-      const result = String(reader.result ?? '')
-      const comma = result.indexOf(',')
-      resolve(comma >= 0 ? result.slice(comma + 1) : result)
-    }
-    reader.readAsDataURL(file)
-  })
-}
-
 /** 把宿主返回的 base64 负载触发成一次浏览器下载。 */
 export function downloadBase64(filename: string, base64: string): void {
   const binary = atob(base64)

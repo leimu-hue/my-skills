@@ -7,66 +7,22 @@
  *   * **落在任何技能目录之外的文件必须报出来**，不能静默丢掉 —— 「压缩包导入成功但
  *     references/ 不见了」正是这个插件要避免的那种静默损失。
  */
-import { copyFile, lstat, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, relative } from 'node:path';
 import { DomainError } from '../../shared/result.js';
-import { exists, isFile, statOrNull } from '../../shared/fs.js';
+import { exists } from '../../shared/fs.js';
 import { isInside } from '../../shared/paths.js';
 import { readZip, writeZip } from '../../shared/zip.js';
-import { assertSkillName, assertWritable, copyTree, isValidSkillName, targetOf } from './guard.js';
-/** 从磁盘上的一个目录或一个 `.md` 文件导入技能。 */
-export async function importFromPath(root, sourcePath) {
-    assertWritable(root);
-    const info = await statOrNull(sourcePath);
-    if (info === null)
-        throw new DomainError('error.import.missing', `路径不存在：${sourcePath}`);
-    const bundled = info.isDirectory() && (await isFile(join(sourcePath, 'SKILL.md')));
-    const name = info.isDirectory() ? basename(sourcePath) : basename(sourcePath).replace(/\.md$/i, '');
-    assertSkillName(name);
-    const imported = [];
-    const skipped = [];
-    if (info.isDirectory() && !bundled) {
-        // 整个技能目录：把每个含 SKILL.md 的子目录各导入一条。
-        for (const child of await readdir(sourcePath)) {
-            if (child.startsWith('.'))
-                continue;
-            const childPath = join(sourcePath, child);
-            if (!(await isFile(join(childPath, 'SKILL.md')))) {
-                skipped.push({ name: child, reason: '不是技能目录（没有 SKILL.md）' });
-                continue;
-            }
-            const target = targetOf(root, child);
-            if (await exists(target)) {
-                skipped.push({ name: child, reason: '同名技能已存在' });
-                continue;
-            }
-            await copyTree(childPath, target);
-            imported.push({ name: child, files: (await listTree(target)).length });
-        }
-        return { imported, skipped };
-    }
-    const target = info.isDirectory() ? targetOf(root, name) : targetOf(root, `${name}.md`);
-    if (await exists(target)) {
-        skipped.push({ name, reason: '同名技能已存在' });
-        return { imported, skipped };
-    }
-    if (info.isDirectory())
-        await copyTree(sourcePath, target);
-    else
-        await copyFile(sourcePath, target);
-    imported.push({ name, files: info.isDirectory() ? (await listTree(target)).length : 1 });
-    return { imported, skipped };
-}
+import { assertWritable, isValidSkillName, targetOf } from './guard.js';
 /**
- * 导入一个 zip 里的全部技能。
+ * 解析一个压缩包，**不写盘**。
  *
  * 一条技能 = 任何含 `SKILL.md` 的目录（任意深度），外加顶层的 `*.md`。技能名取它自己的
  * 目录名，每个文件按**相对该目录**的路径落盘 —— 所以 `dist/my-skill/SKILL.md` 与
  * `my-skill/SKILL.md` 都产出 `my-skill/SKILL.md`，而 `dist/my-skill/references/a.md`
  * 会保住它的 `references/` 目录。
  */
-export async function importZip(root, buffer) {
-    assertWritable(root);
+function planZip(buffer) {
     const files = readZip(buffer);
     // 第一遍：哪些目录是技能？（含 SKILL.md 的目录）
     const skillDirectories = new Set();
@@ -80,7 +36,7 @@ export async function importZip(root, buffer) {
     const ordered = [...skillDirectories].sort((left, right) => right.length - left.length);
     // 第二遍：每个文件归属到它上方最内层的那条技能目录。
     const byDirectory = new Map();
-    const flat = [];
+    const flatFiles = [];
     const orphans = [];
     for (const file of files) {
         const segments = segmentsOf(file.name);
@@ -97,40 +53,106 @@ export async function importZip(root, buffer) {
         }
         const lowered = segments[0].toLowerCase();
         if (segments.length === 1 && lowered.endsWith('.md') && lowered !== 'skill.md') {
-            flat.push(file);
+            flatFiles.push(file);
             continue;
         }
         orphans.push(file.name);
     }
-    const imported = [];
-    const skipped = [];
+    const skills = [];
+    const rejected = [];
     const taken = new Set();
     for (const [directory, entries] of byDirectory) {
         if (directory === '') {
             // SKILL.md 直接躺在压缩包根部时没有目录名可当技能名；随便猜一个名字静默导入
             // 只会让人意外。
-            skipped.push({ name: '（压缩包根目录）', reason: 'SKILL.md 在压缩包根部，没有目录名可用；请把它放进一个文件夹再打包' });
+            rejected.push({ name: '（压缩包根目录）', reason: 'SKILL.md 在压缩包根部，没有目录名可用；请把它放进一个文件夹再打包' });
             continue;
         }
         const name = basename(directory);
         if (!isValidSkillName(name)) {
-            skipped.push({ name: name || '(root)', reason: '技能名不合法（必须是 kebab-case）' });
+            rejected.push({ name: name || '(root)', reason: '技能名不合法（必须是 kebab-case）' });
             continue;
         }
         if (taken.has(name)) {
-            skipped.push({ name, reason: '压缩包里还有另一条同名技能' });
+            rejected.push({ name, reason: '压缩包里还有另一条同名技能' });
             continue;
         }
-        const target = targetOf(root, name);
+        taken.add(name);
+        skills.push({ name, directory, entries, flat: false });
+    }
+    // 顶层平铺的 `*.md` 也算一条技能（single-file skill）。
+    for (const file of flatFiles) {
+        const name = file.name.replace(/\.md$/i, '');
+        if (!isValidSkillName(name)) {
+            rejected.push({ name, reason: '技能名不合法（必须是 kebab-case）' });
+            continue;
+        }
+        if (taken.has(name)) {
+            rejected.push({ name, reason: '压缩包里还有另一条同名技能' });
+            continue;
+        }
+        taken.add(name);
+        skills.push({ name, directory: '', entries: [file], flat: true });
+    }
+    return { skills, rejected, orphans };
+}
+/** 一条技能落盘的目标路径（bundle 是目录，平铺是 `.md` 文件）。 */
+function targetOfSkill(root, skill) {
+    return targetOf(root, skill.flat ? `${skill.name}.md` : skill.name);
+}
+/** 扫描一个压缩包：给出可勾选的候选（含「已存在」标记），不写盘。 */
+export async function scanZip(root, buffer) {
+    const plan = planZip(buffer);
+    const candidates = [];
+    for (const skill of plan.skills) {
+        candidates.push({
+            name: skill.name,
+            files: skill.entries.length,
+            exists: await exists(targetOfSkill(root, skill)),
+            flat: skill.flat,
+        });
+    }
+    const rejected = [...plan.rejected];
+    if (plan.orphans.length > 0) {
+        rejected.push({
+            name: `${plan.orphans.length} 个文件不在任何技能目录下`,
+            reason: plan.orphans.slice(0, 8).join(', '),
+        });
+    }
+    return { candidates, rejected };
+}
+/**
+ * 导入压缩包里的技能；给了 `only` 就只导入这些名字（面板的勾选结果）。
+ *
+ * 不传 `only` 等于「全导入」—— 与旧行为一致，工具 / 脚本仍能一次搬完。
+ */
+export async function importZip(root, buffer, only) {
+    assertWritable(root);
+    const plan = planZip(buffer);
+    const wanted = only === undefined || only.length === 0 ? undefined : new Set(only);
+    const imported = [];
+    const skipped = [];
+    for (const rejection of plan.rejected)
+        skipped.push(rejection);
+    for (const skill of plan.skills) {
+        if (wanted !== undefined && !wanted.has(skill.name))
+            continue;
+        const target = targetOfSkill(root, skill);
         if (await exists(target)) {
-            skipped.push({ name, reason: '同名技能已存在' });
+            skipped.push({ name: skill.name, reason: '同名技能已存在' });
+            continue;
+        }
+        if (skill.flat) {
+            await mkdir(dirname(target), { recursive: true });
+            await writeFile(target, skill.entries[0].data, { mode: 0o600 });
+            imported.push({ name: skill.name, files: 1 });
             continue;
         }
         await mkdir(target, { recursive: true });
-        const prefix = directory + '/';
+        const prefix = skill.directory + '/';
         let count = 0;
         let unsafe = false;
-        for (const entry of entries) {
+        for (const entry of skill.entries) {
             const inner = entry.name.startsWith(prefix) ? entry.name.slice(prefix.length) : basename(entry.name);
             const destination = join(target, inner);
             if (!isInside(target, destination) || destination === target) {
@@ -143,30 +165,15 @@ export async function importZip(root, buffer) {
         }
         if (unsafe) {
             await rm(target, { recursive: true, force: true }).catch(() => undefined);
-            skipped.push({ name, reason: '压缩包里有越界路径' });
+            skipped.push({ name: skill.name, reason: '压缩包里有越界路径' });
             continue;
         }
-        taken.add(name);
-        imported.push({ name, files: count });
+        imported.push({ name: skill.name, files: count });
     }
-    for (const file of flat) {
-        const name = file.name.replace(/\.md$/i, '');
-        if (!isValidSkillName(name)) {
-            skipped.push({ name, reason: '技能名不合法（必须是 kebab-case）' });
-            continue;
-        }
-        const target = targetOf(root, `${name}.md`);
-        if (await exists(target)) {
-            skipped.push({ name, reason: '同名技能已存在' });
-            continue;
-        }
-        await writeFile(target, file.data, { mode: 0o600 });
-        imported.push({ name, files: 1 });
+    if (plan.orphans.length > 0) {
+        skipped.push({ name: `${plan.orphans.length} 个文件不在任何技能目录下`, reason: plan.orphans.slice(0, 8).join(', ') });
     }
-    if (orphans.length > 0) {
-        skipped.push({ name: `${orphans.length} 个文件不在任何技能目录下`, reason: orphans.slice(0, 8).join(', ') });
-    }
-    return { imported, skipped, groups: byDirectory.size + flat.length };
+    return { imported, skipped, groups: plan.skills.length + plan.rejected.length };
 }
 /** 把给定的行导出成一个 zip，每条技能放在自己的声明名下。 */
 export async function exportRowsAsZip(rows) {

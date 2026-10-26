@@ -11,6 +11,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { PluginLogger } from '../shared/log.js'
 import { describe } from '../shared/result.js'
+import { isRecord } from '../shared/json.js'
 import { GATE_HEADER, PLUGIN_ID, isTrusted, readJsonBody, sendJson, wantsJson } from '../shared/http.js'
 import { READ_OPS, type Handler } from './routes.js'
 
@@ -73,9 +74,7 @@ export function createRequestHandler(deps: RouteDeps) {
       let payload: Record<string, unknown>
       try {
         const parsed = await readJsonBody(req)
-        payload = parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)
-          ? (parsed as Record<string, unknown>)
-          : {}
+        payload = isRecord(parsed) ? parsed : {}
       } catch (error) {
         if (describe(error).includes('body too large')) {
           sendJson(res, 413, { ok: false, error: '请求体过大（上限 48 MiB）', code: 'error.http.tooLarge' })
@@ -85,9 +84,7 @@ export function createRequestHandler(deps: RouteDeps) {
         return
       }
       const op = typeof payload.op === 'string' ? payload.op : ''
-      const args = payload.args !== null && typeof payload.args === 'object' && !Array.isArray(payload.args)
-        ? (payload.args as Record<string, unknown>)
-        : {}
+      const args = isRecord(payload.args) ? payload.args : {}
       const handler = Object.prototype.hasOwnProperty.call(handlers, op) ? handlers[op] : undefined
       if (handler === undefined) {
         sendJson(res, 404, { ok: false, error: `op 不存在：${op || '(空)'}`, code: 'error.op.unknown' })

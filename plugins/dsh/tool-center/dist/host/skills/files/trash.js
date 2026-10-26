@@ -9,8 +9,9 @@ import { dirname, join } from 'node:path';
 import { DomainError } from '../../shared/result.js';
 import { exists, readTextOrNull } from '../../shared/fs.js';
 import { writeFileAtomic } from '../../shared/paths.js';
+import { isRecord } from '../../shared/json.js';
 import { assertOneSkill, assertRowWritable, copyTree } from './guard.js';
-export function trashRootOf(dshHome) {
+function trashRootOf(dshHome) {
     return join(dshHome, 'tool-center', 'trash');
 }
 function trashIndexPath(dshHome) {
@@ -25,7 +26,7 @@ export async function listTrash(dshHome) {
         const parsed = JSON.parse(raw);
         if (!Array.isArray(parsed.items))
             return [];
-        return parsed.items.filter((item) => item !== null && typeof item === 'object' && typeof item.id === 'string');
+        return parsed.items.filter((item) => isRecord(item) && typeof item.id === 'string');
     }
     catch {
         return [];

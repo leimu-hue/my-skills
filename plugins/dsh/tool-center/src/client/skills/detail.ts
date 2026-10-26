@@ -1,4 +1,11 @@
-/** 技能详情面板：路径、frontmatter、文件清单、正文，外加编辑 / 首选 / 导出 / 删除。 */
+/**
+ * 技能详情：右侧抽屉 + 遮罩。
+ *
+ * 两个刻意的细节：
+ *   * **有遮罩**：抽屉不会把左侧列表压掉一块，也不会显得像「飘在窗口右边的一条」；
+ *   * **点遮罩就关**：抽屉之外的任何位置（以及 Esc，见 `view.ts`）都能关掉它，
+ *     不必先去找头部那个关闭按钮。
+ */
 import { h } from '../core/runtime.js'
 import type { Translate } from '../i18n/index.js'
 import type { SkillDetail } from '../core/types.js'
@@ -15,6 +22,8 @@ export interface DetailHandlers {
   onPrefer(preferred: boolean): void
 }
 
+type ClickEvent = { stopPropagation(): void }
+
 export function renderDetail(t: Translate, props: DetailHandlers): unknown {
   const row = props.detail?.row
   const disabled = props.busy !== ''
@@ -26,19 +35,26 @@ export function renderDetail(t: Translate, props: DetailHandlers): unknown {
     onClick,
   })
 
-  return h('div', { className: 'dsk-panel' },
+  return h('div', { className: 'dsk-panel-mask', onClick: props.onClose },
+    h('div', {
+      className: 'dsk-panel',
+      role: 'dialog',
+      'aria-modal': 'true',
+      onClick: (event: ClickEvent) => event.stopPropagation(),
+    },
     h('div', { className: 'dsk-panel-head' },
-      h('h4', { className: 'dsk-panel-title' }, row?.declaredName ?? props.selected.name),
+      h('div', { className: 'dsk-panel-title-row' },
+        h('h4', { className: 'dsk-panel-title' }, row?.declaredName ?? props.selected.name),
+        buttonOf({ label: t('detail.close'), small: true, onClick: props.onClose })),
       h('div', { className: 'dsk-panel-actions' },
         row !== undefined && row.rootWritable ? action(t('detail.edit'), props.onEdit) : null,
         row !== undefined
           ? action(row.preferred ? t('detail.unprefer') : t('detail.prefer'), () => props.onPrefer(row.preferred !== true))
           : null,
         row !== undefined ? action(t('detail.export'), props.onExport) : null,
-        row !== undefined && row.rootWritable ? action(t('detail.delete'), props.onDelete, true) : null,
-        buttonOf({ label: t('detail.close'), small: true, onClick: props.onClose }))),
+        row !== undefined && row.rootWritable ? action(t('detail.delete'), props.onDelete, true) : null)),
     h('div', { className: 'dsk-panel-body' },
-      ...(props.detail === null ? [emptyOf(t('detail.busy'))] : bodyOf(t, props.detail))))
+      ...(props.detail === null ? [emptyOf(t('detail.busy'))] : bodyOf(t, props.detail)))))
 }
 
 /** 详情正文的各个段落（顺序与阅读顺序一致）。 */

@@ -72,7 +72,7 @@ function rowsToShow(rows: SkillRow[], all: boolean): SkillRow[] {
 }
 
 /** 一条技能一行：名字、来源、状态、路径。顺序稳定，便于扫读。 */
-export function renderRows(rows: SkillRow[], options: { all: boolean }): string {
+function renderRows(rows: SkillRow[], options: { all: boolean }): string {
   return rowsToShow(rows, options.all)
     .map((row) => {
       const marks = [flagOf(row)]

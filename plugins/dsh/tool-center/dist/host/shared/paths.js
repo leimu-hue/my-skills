@@ -81,7 +81,7 @@ export async function writeFileAtomic(path, data, mode = 0o600) {
         throw error;
     }
 }
-export async function renameWithRetry(from, to, attempts = 6) {
+async function renameWithRetry(from, to, attempts = 6) {
     let lastError;
     for (let attempt = 0; attempt < attempts; attempt += 1) {
         try {

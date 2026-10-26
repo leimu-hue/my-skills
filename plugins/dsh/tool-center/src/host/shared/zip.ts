@@ -31,6 +31,7 @@ const LOCAL_SIGNATURE = 0x04034b50
 const ZIP64_MARKER_16 = 0xffff
 const ZIP64_MARKER_32 = 0xffffffff
 
+// CRC32 表与浏览器侧 src/client/core/zip.ts 完全一致；两侧各自打包，改动时两处一起改。
 const CRC_TABLE = (() => {
   const table = new Int32Array(256)
   for (let index = 0; index < 256; index += 1) {

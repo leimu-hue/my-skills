@@ -24,6 +24,8 @@ export const DEFAULT_RANKS = {
     agents: 450,
     codex: 520,
     claude: 530,
+    /** 宿主已发布的其它目录：排在用户目录之后，但压过内置兜底。 */
+    host: 570,
     builtin: 600,
     custom: 600,
 };
@@ -121,7 +123,7 @@ export function staticRoots(options, state) {
  * 从 `cwd` 往上找最近的、含有 `.git` 的祖先目录，最多走 24 层。
  * 没有任何标记时，cwd 自己就是项目根（与官方 filesystem provider 同一条规则）。
  */
-export async function findProjectRoot(cwd) {
+async function findProjectRoot(cwd) {
     if (typeof cwd !== 'string' || cwd.trim() === '')
         return undefined;
     let current = resolve(cwd.trim());
@@ -187,7 +189,7 @@ export async function projectRootsFor(cwd, state) {
     return present;
 }
 /** 这个目录里是否至少有一条技能（bundle 目录或平铺 `.md`）？ */
-export async function hasSkillEntry(rootPath) {
+async function hasSkillEntry(rootPath) {
     if (!(await isDirectory(rootPath)))
         return false;
     const names = await readdir(rootPath).catch(() => []);
@@ -233,4 +235,34 @@ export async function overlapsExisting(candidate, existing) {
             return root;
     }
     return undefined;
+}
+/**
+ * 「宿主已发布、但我们没扫」的目录 → 一组只读来源。
+ *
+ * 这些目录不是猜的：它们来自宿主技能注册表里各候选的落点路径（见 `service.hostDirs`）。
+ * 宿主已经在发布里面的技能，所以 `hostScans: true` —— 我们只在策略变化时补一条覆盖候选，
+ * 不改写、不重复发布。宿主的路径变了，下一次读取自然跟上；宿主不再发布，它们也自动消失。
+ */
+export function hostRoots(dirs, state) {
+    const seen = new Set();
+    const roots = [];
+    for (const dir of dirs) {
+        const resolved = resolve(dir);
+        const id = pathIdSync(resolved);
+        if (seen.has(id))
+            continue;
+        seen.add(id);
+        const key = `host-${projectKeyOf(resolved)}`;
+        roots.push({
+            key,
+            path: resolved,
+            rank: rankOf(state, key, DEFAULT_RANKS.host),
+            label: basenameOf(resolved) || resolved,
+            kind: 'host',
+            hostScans: true,
+            writable: false,
+            toggleable: true,
+        });
+    }
+    return roots;
 }

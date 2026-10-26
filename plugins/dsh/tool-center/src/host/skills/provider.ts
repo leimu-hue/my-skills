@@ -13,7 +13,21 @@
 import type { SkillRoot, SkillRow, SkillStateView } from '../shared/types.js'
 import { readTextOrNull, statOrNull } from '../shared/fs.js'
 import { modelVisible, needsOverlay, userVisible } from './policy.js'
-import { parseSkillFile } from './frontmatter.js'
+import { isHostSkillName, parseSkillFile } from './frontmatter.js'
+
+/**
+ * 宿主要求的候选形状：名字必须 kebab-case、描述非空。
+ *
+ * 宿主是在 `skills.list()` 的 provider 返回值上**硬校验**的，而且校验在 try/catch 之外：
+ * 一条不合规的候选会让整次 list() 抛错，表现给用户就是「本轮运行失败 skill provider
+ * "tool-center" returned invalid skill name ...」。所以这里必须逐条挡掉，不能指望
+ * 「停用候选不可见、描述无所谓」。
+ */
+function publishable(row: SkillRow): boolean {
+  const name = row.declaredName || row.name
+  if (!isHostSkillName(name)) return false
+  return typeof row.description === 'string' && row.description.trim() !== ''
+}
 
 export const PROVIDER_NAME = 'tool-center'
 
@@ -63,7 +77,7 @@ function overlayReasonOf(row: SkillRow, hostScans: boolean): OverlayReason {
   return 'policy'
 }
 
-export function buildCandidates(rows: SkillRow[], roots: SkillRoot[]): ProviderCandidate[] {
+function buildCandidates(rows: SkillRow[], roots: SkillRoot[]): ProviderCandidate[] {
   const hostScansOf = new Map<string, boolean>()
   for (const root of roots) hostScansOf.set(root.key, root.hostScans)
   const candidates: ProviderCandidate[] = []
@@ -71,6 +85,8 @@ export function buildCandidates(rows: SkillRow[], roots: SkillRoot[]): ProviderC
     const hostScans = hostScansOf.get(row.rootKey) ?? false
     // 被遮蔽的行永不发布：赢家候选的 rank 已经在整组之下，早已压过宿主为这份副本发的条目。
     if (!needsOverlay(row, hostScans)) continue
+    // 宿主会拒收形状不对的候选，而且拒收是整次 list() 抛错 —— 宁可这条不发。
+    if (!publishable(row)) continue
     const overlay = overlayReasonOf(row, hostScans)
     candidates.push({
       name: row.declaredName || row.name,
@@ -145,10 +161,14 @@ export function createProvider(deps: ProviderDeps) {
       // 而不是继续缓存一个过期地址。
       if (declared !== locator.declaredName) return undefined
       const descriptionRaw = parsed.data.description
+      const description = typeof descriptionRaw === 'string' ? descriptionRaw.trim() : candidate.description
+      // 列表之后磁盘被改成没有描述：宿主的 validateDefinition 会直接抛错，这里报「没了」
+      // 让它重新发现，而不是把一条不合规的定义交上去。
+      if (description === '') return undefined
       const whenToUseRaw = parsed.data.whenToUse
       return {
         name: candidate.name,
-        description: typeof descriptionRaw === 'string' ? descriptionRaw.trim() : candidate.description,
+        description,
         ...(typeof whenToUseRaw === 'string' && whenToUseRaw.trim() !== '' ? { whenToUse: whenToUseRaw.trim() } : {}),
         invocation: candidate.invocation,
         source: candidate.source,

@@ -10,6 +10,7 @@ import type { SkillRow } from '../../shared/types.js'
 import { DomainError } from '../../shared/result.js'
 import { exists, readTextOrNull } from '../../shared/fs.js'
 import { writeFileAtomic } from '../../shared/paths.js'
+import { isRecord } from '../../shared/json.js'
 import { assertOneSkill, assertRowWritable, copyTree } from './guard.js'
 
 export interface TrashItem {
@@ -29,7 +30,7 @@ interface TrashIndex {
   items: TrashItem[]
 }
 
-export function trashRootOf(dshHome: string): string {
+function trashRootOf(dshHome: string): string {
   return join(dshHome, 'tool-center', 'trash')
 }
 
@@ -44,7 +45,7 @@ export async function listTrash(dshHome: string): Promise<TrashItem[]> {
   try {
     const parsed = JSON.parse(raw) as TrashIndex
     if (!Array.isArray(parsed.items)) return []
-    return parsed.items.filter((item) => item !== null && typeof item === 'object' && typeof item.id === 'string')
+    return parsed.items.filter((item) => isRecord(item) && typeof item.id === 'string')
   } catch {
     return []
   }

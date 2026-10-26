@@ -22,7 +22,7 @@ function rowsToShow(rows, all) {
     return all ? rows : rows.filter(modelVisible);
 }
 /** 一条技能一行：名字、来源、状态、路径。顺序稳定，便于扫读。 */
-export function renderRows(rows, options) {
+function renderRows(rows, options) {
     return rowsToShow(rows, options.all)
         .map((row) => {
         const marks = [flagOf(row)];

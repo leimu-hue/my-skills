@@ -35,6 +35,9 @@ import {
   toolbarOf,
 } from '../core/ui.js'
 
+/** 技能行的稳定键。Host 侧用 owIdOf；浏览器侧不能 import Host 代码，这里保持同一格式。 */
+const refKeyOf = (root: string, name: string): string => root + '\u0000' + name
+
 interface Draft {
   name: string
   description: string
@@ -262,7 +265,7 @@ function renderDraft(
     ? props.sources.skills
     : props.sources.skills.filter((row) => row.label.toLowerCase().includes(needle) || row.name.toLowerCase().includes(needle))
   ).slice(0, 120)
-  const picked = new Set(draft.skills.map((ref) => ref.root + '\u0000' + ref.name))
+  const picked = new Set(draft.skills.map((ref) => refKeyOf(ref.root, ref.name)))
 
   return modalOf(
     draft.isNew ? t('scenes.new') : `${t('scenes.edit')}: ${draft.name}`,
@@ -327,7 +330,7 @@ function renderDraft(
           props.sources.skills.length === 0
             ? mutedOf(t('scenes.noSkills'))
             : h('div', { style: { maxHeight: '180px', overflow: 'auto' } }, visibleSkills.map((row) => {
-              const key = row.root + '\u0000' + row.name
+              const key = refKeyOf(row.root, row.name)
               return h('label', { className: 'dsk-row', key, style: { cursor: 'pointer' } },
                 h('div', { className: 'dsk-row-main' },
                   h('div', { className: 'dsk-row-name' }, row.label),

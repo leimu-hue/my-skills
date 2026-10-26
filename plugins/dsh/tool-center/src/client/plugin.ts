@@ -14,7 +14,7 @@ import { ToolCenterPanel } from './shell/panel.js'
 import { ToolCenterIcon } from './shell/icon.js'
 import { setDictionary } from './page.js'
 
-export const PANEL_ID = 'tool-center'
+const PANEL_ID = 'tool-center'
 /** 排在「关联项目」（order 30）之后。 */
 const PANEL_ORDER = 31
 

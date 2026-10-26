@@ -9,18 +9,35 @@
  *   * 一把锁、一次原子写，然后一次扫描器失效 + 一次 provider 失效（`notifyChanged`）。
  */
 import { stat } from 'node:fs/promises';
-import { isAbsolute } from 'node:path';
+import { homedir, tmpdir } from 'node:os';
+import { basename, dirname, isAbsolute, join } from 'node:path';
 import { DomainError, errorResult } from '../shared/result.js';
-import { createLock, realOrResolved } from '../shared/paths.js';
+import { isFile } from '../shared/fs.js';
+import { createLock, isInside, pathIdSync, realOrResolved } from '../shared/paths.js';
 import { createScanner } from './scan.js';
-import { DEFAULT_RANKS, dedupeRoots, overlapsExisting, projectRootsFor, staticRoots } from './roots.js';
+import { DEFAULT_RANKS, dedupeRoots, hostRoots, overlapsExisting, projectRootsFor, staticRoots } from './roots.js';
 import { customRootKey, customRootOf, defaultStatePath, forgetSkillEverywhere, loadState, pruneState, saveState, uniqueStrings, } from './state.js';
 import { allRows, buildStateView, liveNameIndex } from './view.js';
 import { rowIdOf, rowMatchesRef } from './policy.js';
 import { createSkill, readSkillDetail, updateSkill } from './files/authoring.js';
 import { deleteSkillToTrash, emptyTrash, listTrash, purgeTrashItem, restoreTrashItem } from './files/trash.js';
-import { exportRowAsZip, exportRowsAsZip, importFromPath, importZip } from './files/transfer.js';
+import { exportRowAsZip, exportRowsAsZip, importZip, scanZip } from './files/transfer.js';
 import { PROVIDER_NAME, createProvider } from './provider.js';
+/**
+ * 宿主目录缓存的兜底时效。
+ *
+ * 正常情况下缓存由宿主的 `skills/change` 事件维护（见 index.ts）：只有注册表真的变了才
+ * 重探一次。这个 TTL 只用于「事件没到」（旧宿主 / 监听不到）时在**后台**补一次探测，
+ * 它不挡面板读取 —— 进技能页不该为了宿主目录再跑一遍全部 provider。
+ */
+const HOST_DIRS_TTL = 60_000;
+/**
+ * 探测宿主注册表的最长等待。
+ *
+ * 注册表背后是别的 provider（可能有远程 / 慢实现），面板不能为它无限转圈：超时就先用
+ * 上一次的结果返回，探测在后台继续，下一次读取自然跟上。
+ */
+const HOST_DIRS_PROBE_TIMEOUT = 1_500;
 /** 把一个技能开关写进状态；返回是否真的改了（幂等短路就在这里）。 */
 function applySkillSwitch(state, rootKey, name, enabled) {
     const hidden = state.hiddenSkills[rootKey] ?? [];
@@ -52,6 +69,10 @@ export function createService(options) {
     const lock = createLock();
     const invalidators = new Set();
     let cached;
+    /** 最近一次探测到的宿主目录（原始目录，未按已知来源过滤）。 */
+    let hostDirCache;
+    /** 正在进行的探测：同一时刻只问注册表一次，并发 / 重入的读取共用它。 */
+    let hostDirTask;
     /** 只在真的发生变更时写（`mutate` 已经保证了这一点）。 */
     const log = (event, detail) => {
         try {
@@ -99,7 +120,7 @@ export function createService(options) {
             return { ok: true, data: { ...value, changed: true } };
         });
     }
-    async function rootsFor(cwd) {
+    async function rootsFor(cwd, read) {
         const loaded = cached ?? (await readState());
         const base = staticRoots({
             dshHome: options.dshHome,
@@ -110,11 +131,64 @@ export function createService(options) {
         }, loaded.state);
         const project = cwd === undefined || cwd === '' ? [] : await projectRootsFor(cwd, loaded.state);
         const { roots } = await dedupeRoots([...project, ...base]);
-        return roots;
+        // 宿主自己发布的目录（不在上面这些来源里的），补成额外来源。
+        return [...roots, ...hostRoots(await hostDirsOf(roots, read?.probeHost !== false), loaded.state)];
     }
-    async function view(cwd, scopeKey) {
+    /**
+     * 问一次宿主注册表，把「宿主发布的目录」记进缓存。
+     *
+     * 这一次 `skills.list()` 会把本插件注册的 provider 也问一遍，而 provider 的 `list()`
+     * 同样要读视图 —— 所以 provider 那条路径传 `probeHost: false`（见 `makeProvider`），
+     * 递归最多只有这一层，不会回头再问注册表。
+     */
+    function refreshHostDirs() {
+        if (options.hostCandidates === undefined)
+            return Promise.resolve();
+        if (hostDirTask !== undefined)
+            return hostDirTask;
+        hostDirTask = (async () => {
+            try {
+                const candidates = await options.hostCandidates();
+                hostDirCache = { at: Date.now(), dirs: await hostRootsAmong(candidates, options.dshHome) };
+            }
+            catch {
+                // 注册表读不到（启动早期 / 宿主没有 skills 服务）就保留上一次结果，绝不报错。
+            }
+            finally {
+                hostDirTask = undefined;
+            }
+        })();
+        return hostDirTask;
+    }
+    /**
+     * 本次读取要补的宿主目录。
+     *
+     * 有缓存就直接用 —— 进入技能页不该为了「宿主还在发布什么」去跑一遍全部 provider
+     * （那是之前每进一次卡一下的原因）。缓存的更新交给 `refreshHostDirs`：启动、宿主
+     * `skills/change`、显式 refresh。只有**从来没有缓存**时才等一次（有上限），否则面板
+     * 永远看不到宿主来源；缓存过期只是后台补一次，绝不挡住这次读取。
+     * provider 那条路径（`probeHost: false`）只读缓存。
+     * 「是不是我们已有的来源」在这里按 `known` 过滤：缓存因此与调用方无关。
+     */
+    async function hostDirsOf(known, probeHost) {
+        if (options.hostCandidates === undefined)
+            return [];
+        if (probeHost) {
+            if (hostDirCache === undefined) {
+                await settleWithin(refreshHostDirs(), HOST_DIRS_PROBE_TIMEOUT);
+            }
+            else if (Date.now() - hostDirCache.at >= HOST_DIRS_TTL) {
+                // 兜底：宿主事件没到（旧版本 / 事件丢失）时后台补一次，不占这次读取。
+                void refreshHostDirs();
+            }
+        }
+        const dirs = hostDirCache?.dirs ?? [];
+        // 宿主在发布我们已有的来源（$DSH_HOME/skills、~/.agents/skills 等）→ 不重复列。
+        return dirs.filter((dir) => !known.some((root) => isInside(root.path, dir)));
+    }
+    async function view(cwd, scopeKey, read) {
         const loaded = await readState();
-        const roots = await rootsFor(cwd);
+        const roots = await rootsFor(cwd, read);
         return buildStateView({
             state: loaded.state,
             scanner,
@@ -139,6 +213,7 @@ export function createService(options) {
         statePath,
         invalidators,
         touch,
+        refreshHostDirs,
         view,
         roots: rootsFor,
         async detail(rootKey, name, cwd) {
@@ -174,6 +249,16 @@ export function createService(options) {
                 let updated = 0;
                 for (const row of wanted.values()) {
                     if (applySkillSwitch(state, row.rootKey, row.name, enabled))
+                        updated += 1;
+                }
+                return { changed: updated > 0, value: { updated } };
+            });
+        },
+        async restoreSkills(items) {
+            return mutate(async (state) => {
+                let updated = 0;
+                for (const item of items) {
+                    if (applySkillSwitch(state, item.root, item.name, item.enabled))
                         updated += 1;
                 }
                 return { changed: updated > 0, value: { updated } };
@@ -373,34 +458,32 @@ export function createService(options) {
                 return { changed: true, value: { key } };
             });
         },
-        async importPath(rootKey, path, cwd) {
+        async importZip(rootKey, base64, cwd, only) {
             const root = await rootFor(rootKey, cwd);
             if (root === undefined)
                 return unknownRoot(rootKey);
+            const guarded = bufferOf(base64);
+            if (!Buffer.isBuffer(guarded))
+                return guarded;
             try {
-                const outcome = await importFromPath(root, path);
+                const outcome = await importZip(root, guarded, only);
                 touch(rootKey);
-                log('skill-import', `导入 ${rootKey}：${namesOf(outcome.imported)}`);
+                log('skill-import-zip', `导入压缩包到 ${rootKey}：${namesOf(outcome.imported)}`);
                 return { ok: true, data: outcome };
             }
             catch (cause) {
                 return errorResult(cause);
             }
         },
-        async importZip(rootKey, base64, cwd) {
+        async scanImport(rootKey, base64, cwd) {
             const root = await rootFor(rootKey, cwd);
             if (root === undefined)
                 return unknownRoot(rootKey);
-            const buffer = Buffer.from(base64, 'base64');
-            if (buffer.length === 0)
-                return { ok: false, error: '压缩包是空的', code: 'error.upload.empty' };
-            if (buffer.length > 32 * 1024 * 1024)
-                return { ok: false, error: '压缩包过大（上限 32 MiB）', code: 'error.upload.tooLarge' };
+            const guarded = bufferOf(base64);
+            if (!Buffer.isBuffer(guarded))
+                return guarded;
             try {
-                const outcome = await importZip(root, buffer);
-                touch(rootKey);
-                log('skill-import-zip', `导入压缩包到 ${rootKey}：${namesOf(outcome.imported)}`);
-                return { ok: true, data: outcome };
+                return { ok: true, data: await scanZip(root, guarded) };
             }
             catch (cause) {
                 return errorResult(cause);
@@ -427,6 +510,8 @@ export function createService(options) {
         },
         async refresh() {
             scanner.invalidate();
+            // 显式刷新：连宿主发布的目录也重新探一次（写技能本身不影响宿主目录集合）。
+            hostDirCache = undefined;
             const current = await view();
             // 剪掉已不存在的策略名字 —— 但只在这里、只在显式 refresh 时做，绝不在普通读取里做
             // （那正是让被替换插件「每次面板轮询都写一次盘」的原因）。
@@ -437,9 +522,12 @@ export function createService(options) {
             return { ok: true, data: { generation: scanner.generation(), pruned: pruned.data, stats: scanner.stats() } };
         },
         makeProvider() {
+            // 这条路径是宿主 `skills.list()` 回调进来的：再问注册表就是无限递归（面板会一直
+            // 停在加载中），所以只读宿主目录的缓存，绝不探测。
+            const read = { probeHost: false };
             return createProvider({
-                viewFor: (cwd, scopeKey) => view(cwd, scopeKey),
-                rootsFor: (cwd) => rootsFor(cwd),
+                viewFor: (cwd, scopeKey) => view(cwd, scopeKey, read),
+                rootsFor: (cwd) => rootsFor(cwd, read),
             });
         },
         stateInfo() {
@@ -450,7 +538,99 @@ export function createService(options) {
     };
     return service;
 }
+/** base64 → Buffer，顺带守住空包与体积上限（scan 与 import 共用同一套判断）。 */
+function bufferOf(base64) {
+    const buffer = Buffer.from(base64, 'base64');
+    if (buffer.length === 0)
+        return { ok: false, error: '压缩包是空的', code: 'error.upload.empty' };
+    if (buffer.length > 32 * 1024 * 1024)
+        return { ok: false, error: '压缩包过大（上限 32 MiB）', code: 'error.upload.tooLarge' };
+    return buffer;
+}
 /** 导入结果的技能名一览（日志用）。 */
 function namesOf(imported) {
     return imported.map((item) => item.name).join('、') || '无';
+}
+/**
+ * 从宿主候选反推「技能来源目录」（只留最外层）。
+ *
+ * 每个候选只说明「这条技能在哪儿」，不说明「它属于哪个集合目录」，所以反推分两步：
+ *   1. `hostRootOf` 只认能证明自己是**集合目录里的成员**的候选；
+ *   2. `isPlausibleHostRoot` 拒绝系统容器（临时目录 / 家目录 / DSH 主目录等）——
+ *      否则一条解包到 `%TEMP%\<skill>` 的内置技能就会把整个 Temp 变成来源。
+ *
+ * 「是不是我们已有的来源」不在这里判：缓存必须与某次读取的 `known` 无关，那一步在
+ * `hostDirsOf` 里按当前来源过滤。
+ */
+async function hostRootsAmong(candidates, dshHome) {
+    const dirs = [];
+    const seen = new Set();
+    for (const candidate of candidates) {
+        const dir = await hostRootOf(candidate);
+        if (dir === undefined || !isPlausibleHostRoot(dir, dshHome))
+            continue;
+        const id = pathIdSync(dir);
+        if (seen.has(id))
+            continue;
+        seen.add(id);
+        dirs.push(dir);
+    }
+    return outermostOnly(dirs);
+}
+/**
+ * 一条候选 → 它所在的集合目录。
+ *
+ * 文档路径（有的话）最准：
+ *   * bundle：`<root>/<skill>/SKILL.md` → `<root>`（往上两级）；
+ *   * 平铺：`<root>/<skill>.md`        → `<root>`（往上一级）。
+ *
+ * 但 `skills.list()` 的摘要只有 `resourceBase`（技能自己的目录）：bundle 是
+ * `<root>/<skill>`，平铺技能就是 `<root>` 本身 —— 后者反推会多上一级（把 `~/.claude`
+ * 这种目录当成来源），所以只有「目录里真的有 SKILL.md」的 bundle 才拿来反推。
+ */
+async function hostRootOf(candidate) {
+    if (typeof candidate?.docPath === 'string' && candidate.docPath !== '') {
+        const doc = basename(candidate.docPath).toLowerCase();
+        return doc === 'skill.md' ? dirname(dirname(candidate.docPath)) : dirname(candidate.docPath);
+    }
+    const skillDir = typeof candidate?.skillDir === 'string' ? candidate.skillDir : '';
+    if (skillDir === '' || !(await isFile(join(skillDir, 'SKILL.md'))))
+        return undefined;
+    return dirname(skillDir);
+}
+/**
+ * 反推出来的目录能不能当来源。
+ *
+ * 这不是「猜目录」的补充，而是拒绝证据不足的猜测：临时目录 / 家目录 / DSH 主目录 /
+ * 进程工作目录本身（以及它们的祖先）都可能是任意技能的落脚点，一旦成为来源就会把
+ * 目录里的所有东西扫成技能。它们的**子目录**仍然可以是来源（`~/.claude/skills`、
+ * `$DSH_HOME/tool-management/official-skills/<profile>` 都靠这条）。
+ */
+function isPlausibleHostRoot(dir, dshHome) {
+    const id = pathIdSync(dir);
+    // 盘符 / 文件系统根。
+    if (dirname(id) === id)
+        return false;
+    for (const container of [tmpdir(), homedir(), dshHome, process.cwd()]) {
+        const guard = pathIdSync(container);
+        // 容器本身，或容器的祖先（例如 AppData\Local、C:\Users）。
+        if (isInside(id, guard))
+            return false;
+    }
+    return true;
+}
+/** 只留最外层：某个目录已经在另一个目录之下，就并进祖先里。 */
+function outermostOnly(dirs) {
+    return dirs.filter((dir) => !dirs.some((other) => other !== dir && isInside(other, dir)));
+}
+/** 等一个任务，但最多等 `ms` 毫秒（超时不算失败：任务继续在后台跑）。 */
+function settleWithin(task, ms) {
+    return new Promise((resolve) => {
+        const timer = setTimeout(resolve, ms);
+        timer.unref?.();
+        void task.then(() => {
+            clearTimeout(timer);
+            resolve();
+        });
+    });
 }

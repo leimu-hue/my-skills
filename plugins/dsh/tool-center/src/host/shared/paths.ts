@@ -85,7 +85,7 @@ export async function writeFileAtomic(path: string, data: string | Uint8Array, m
   }
 }
 
-export async function renameWithRetry(from: string, to: string, attempts = 6): Promise<void> {
+async function renameWithRetry(from: string, to: string, attempts = 6): Promise<void> {
   let lastError: unknown
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     try {

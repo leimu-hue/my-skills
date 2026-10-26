@@ -139,7 +139,11 @@ test('exit restores the exact pre-scene state, including a skill the user had al
   await applyScene(dshHome, service, undefined, 'a')
   assert.equal((await onOf(service)).get('gamma'), false)
 
+  let invalidated = 0
+  service.invalidators.add(() => { invalidated += 1 })
   await exitScene(dshHome, service)
+  assert.ok(invalidated > 0, 'rolling a scene back must invalidate the skills catalog (the model view)')
+
   const state = await onOf(service)
   assert.equal(state.get('alpha'), true)
   assert.equal(state.get('beta'), true)

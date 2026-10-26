@@ -21,16 +21,18 @@
  *   * 预设文件与「是否生效」都记在索引里，重装 / 重启都不丢。
  */
 import { createHash } from 'node:crypto'
-import { copyFile, mkdir, readFile, readdir, rm, stat, unlink, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, readdir, rm, stat, unlink } from 'node:fs/promises'
 import { basename, join, resolve } from 'node:path'
 import { writeFileAtomic } from '../shared/paths.js'
 import { DomainError } from '../shared/result.js'
 import { exists, readTextOrNull } from '../shared/fs.js'
+import { writeBackup, type BackupResult } from '../shared/backups.js'
+import { isRecord } from '../shared/json.js'
 
 /** 应用目标：用户级全局，或某个工作区。 */
 export type PromptTarget = { kind: 'global' } | { kind: 'workspace'; path: string; title?: string }
 
-export const GLOBAL_TARGET: PromptTarget = { kind: 'global' }
+const GLOBAL_TARGET: PromptTarget = { kind: 'global' }
 
 export interface PromptPreset {
   name: string
@@ -100,8 +102,8 @@ export function digestOf(content: string): string {
 }
 
 /** 把 op 传来的作用范围收成合法形状；缺省 = 全局。 */
-export function normaliseScope(input: unknown): { kind: 'global' | 'workspace'; path: string } {
-  if (input !== null && typeof input === 'object') {
+function normaliseScope(input: unknown): { kind: 'global' | 'workspace'; path: string } {
+  if (isRecord(input)) {
     const record = input as Record<string, unknown>
     const path = typeof record.path === 'string' ? record.path.trim() : ''
     if (record.kind === 'workspace' && path !== '') return { kind: 'workspace', path: resolve(path) }
@@ -109,25 +111,25 @@ export function normaliseScope(input: unknown): { kind: 'global' | 'workspace'; 
   return { kind: 'global', path: '' }
 }
 
-export function targetOfScope(scope: { kind: 'global' | 'workspace'; path: string }, title?: string): PromptTarget {
+function targetOfScope(scope: { kind: 'global' | 'workspace'; path: string }, title?: string): PromptTarget {
   return scope.kind === 'global' ? GLOBAL_TARGET : { kind: 'workspace', path: scope.path, title }
 }
 
-export function targetKeyOf(target: PromptTarget): string {
+function targetKeyOf(target: PromptTarget): string {
   return target.kind === 'global' ? 'global' : `ws:${target.path}`
 }
 
-export function targetLabelOf(target: PromptTarget): string {
+function targetLabelOf(target: PromptTarget): string {
   if (target.kind === 'global') return '全局（所有会话）'
   return `${target.title ?? basename(target.path)}（${target.path}）`
 }
 
-export function targetOfKey(key: string): PromptTarget {
+function targetOfKey(key: string): PromptTarget {
   return key === 'global' ? GLOBAL_TARGET : { kind: 'workspace', path: key.slice(3) }
 }
 
 /** 某个目标的 AGENTS.md 路径：全局在 `$DSH_HOME`，工作区在项目根。 */
-export function agentsPathOf(dshHome: string, target: PromptTarget = GLOBAL_TARGET): string {
+function agentsPathOf(dshHome: string, target: PromptTarget = GLOBAL_TARGET): string {
   return target.kind === 'global' ? join(dshHome, 'AGENTS.md') : join(target.path, 'AGENTS.md')
 }
 
@@ -149,20 +151,20 @@ function emptyIndex(): PromptIndex {
 }
 
 async function readIndex(dshHome: string): Promise<PromptIndex> {
-  const raw = await readFile(indexPathOf(dshHome), 'utf8').catch(() => '')
+  const raw = (await readTextOrNull(indexPathOf(dshHome))) ?? ''
   if (raw === '') return emptyIndex()
   try {
     const parsed = JSON.parse(raw) as Record<string, unknown>
     const index = emptyIndex()
-    if (parsed.presets !== null && typeof parsed.presets === 'object') {
+    if (isRecord(parsed.presets)) {
       for (const [name, value] of Object.entries(parsed.presets as Record<string, unknown>)) {
-        if (value === null || typeof value !== 'object') continue
+        if (!isRecord(value)) continue
         index.presets[name] = { scope: normaliseScope((value as Record<string, unknown>).scope) }
       }
     }
-    if (parsed.applied !== null && typeof parsed.applied === 'object') {
+    if (isRecord(parsed.applied)) {
       for (const [key, value] of Object.entries(parsed.applied as Record<string, unknown>)) {
-        if (value === null || typeof value !== 'object') continue
+        if (!isRecord(value)) continue
         const entry = value as Record<string, unknown>
         if (typeof entry.preset !== 'string' || entry.preset === '') continue
         index.applied[key] = {
@@ -322,23 +324,23 @@ export async function deletePreset(dshHome: string, name: string): Promise<void>
   await writeIndex(dshHome, index)
 }
 
-async function backupAgents(dshHome: string, target: PromptTarget, label: string): Promise<string | null> {
+async function backupAgents(dshHome: string, target: PromptTarget, label: string): Promise<BackupResult | null> {
   const agents = await readTextOrNull(agentsPathOf(dshHome, target))
   if (agents === null) return null
-  const dir = backupDirOf(dshHome, target)
-  await mkdir(dir, { recursive: true })
-  const stamp = new Date().toISOString().replace(/[:.]/g, '-')
-  const fileName = `AGENTS.md.${label}-${stamp}`
-  await writeFile(join(dir, fileName), agents, { mode: 0o600 })
-  const names = (await readdir(dir).catch(() => [] as string[])).filter((entry) => entry.startsWith('AGENTS.md.')).sort()
-  for (const stale of names.slice(0, Math.max(0, names.length - MAX_BACKUPS))) {
-    await rm(join(dir, stale), { force: true }).catch(() => undefined)
-  }
-  return fileName
+  return writeBackup({
+    dir: backupDirOf(dshHome, target),
+    baseName: `AGENTS.md.${label}`,
+    content: agents,
+    keep: MAX_BACKUPS,
+    // 只淘汰「每次写之前」的备份；`AGENTS.md.start-*` 是链起点，必须一直留着。
+    prunePrefix: 'AGENTS.md.before-',
+    // 备份不参与在线读取，普通写就够（保持原来的 0600）。
+    atomic: false,
+  })
 }
 
 /** 把该目标恢复到链起点。 */
-export async function unapplyTarget(dshHome: string, target: PromptTarget): Promise<{ restored: 'file' | 'absent'; from: string | null }> {
+async function unapplyTarget(dshHome: string, target: PromptTarget): Promise<{ restored: 'file' | 'absent'; from: string | null }> {
   const index = await readIndex(dshHome)
   const key = targetKeyOf(target)
   const agentsPath = agentsPathOf(dshHome, target)
@@ -398,13 +400,13 @@ export async function setPresetEnabled(
 
   const agentsPath = agentsPathOf(dshHome, target)
   const dir = backupDirOf(dshHome, target)
-  const backupName = await backupAgents(dshHome, target, 'before-apply')
+  const backup = await backupAgents(dshHome, target, 'before-apply')
   const fresh = await readIndex(dshHome)
   const previous = fresh.applied[key]
-  const chainStart = previous?.chainStart ?? (backupName === null ? null : backupName)
-  if (previous === undefined && backupName !== null) {
+  const chainStart = previous?.chainStart ?? backup?.fileName ?? null
+  if (previous === undefined && backup !== null) {
     // 链起点只在「这个目标第一次被应用」时留一条。
-    await copyFile(join(dir, backupName), join(dir, `AGENTS.md.start-${backupName.slice('AGENTS.md.before-apply-'.length)}`))
+    await copyFile(join(dir, backup.fileName), join(dir, `AGENTS.md.start-${backup.stamp}`))
       .catch(() => undefined)
   }
   await writeFileAtomic(agentsPath, content)

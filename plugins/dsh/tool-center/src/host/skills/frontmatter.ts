@@ -33,6 +33,20 @@ export interface ParsedSkillFile {
 const FENCE = /^\uFEFF?---[ \t]*\r?\n/
 const CLOSING = /^---[ \t]*$/
 
+/**
+ * 宿主对技能名的要求（与 `@deepseek-ai/dsh-skill` 的 `SKILL_NAME` 完全一致）：
+ * 小写字母 / 数字，用单个连字符分段。
+ *
+ * 这条规则必须在这里守住，因为宿主是在 `skills.list()` 的 provider 返回值上**硬校验**的：
+ * 一条不合规的候选不是「跳过这一条」，而是让整次 list() 抛错 —— 表现给用户就是
+ * 「本轮运行失败 skill provider "tool-center" returned invalid skill name ...」。
+ */
+const HOST_SKILL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
+
+export function isHostSkillName(name: string): boolean {
+  return HOST_SKILL_NAME.test(name)
+}
+
 /** 解析一个 SKILL.md。永不抛错。 */
 export function parseSkillFile(text: string): ParsedSkillFile {
   const source = typeof text === 'string' ? text : ''
@@ -68,7 +82,7 @@ export function parseSkillFile(text: string): ParsedSkillFile {
  * 空行与注释行单独成块（`key: ''`）：它们不属于任何键，所以改写某个键时，不能顺手
  * 把它下面那条注释一起吞掉。
  */
-export function splitBlocks(lines: string[]): FrontmatterBlock[] {
+function splitBlocks(lines: string[]): FrontmatterBlock[] {
   const blocks: FrontmatterBlock[] = []
   let current: FrontmatterBlock | null = null
   for (const line of lines) {

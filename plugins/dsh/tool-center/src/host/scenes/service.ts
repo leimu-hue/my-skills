@@ -15,11 +15,11 @@
 import { join } from 'node:path'
 import type { SkillService } from '../skills/service.js'
 import type { SkillRef } from '../shared/types.js'
-import { loadState, saveState } from '../skills/state.js'
 import { allRows } from '../skills/view.js'
-import { skillRefsOf } from '../skills/policy.js'
+import { rowIdOf, skillRefsOf } from '../skills/policy.js'
 import { loadMcp, setMcpEnabled } from '../mcp/service.js'
 import { DomainError, describe } from '../shared/result.js'
+import { isRecord } from '../shared/json.js'
 import { loadPrompts, promptTargetOf, setPresetEnabled } from '../prompts/service.js'
 import { readTextOrNull } from '../shared/fs.js'
 import { writeFileAtomic } from '../shared/paths.js'
@@ -89,7 +89,7 @@ export interface SceneApplyReport {
 const SCENES_NAME = 'scenes.json'
 const NO_REVERT: Reverted = { skills: 0, mcp: 0, prompt: false }
 
-export function scenesPathOf(dshHome: string): string {
+function scenesPathOf(dshHome: string): string {
   return join(dshHome, 'tool-center', SCENES_NAME)
 }
 
@@ -98,7 +98,7 @@ function emptyDocument(): ScenesDocument {
 }
 
 function normaliseTargetInput(value: unknown): ScenePromptTarget {
-  if (value === null || typeof value !== 'object') return { scope: 'global' }
+  if (!isRecord(value)) return { scope: 'global' }
   const record = value as Record<string, unknown>
   const workspace = typeof record.workspace === 'string' ? record.workspace.trim() : ''
   if (record.scope === 'workspace' && workspace !== '') return { scope: 'workspace', workspace }
@@ -107,11 +107,11 @@ function normaliseTargetInput(value: unknown): ScenePromptTarget {
 
 function normaliseSceneDocument(value: unknown): ScenesDocument {
   const document = emptyDocument()
-  if (value === null || typeof value !== 'object') return document
+  if (!isRecord(value)) return document
   const record = value as Record<string, unknown>
   if (Array.isArray(record.scenes)) {
     for (const item of record.scenes) {
-      if (item === null || typeof item !== 'object') continue
+      if (!isRecord(item)) continue
       const scene = item as Record<string, unknown>
       const name = typeof scene.name === 'string' ? scene.name.trim() : ''
       if (name === '') continue
@@ -130,7 +130,7 @@ function normaliseSceneDocument(value: unknown): ScenesDocument {
     }
   }
   document.active = typeof record.active === 'string' && record.active !== '' ? record.active : null
-  if (record.applied !== null && typeof record.applied === 'object') {
+  if (isRecord(record.applied)) {
     const applied = record.applied as Record<string, unknown>
     const promptBefore = applied.promptBefore
     document.applied = {
@@ -138,19 +138,19 @@ function normaliseSceneDocument(value: unknown): ScenesDocument {
       at: typeof applied.at === 'number' ? applied.at : Date.now(),
       skills: Array.isArray(applied.skills)
         ? applied.skills.filter((ref): ref is { root: string; name: string; wasOn: boolean } =>
-          ref !== null && typeof ref === 'object'
-          && typeof (ref as SkillRef).root === 'string'
-          && typeof (ref as SkillRef).name === 'string'
-          && typeof (ref as { wasOn?: unknown }).wasOn === 'boolean')
+          isRecord(ref)
+          && typeof ref.root === 'string'
+          && typeof ref.name === 'string'
+          && typeof ref.wasOn === 'boolean')
         : [],
       mcp: Array.isArray(applied.mcp)
         ? applied.mcp.filter((entry): entry is { id: string; wasOn: boolean } =>
-          entry !== null && typeof entry === 'object'
-          && typeof (entry as { id?: unknown }).id === 'string'
-          && typeof (entry as { wasOn?: unknown }).wasOn === 'boolean')
+          isRecord(entry)
+          && typeof entry.id === 'string'
+          && typeof entry.wasOn === 'boolean')
         : [],
       // 旧文档用过 `key` / `preset` 两个名字，读的时候一并认下来。
-      promptBefore: promptBefore !== null && typeof promptBefore === 'object'
+      promptBefore: isRecord(promptBefore)
         ? {
           targetKey: String(
             (promptBefore as { targetKey?: unknown }).targetKey
@@ -241,20 +241,11 @@ async function revertSnapshot(
   const warnings: string[] = []
 
   if (snapshot.skills.length > 0) {
-    const loaded = await loadState(service.statePath)
-    const state = loaded.state
-    let dirty = false
-    for (const ref of snapshot.skills) {
-      const hidden = new Set(state.hiddenSkills[ref.root] ?? [])
-      if (ref.wasOn === !hidden.has(ref.name)) continue
-      if (ref.wasOn) hidden.delete(ref.name)
-      else hidden.add(ref.name)
-      if (hidden.size === 0) delete state.hiddenSkills[ref.root]
-      else state.hiddenSkills[ref.root] = [...hidden].sort()
-      dirty = true
-      reverted.skills += 1
-    }
-    if (dirty) await saveState(service.statePath, state)
+    const restored = await service.restoreSkills(
+      snapshot.skills.map((ref) => ({ root: ref.root, name: ref.name, enabled: ref.wasOn })),
+    )
+    if (restored.ok !== true) throw new DomainError('error.scene.restore', String(restored.error ?? '恢复技能失败'))
+    reverted.skills = (restored.data as { updated?: number } | undefined)?.updated ?? 0
   }
 
   for (const entry of snapshot.mcp) {
@@ -303,13 +294,13 @@ export async function applyScene(dshHome: string, service: SkillService, cwd: st
 
   // ② 按白名单拨技能：算清要开 / 要关，然后各走一次批量写（不是一条一次写盘）。
   const rows = allRows(await service.view(cwd)).filter((row) => !row.shadowed && row.rootWritable)
-  const selected = new Set(scene.skills.map((ref) => ref.root + '\u0000' + ref.name))
+  const selected = new Set(scene.skills.map((ref) => rowIdOf(ref.root, ref.name)))
   const toEnable: SkillRef[] = []
   const toDisable: SkillRef[] = []
   const touched: AppliedSnapshot['skills'] = []
   for (const row of rows) {
     const wasOn = row.policy.skillOn
-    const wanted = selected.has(row.rootKey + '\u0000' + row.name) ? true : (scene.exclusive ? false : wasOn)
+    const wanted = selected.has(rowIdOf(row.rootKey, row.name)) ? true : (scene.exclusive ? false : wasOn)
     if (wanted === wasOn) continue
     touched.push({ root: row.rootKey, name: row.name, wasOn })
     if (wanted) toEnable.push({ root: row.rootKey, name: row.name })

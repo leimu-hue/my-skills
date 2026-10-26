@@ -21,12 +21,14 @@
  *   * 预设文件与「是否生效」都记在索引里，重装 / 重启都不丢。
  */
 import { createHash } from 'node:crypto';
-import { copyFile, mkdir, readFile, readdir, rm, stat, unlink, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readdir, rm, stat, unlink } from 'node:fs/promises';
 import { basename, join, resolve } from 'node:path';
 import { writeFileAtomic } from '../shared/paths.js';
 import { DomainError } from '../shared/result.js';
 import { exists, readTextOrNull } from '../shared/fs.js';
-export const GLOBAL_TARGET = { kind: 'global' };
+import { writeBackup } from '../shared/backups.js';
+import { isRecord } from '../shared/json.js';
+const GLOBAL_TARGET = { kind: 'global' };
 const INDEX_NAME = 'index.json';
 const BACKUP_DIR = '__backup__';
 const MAX_BACKUPS = 5;
@@ -42,8 +44,8 @@ export function digestOf(content) {
     return createHash('sha256').update(content, 'utf8').digest('hex').slice(0, 32);
 }
 /** 把 op 传来的作用范围收成合法形状；缺省 = 全局。 */
-export function normaliseScope(input) {
-    if (input !== null && typeof input === 'object') {
+function normaliseScope(input) {
+    if (isRecord(input)) {
         const record = input;
         const path = typeof record.path === 'string' ? record.path.trim() : '';
         if (record.kind === 'workspace' && path !== '')
@@ -51,22 +53,22 @@ export function normaliseScope(input) {
     }
     return { kind: 'global', path: '' };
 }
-export function targetOfScope(scope, title) {
+function targetOfScope(scope, title) {
     return scope.kind === 'global' ? GLOBAL_TARGET : { kind: 'workspace', path: scope.path, title };
 }
-export function targetKeyOf(target) {
+function targetKeyOf(target) {
     return target.kind === 'global' ? 'global' : `ws:${target.path}`;
 }
-export function targetLabelOf(target) {
+function targetLabelOf(target) {
     if (target.kind === 'global')
         return '全局（所有会话）';
     return `${target.title ?? basename(target.path)}（${target.path}）`;
 }
-export function targetOfKey(key) {
+function targetOfKey(key) {
     return key === 'global' ? GLOBAL_TARGET : { kind: 'workspace', path: key.slice(3) };
 }
 /** 某个目标的 AGENTS.md 路径：全局在 `$DSH_HOME`，工作区在项目根。 */
-export function agentsPathOf(dshHome, target = GLOBAL_TARGET) {
+function agentsPathOf(dshHome, target = GLOBAL_TARGET) {
     return target.kind === 'global' ? join(dshHome, 'AGENTS.md') : join(target.path, 'AGENTS.md');
 }
 function indexPathOf(dshHome) {
@@ -83,22 +85,22 @@ function emptyIndex() {
     return { version: 3, presets: {}, applied: {} };
 }
 async function readIndex(dshHome) {
-    const raw = await readFile(indexPathOf(dshHome), 'utf8').catch(() => '');
+    const raw = (await readTextOrNull(indexPathOf(dshHome))) ?? '';
     if (raw === '')
         return emptyIndex();
     try {
         const parsed = JSON.parse(raw);
         const index = emptyIndex();
-        if (parsed.presets !== null && typeof parsed.presets === 'object') {
+        if (isRecord(parsed.presets)) {
             for (const [name, value] of Object.entries(parsed.presets)) {
-                if (value === null || typeof value !== 'object')
+                if (!isRecord(value))
                     continue;
                 index.presets[name] = { scope: normaliseScope(value.scope) };
             }
         }
-        if (parsed.applied !== null && typeof parsed.applied === 'object') {
+        if (isRecord(parsed.applied)) {
             for (const [key, value] of Object.entries(parsed.applied)) {
-                if (value === null || typeof value !== 'object')
+                if (!isRecord(value))
                     continue;
                 const entry = value;
                 if (typeof entry.preset !== 'string' || entry.preset === '')
@@ -256,19 +258,19 @@ async function backupAgents(dshHome, target, label) {
     const agents = await readTextOrNull(agentsPathOf(dshHome, target));
     if (agents === null)
         return null;
-    const dir = backupDirOf(dshHome, target);
-    await mkdir(dir, { recursive: true });
-    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const fileName = `AGENTS.md.${label}-${stamp}`;
-    await writeFile(join(dir, fileName), agents, { mode: 0o600 });
-    const names = (await readdir(dir).catch(() => [])).filter((entry) => entry.startsWith('AGENTS.md.')).sort();
-    for (const stale of names.slice(0, Math.max(0, names.length - MAX_BACKUPS))) {
-        await rm(join(dir, stale), { force: true }).catch(() => undefined);
-    }
-    return fileName;
+    return writeBackup({
+        dir: backupDirOf(dshHome, target),
+        baseName: `AGENTS.md.${label}`,
+        content: agents,
+        keep: MAX_BACKUPS,
+        // 只淘汰「每次写之前」的备份；`AGENTS.md.start-*` 是链起点，必须一直留着。
+        prunePrefix: 'AGENTS.md.before-',
+        // 备份不参与在线读取，普通写就够（保持原来的 0600）。
+        atomic: false,
+    });
 }
 /** 把该目标恢复到链起点。 */
-export async function unapplyTarget(dshHome, target) {
+async function unapplyTarget(dshHome, target) {
     const index = await readIndex(dshHome);
     const key = targetKeyOf(target);
     const agentsPath = agentsPathOf(dshHome, target);
@@ -321,13 +323,13 @@ export async function setPresetEnabled(dshHome, name, enabled) {
     }
     const agentsPath = agentsPathOf(dshHome, target);
     const dir = backupDirOf(dshHome, target);
-    const backupName = await backupAgents(dshHome, target, 'before-apply');
+    const backup = await backupAgents(dshHome, target, 'before-apply');
     const fresh = await readIndex(dshHome);
     const previous = fresh.applied[key];
-    const chainStart = previous?.chainStart ?? (backupName === null ? null : backupName);
-    if (previous === undefined && backupName !== null) {
+    const chainStart = previous?.chainStart ?? backup?.fileName ?? null;
+    if (previous === undefined && backup !== null) {
         // 链起点只在「这个目标第一次被应用」时留一条。
-        await copyFile(join(dir, backupName), join(dir, `AGENTS.md.start-${backupName.slice('AGENTS.md.before-apply-'.length)}`))
+        await copyFile(join(dir, backup.fileName), join(dir, `AGENTS.md.start-${backup.stamp}`))
             .catch(() => undefined);
     }
     await writeFileAtomic(agentsPath, content);

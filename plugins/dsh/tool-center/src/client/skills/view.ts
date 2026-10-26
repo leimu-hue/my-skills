@@ -3,10 +3,11 @@
  *
  * 几个刻意的选择，都是被替换插件留下的教训：
  *   * **不轮询。** 列表只在挂载时与每次变更后读一次；
- *   * **一次变更一个请求。** 批量开关走 `set-all`；
+ *   * **一次变更一个请求。** 每颗开关各发一条 op，不把状态攒在前端批量冲；
  *   * **宿主持有真值。** 写完重新读 `state`，而不是改本地副本。
  */
-import { callOp, readFileAsBase64, downloadBase64 } from '../core/api.js'
+import { callOp, downloadBase64 } from '../core/api.js'
+import { base64Of, buildZip } from '../core/zip.js'
 import { h, useClientEffect, useStateOf } from '../core/runtime.js'
 import type { DomainProps } from '../core/domain.js'
 import { useDomain } from '../core/domain.js'
@@ -25,13 +26,35 @@ import {
 import { renderRoot } from './list.js'
 import { renderDetail } from './detail.js'
 import { renderForm, type FormState } from './form.js'
-import { renderImport, type ImportOutcome, type ImportState } from './import.js'
+import { renderImport, type ImportCandidate, type ImportOutcome, type ImportState } from './import.js'
 import { renderTrash } from './trash.js'
+
+/** 折叠状态在 localStorage 里的键。 */
+const COLLAPSED_KEY = 'tool-center:collapsed'
 
 /** 只有可写且没被移除的来源能接收新建 / 导入。 */
 function writableRoots(view: SkillStateView | null): RootView[] {
   return (view?.roots ?? []).filter((root) => root.writable && !root.removed)
 }
+
+/**
+ * 新建落点：固定在「DSH 技能」（用户的技能目录，宿主的 filesystem provider 也扫它）。
+ * 早先给一个「导入技能 / DSH 技能」的下拉，但两个键名对用户没有意义 —— 新建就是放进自己的
+ * 技能目录，导入才进插件的独立落点。
+ */
+function createTargetOf(view: SkillStateView | null): RootView | undefined {
+  const candidates = writableRoots(view)
+  return candidates.find((root) => root.key === 'local') ?? candidates[0]
+}
+
+/** 导入落点：固定在「导入技能」（这个插件自己的目录，rank 高于本地同名技能）。 */
+function importTargetOf(view: SkillStateView | null): RootView | undefined {
+  return (view?.roots ?? []).find((root) => root.key === 'import')
+    ?? writableRoots(view)[0]
+}
+
+/** 一次导入的体积上限，与 host 的 `import-zip` 对齐。 */
+const MAX_IMPORT_BYTES = 32 * 1024 * 1024
 
 export function SkillsView(props: DomainProps): unknown {
   const t = props.t
@@ -45,6 +68,35 @@ export function SkillsView(props: DomainProps): unknown {
   const [form, setForm] = useStateOf<FormState | null>(null)
   const [importing, setImporting] = useStateOf<ImportState | null>(null)
   const [health, setHealth] = useStateOf<Health | null>(null)
+  const [collapsed, setCollapsed] = useStateOf<Record<string, boolean>>({})
+
+  /* 折叠状态是本机的界面偏好，不是技能策略，所以只存 localStorage：换台机器不该跟着走。 */
+  useClientEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(COLLAPSED_KEY)
+      if (raw === null) return
+      const parsed = JSON.parse(raw) as unknown
+      if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        setCollapsed(parsed as Record<string, boolean>)
+      }
+    } catch {
+      /* 读不出来就全展开 */
+    }
+  }, [])
+
+  const toggleCollapsed = (key: string): void => {
+    setCollapsed((current) => {
+      const next = { ...current }
+      if (next[key] === true) delete next[key]
+      else next[key] = true
+      try {
+        window.localStorage.setItem(COLLAPSED_KEY, JSON.stringify(next))
+      } catch {
+        /* 记不住也不影响本次会话 */
+      }
+      return next
+    })
+  }
 
   useClientEffect(() => {
     void callOp<Health>('health', {}).then((value) => setHealth(value)).catch(() => undefined)
@@ -64,6 +116,16 @@ export function SkillsView(props: DomainProps): unknown {
     setSelected(null)
     setDetail(null)
   }
+
+  /* Esc 与「点遮罩」是同一个出口：不看提示也能关掉，不必先找到关闭按钮。 */
+  useClientEffect(() => {
+    if (selected === null) return undefined
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') closeDetail()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [selected])
 
   const openTrash = async (): Promise<void> => {
     try {
@@ -94,6 +156,90 @@ export function SkillsView(props: DomainProps): unknown {
     } catch (cause) {
       domain.fail(String((cause as Error)?.message ?? cause))
     }
+  }
+
+  /** 先扫描：把内容交给 host 的 `import-scan`（只读），拿到候选再让用户勾。 */
+  const scanArchive = async (source: string, base64: string): Promise<void> => {
+    const target = importTargetOf(view)
+    if (target === undefined) return
+    setImporting({ source, base64: null, candidates: [], rejected: [], picked: [], result: null })
+    const done = await domain.act('import-scan', { root: target.key, base64 })
+    if (!done.ok) {
+      setImporting(null)
+      return
+    }
+    const scan = done.result as { candidates: ImportCandidate[]; rejected: { name: string; reason: string }[] }
+    setImporting({
+      source,
+      base64,
+      candidates: scan.candidates,
+      rejected: scan.rejected,
+      // 默认勾上所有还能导入的（已存在的不勾、也不允许勾）。
+      picked: scan.candidates.filter((candidate) => !candidate.exists).map((candidate) => candidate.name),
+      result: null,
+    })
+  }
+
+  /** 选文件夹：前端打成 ZIP（浏览器拿不到磁盘路径），再走扫描。 */
+  const pickFolder = async (files: File[]): Promise<void> => {
+    const target = importTargetOf(view)
+    if (target === undefined) return
+    try {
+      const entries = await Promise.all(files.map(async (file) => ({
+        name: relativeNameOf(file),
+        data: new Uint8Array(await file.arrayBuffer()),
+      })))
+      const total = entries.reduce((sum, entry) => sum + entry.data.length, 0)
+      if (total > MAX_IMPORT_BYTES) {
+        domain.fail(t('import.tooLarge'))
+        return
+      }
+      const source = relativeNameOf(files[0]).split('/')[0] || t('import.folder')
+      await scanArchive(source, base64Of(buildZip(entries)))
+    } catch (cause) {
+      domain.fail(String((cause as Error)?.message ?? cause))
+    }
+  }
+
+  /** 单个 ZIP 文件：直接上传扫描。 */
+  const pickZip = async (file: File): Promise<void> => {
+    try {
+      await scanArchive(file.name, base64Of(new Uint8Array(await file.arrayBuffer())))
+    } catch (cause) {
+      domain.fail(String((cause as Error)?.message ?? cause))
+    }
+  }
+
+  /** 勾完确认：只导入选中的那些。 */
+  const confirmImport = async (): Promise<void> => {
+    if (importing === null || importing.base64 === null) return
+    const target = importTargetOf(view)
+    if (target === undefined) return
+    const done = await domain.act('import-zip', {
+      root: target.key,
+      base64: importing.base64,
+      names: importing.picked,
+    })
+    if (!done.ok) return
+    // 导入完清掉候选，面板改为展示结果（用户可以接着选下一个文件夹）。
+    setImporting({ ...importing, candidates: [], rejected: [], picked: [], result: done.result as ImportOutcome })
+  }
+
+  const toggleCandidate = (name: string): void => {
+    setImporting((current) => {
+      if (current === null) return current
+      const picked = current.picked.includes(name)
+        ? current.picked.filter((item) => item !== name)
+        : [...current.picked, name]
+      return { ...current, picked }
+    })
+  }
+
+  const toggleAllCandidates = (selected: boolean): void => {
+    setImporting((current) => {
+      if (current === null) return current
+      return { ...current, picked: selected ? current.candidates.filter((c) => !c.exists).map((c) => c.name) : [] }
+    })
   }
 
   const counts = view?.counts
@@ -133,7 +279,7 @@ export function SkillsView(props: DomainProps): unknown {
         disabled: busy !== '',
         onClick: () => setForm({
           mode: 'create',
-          root: writableRoots(view)[0]?.key ?? 'local',
+          root: createTargetOf(view)?.key ?? 'local',
           name: '',
           description: '',
           whenToUse: '',
@@ -143,7 +289,7 @@ export function SkillsView(props: DomainProps): unknown {
       buttonOf({
         label: t('page.import'),
         disabled: busy !== '',
-        onClick: () => setImporting({ root: writableRoots(view)[0]?.key ?? 'import', path: '', result: null }),
+        onClick: () => setImporting({ source: '', base64: null, candidates: [], rejected: [], picked: [], result: null }),
       }),
       buttonOf({ label: t('page.export'), disabled: busy !== '' || view === null, onClick: () => { void exportSelection(undefined) } }),
       buttonOf({ label: t('page.trash'), disabled: busy !== '', onClick: () => { void openTrash() } }),
@@ -160,6 +306,8 @@ export function SkillsView(props: DomainProps): unknown {
         },
         onToggleSkill: (row, enabled) => { void domain.act('set-skill', { root: row.rootKey, name: row.name, enabled }) },
         onOpen: (row) => { void openDetail(row.rootKey, row.name) },
+        collapsed: collapsed[root.key] === true,
+        onToggleCollapsed: () => toggleCollapsed(root.key),
       }))),
 
     selected === null
@@ -206,7 +354,6 @@ export function SkillsView(props: DomainProps): unknown {
       ? null
       : renderForm(t, {
         form,
-        roots: writableRoots(view),
         busy,
         onChange: (patch) => setForm({ ...form, ...patch }),
         onCancel: () => setForm(null),
@@ -235,25 +382,14 @@ export function SkillsView(props: DomainProps): unknown {
       ? null
       : renderImport(t, {
         state: importing,
-        roots: writableRoots(view),
+        target: importTargetOf(view),
         busy,
-        onChange: (patch) => setImporting({ ...importing, ...patch }),
         onClose: () => setImporting(null),
-        onImportPath: () => {
-          if (importing.path.trim() === '') return
-          void domain.act('import-path', { root: importing.root, path: importing.path.trim() }).then((done) => {
-            if (done.ok) setImporting({ ...importing, result: done.result as ImportOutcome })
-          })
-        },
-        onImportZip: async (file: File) => {
-          try {
-            const base64 = await readFileAsBase64(file)
-            const done = await domain.act('import-zip', { root: importing.root, base64 })
-            if (done.ok) setImporting({ ...importing, result: done.result as ImportOutcome })
-          } catch (cause) {
-            domain.fail(String((cause as Error)?.message ?? cause))
-          }
-        },
+        onPickFolder: (files) => { void pickFolder(files) },
+        onPickZip: (file) => { void pickZip(file) },
+        onToggle: toggleCandidate,
+        onToggleAll: toggleAllCandidates,
+        onConfirm: () => { void confirmImport() },
       }),
 
     trash === null
@@ -274,4 +410,11 @@ export function SkillsView(props: DomainProps): unknown {
           void domain.act('trash-empty', {}, t('toast.purged')).then(() => { void openTrash() })
         },
       }))
+}
+
+/** 文件夹选择给的是 `webkitRelativePath`（如 `my-skill/SKILL.md`），普通选择只有 name。 */
+function relativeNameOf(file: File): string {
+  const relative = (file as File & { webkitRelativePath?: string }).webkitRelativePath
+  const name = typeof relative === 'string' && relative !== '' ? relative : file.name
+  return name.split('\\').join('/')
 }

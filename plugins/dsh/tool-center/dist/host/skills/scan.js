@@ -13,7 +13,7 @@
 import { lstat, readdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { readTextOrNull, statOrNull } from '../shared/fs.js';
-import { parseSkillFile, strictBoolean } from './frontmatter.js';
+import { isHostSkillName, parseSkillFile, strictBoolean } from './frontmatter.js';
 const DEFAULT_OPTIONS = {
     maxDepth: 3,
     maxEntries: 5_000,
@@ -67,6 +67,7 @@ export function createScanner(userOptions = {}) {
         }
         const parsed = parseSkillFile(text);
         const declaredRaw = parsed.data.name;
+        const declaredName = typeof declaredRaw === 'string' ? declaredRaw.trim() : '';
         const descriptionRaw = parsed.data.description;
         const description = typeof descriptionRaw === 'string' ? descriptionRaw.trim() : '';
         const whenToUseRaw = parsed.data.whenToUse;
@@ -83,12 +84,16 @@ export function createScanner(userOptions = {}) {
             problems.push('no frontmatter');
         if (description === '')
             problems.push('missing description');
+        // 宿主只认 kebab-case 的名字；不合规的技能它永远加载不了，所以这里如实标成问题，
+        // 而不是等到 provider 把它发出去、让宿主把整次 skills.list() 抛掉。
+        if (declaredName !== '' && !isHostSkillName(declaredName))
+            problems.push('invalid name');
         if (!modelFlagValid)
             problems.push('invalid disable-model-invocation');
         if (!userFlagValid)
             problems.push('invalid user-invocable');
         const doc = {
-            declaredName: typeof declaredRaw === 'string' && declaredRaw.trim() !== '' ? declaredRaw.trim() : '',
+            declaredName,
             description,
             whenToUse: typeof whenToUseRaw === 'string' && whenToUseRaw.trim() !== '' ? whenToUseRaw.trim() : undefined,
             docPath: path,
@@ -106,12 +111,17 @@ export function createScanner(userOptions = {}) {
         const doc = await parseDoc(path);
         if (doc === undefined)
             return undefined;
+        // 声明名缺失时退回目录名 / 文件名，调用方不必各自兜一遍。退回的这个名字同样要过
+        // 宿主的命名规则（目录名可能是中文 / 大写），否则它会在 provider 那一侧炸掉。
+        const declaredName = doc.declaredName === '' ? name : doc.declaredName;
+        const nameProblem = isHostSkillName(declaredName) ? undefined : 'invalid name';
         return {
             ...doc,
             name,
             form,
-            // 声明名缺失时退回目录名 / 文件名，调用方不必各自兜一遍。
-            declaredName: doc.declaredName === '' ? name : doc.declaredName,
+            declaredName,
+            loadable: doc.loadable && nameProblem === undefined,
+            problem: withProblem(doc.problem, nameProblem),
             linked: placement.linked,
             nested: placement.nested,
         };
@@ -219,4 +229,13 @@ export function createScanner(userOptions = {}) {
         generation: () => generation,
         stats: () => ({ roots: inflight.size, parsed: parseCache.size }),
     };
+}
+/** 往已有的问题串里补一条（不重复），给 `entryOf` 补名字问题用。 */
+function withProblem(problem, extra) {
+    if (extra === undefined)
+        return problem;
+    const parts = (problem ?? '').split('; ').map((part) => part.trim()).filter((part) => part !== '');
+    if (!parts.includes(extra))
+        parts.push(extra);
+    return parts.join('; ');
 }

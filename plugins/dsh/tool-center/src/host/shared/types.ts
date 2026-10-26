@@ -14,7 +14,7 @@ export interface SkillRoot {
   rank: number
   /** 给人看的名字，也是界面上的分组标题。 */
   label: string
-  kind: 'project-dsh' | 'project-agents' | 'import' | 'local' | 'agents' | 'claude' | 'codex' | 'custom'
+  kind: 'project-dsh' | 'project-agents' | 'import' | 'local' | 'agents' | 'claude' | 'codex' | 'custom' | 'host'
   /** 本插件是否允许在这个目录里写 / 删技能文件。 */
   writable: boolean
   /** 这个来源能否整体停用。 */
