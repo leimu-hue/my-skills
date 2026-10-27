@@ -344,6 +344,89 @@ test('import refuses a zip whose entry escapes the directory', async () => {
   assert.equal(result.ok, false)
 })
 
+test('a disabled skill stays disabled across a restart (new service, same dshHome)', async () => {
+  // 用户最怕的事：重启之后关掉的技能又自己开了。状态是 $DSH_HOME/tool-center/state.json
+  // 里的 hiddenSkills[rootKey]，rootKey 是常量（local / codex / claude / agents / builtin），
+  // 所以第二个 service 实例读同一份文件必须得到同一个结论。
+  const f = await fixture()
+  const off = await f.service.setSkill('local', 'local-one', false)
+  assert.equal(off.data.changed, true)
+
+  const stored = JSON.parse(await readFile(join(f.dshHome, 'tool-center', 'state.json'), 'utf8'))
+  assert.deepEqual(stored.hiddenSkills, { local: ['local-one'] })
+
+  // 模拟重启：全新的 service 实例，只共享磁盘上的 dshHome。
+  const restarted = createService({
+    dshHome: f.dshHome,
+    agentsHome: f.agentsHome,
+    claudeHome: f.claudeHome,
+    codexHome: f.codexHome,
+    log: () => {},
+  })
+  const row = await rowOfService(restarted, 'local', 'local-one')
+  assert.equal(row.policy.skillOn, false, 'still off after restart')
+  assert.equal(row.policy.modelInvocable, false, 'still hidden from the model after restart')
+
+  // 邻居不受影响：只有那一条被关掉。
+  const neighbor = await rowOfService(restarted, 'local', 'dup')
+  assert.equal(neighbor.policy.modelInvocable, true)
+})
+
+test('a stopped source also stays stopped across a restart', async () => {
+  const f = await fixture()
+  const off = await f.service.setSource('codex', false)
+  assert.equal(off.ok, true)
+
+  const restarted = createService({
+    dshHome: f.dshHome,
+    agentsHome: f.agentsHome,
+    claudeHome: f.claudeHome,
+    codexHome: f.codexHome,
+    log: () => {},
+  })
+  const row = await rowOfService(restarted, 'codex', 'codex-only')
+  assert.equal(row.policy.rootOn, false, 'the source gate survives a restart')
+  assert.equal(row.policy.modelInvocable, false)
+})
+
+test('a restart does not prune policy for sources it has not scanned yet', async () => {
+  // pruneState 只在显式 refresh 时跑，而且「这一轮没扫到的来源不动」。
+  // 项目来源没打开时，它的开关必须还在 —— 否则重启 = 静默重置。
+  const f = await fixture()
+  const projectDir = join(f.base, 'some-project')
+  await mkdir(join(projectDir, '.dsh', 'skills', 'proj-skill'), { recursive: true })
+  await writeFile(
+    join(projectDir, '.dsh', 'skills', 'proj-skill', 'SKILL.md'),
+    '---\nname: proj-skill\ndescription: project skill\n---\nbody\n',
+  )
+
+  const withCwd = await f.service.view(projectDir)
+  const projectRoot = withCwd.roots.find((root) => root.project === true)
+  assert.ok(projectRoot !== undefined, 'a project root appears when cwd is given')
+  const off = await f.service.setSkill(projectRoot.key, 'proj-skill', false, projectDir)
+  assert.equal(off.data.changed, true)
+
+  // 重启，并且在「没有项目 cwd」的情况下读一次视图：这条来源根本没被扫到。
+  const restarted = createService({
+    dshHome: f.dshHome,
+    agentsHome: f.agentsHome,
+    claudeHome: f.claudeHome,
+    codexHome: f.codexHome,
+    log: () => {},
+  })
+  const withoutCwd = await restarted.view()
+  assert.equal(withoutCwd.roots.some((root) => root.project === true), false)
+  const stored = JSON.parse(await readFile(join(f.dshHome, 'tool-center', 'state.json'), 'utf8'))
+  assert.equal(stored.hiddenSkills[projectRoot.key].includes('proj-skill'), true, 'the switch is still on disk')
+
+  // 回到那个项目，开关依然生效。
+  const back = await restarted.view(projectDir)
+  const row = back.roots
+    .find((root) => root.key === projectRoot.key)
+    ?.skills.find((candidate) => candidate.name === 'proj-skill')
+  assert.equal(row?.policy.modelInvocable, false, 'still off once the project is open again')
+})
+
 test('a corrupt state file degrades instead of switching everything off', async () => {
   const f = await fixture()
   await mkdir(join(f.dshHome, 'tool-center'), { recursive: true })

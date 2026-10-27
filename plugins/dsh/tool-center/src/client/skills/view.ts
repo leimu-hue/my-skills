@@ -158,7 +158,36 @@ export function SkillsView(props: DomainProps): unknown {
     }
   }
 
-  /** 先扫描：把内容交给 host 的 `import-scan`（只读），拿到候选再让用户勾。 */
+  /**
+   * 核验「关掉之后模型到底还看不看得见这条技能」。
+   *
+   * 面板上的开关只是我们的意图；真正的答案在宿主的合并目录里（`verify` op 去问 `snapshot`）。
+   * 三种结果分别给出不同的回执：已不可见 / 仍可见（说明没关掉）/ 仅人工可用。
+   */
+  const verifySkill = async (name: string): Promise<void> => {
+    try {
+      const result = await callOp<{
+        name: string
+        inCatalog: boolean
+        modelInvocable: boolean
+        userInvocable: boolean
+        provider?: string
+      }>('verify', { name })
+      if (!result.inCatalog) {
+        props.notify(result.userInvocable
+          ? t('toast.verifyManual', { name })
+          : t('toast.verifyOff', { name }))
+        return
+      }
+      props.notify(result.modelInvocable
+        ? t('toast.verifyOn', { name, provider: result.provider ?? '?' })
+        : t('toast.verifyOff', { name }))
+    } catch (cause) {
+      domain.fail(String((cause as Error)?.message ?? cause))
+    }
+  }
+
+
   const scanArchive = async (source: string, base64: string): Promise<void> => {
     const target = importTargetOf(view)
     if (target === undefined) return
@@ -307,11 +336,19 @@ export function SkillsView(props: DomainProps): unknown {
       : listOf((view?.roots ?? []).map((root) => renderRoot(t, root, {
         busy,
         rows: visibleRows(root),
-        onToggleSource: (enabled) => { void domain.act('set-source', { root: root.key, enabled }) },
+        onToggleSource: (enabled) => {
+          void domain.act('set-source', { root: root.key, enabled }, enabled
+            ? t('toast.sourceOn', { name: root.label })
+            : t('toast.sourceOff', { name: root.label }))
+        },
         onToggleRemoved: (removed) => {
           void domain.act('remove-source', { root: root.key, removed }, removed ? t('toast.rootRemoved') : t('toast.rootAdded'))
         },
-        onToggleSkill: (row, enabled) => { void domain.act('set-skill', { root: row.rootKey, name: row.name, enabled }) },
+        onToggleSkill: (row, enabled) => {
+          void domain.act('set-skill', { root: row.rootKey, name: row.name, enabled }, enabled
+            ? t('toast.skillOn', { name: row.declaredName })
+            : t('toast.skillOff', { name: row.declaredName }))
+        },
         onOpen: (row) => { void openDetail(row.rootKey, row.name) },
         collapsed: collapsed[root.key] === true,
         onToggleCollapsed: () => toggleCollapsed(root.key),
@@ -345,6 +382,10 @@ export function SkillsView(props: DomainProps): unknown {
         onExport: () => {
           if (detail === null) return
           void exportSelection([{ root: detail.row.rootKey, name: detail.row.name }])
+        },
+        onVerify: () => {
+          if (detail === null) return
+          void verifySkill(detail.row.declaredName)
         },
         onPrefer: (preferred) => {
           if (detail === null) return

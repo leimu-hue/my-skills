@@ -214,6 +214,7 @@
     "detail.edit": "\u7F16\u8F91",
     "detail.delete": "\u5220\u9664",
     "detail.export": "\u5BFC\u51FA ZIP",
+    "detail.verify": "\u6838\u9A8C\u751F\u6548",
     "detail.prefer": "\u8BBE\u4E3A\u9996\u9009",
     "detail.unprefer": "\u53D6\u6D88\u9996\u9009",
     "detail.frontmatter": "frontmatter",
@@ -274,6 +275,16 @@
     "toast.rootAdded": "\u5DF2\u6DFB\u52A0\u6765\u6E90",
     "toast.rootRemoved": "\u5DF2\u79FB\u9664\u6765\u6E90\u8BB0\u5F55",
     "toast.refreshed": "\u5DF2\u5237\u65B0",
+    // 开关回执：必须说清「谁不可见」，否则用户不知道关掉之后到底影响了什么。
+    "toast.skillOn": "\u5DF2\u542F\u7528\u300C{name}\u300D\xB7 \u6A21\u578B\u53EF\u89C1",
+    "toast.skillOff": "\u5DF2\u505C\u7528\u300C{name}\u300D\xB7 \u6A21\u578B\u4E0E / \u547D\u4EE4\u90FD\u4E0D\u518D\u53EF\u89C1",
+    "toast.sourceOn": "\u5DF2\u542F\u7528\u6765\u6E90\u300C{name}\u300D",
+    "toast.sourceOff": "\u5DF2\u505C\u7528\u6765\u6E90\u300C{name}\u300D\xB7 \u5176\u4E2D\u6280\u80FD\u5BF9\u6A21\u578B\u4E0D\u518D\u53EF\u89C1",
+    // 以宿主注册表为准的核验回执。
+    "toast.verifyOff": "\u300C{name}\u300D\u672A\u5728\u5BBF\u4E3B\u76EE\u5F55\u4E2D\uFF1A\u6A21\u578B\u770B\u4E0D\u5230\uFF0C\u4E5F\u65E0\u6CD5\u52A0\u8F7D",
+    "toast.verifyOn": "\u300C{name}\u300D\u4ECD\u5728\u5BBF\u4E3B\u76EE\u5F55\u4E2D\uFF08\u6765\u6E90 {provider}\uFF09\xB7 \u6A21\u578B\u4ECD\u53EF\u89C1",
+    "toast.verifyManual": "\u300C{name}\u300D\u672A\u5728\u5BBF\u4E3B\u76EE\u5F55\u4E2D\uFF0C\u4F46\u4EC5\u4EBA\u5DE5\u53EF\u7528\uFF08userInvocable\uFF09",
+    "toast.verifyMissing": "\u5BBF\u4E3B\u76EE\u5F55\u91CC\u67E5\u4E0D\u5230\u300C{name}\u300D",
     "error.title": "\u51FA\u9519\u4E86",
     "error.network": "\u8BF7\u6C42\u6CA1\u6709\u53D1\u51FA\u53BB",
     "error.protocol": "\u5BBF\u4E3B\u8FD4\u56DE\u4E86\u975E JSON \u5185\u5BB9",
@@ -322,6 +333,7 @@
     "detail.edit": "Edit",
     "detail.delete": "Delete",
     "detail.export": "Export ZIP",
+    "detail.verify": "Verify",
     "detail.prefer": "Make preferred",
     "detail.unprefer": "Clear preferred",
     "detail.frontmatter": "frontmatter",
@@ -382,6 +394,14 @@
     "toast.rootAdded": "Root added",
     "toast.rootRemoved": "Root record removed",
     "toast.refreshed": "Refreshed",
+    "toast.skillOn": 'Enabled "{name}" \xB7 visible to the model',
+    "toast.skillOff": 'Disabled "{name}" \xB7 hidden from the model and / commands',
+    "toast.sourceOn": 'Source "{name}" enabled',
+    "toast.sourceOff": 'Source "{name}" disabled \xB7 its skills are hidden from the model',
+    "toast.verifyOff": '"{name}" is not in the host catalog: the model cannot see or load it',
+    "toast.verifyOn": '"{name}" is still in the host catalog (source {provider}) \xB7 still visible to the model',
+    "toast.verifyManual": '"{name}" is not in the host catalog, but remains user-invocable',
+    "toast.verifyMissing": '"{name}" is not in the host catalog',
     "error.title": "Something went wrong",
     "error.network": "The request did not leave the browser",
     "error.protocol": "The host returned something that is not JSON",
@@ -1053,6 +1073,7 @@
             "div",
             { className: "dsk-panel-actions" },
             row !== void 0 && row.rootWritable ? action(t("detail.edit"), props.onEdit) : null,
+            row === void 0 ? null : action(t("detail.verify"), props.onVerify),
             row !== void 0 ? action(row.preferred ? t("detail.unprefer") : t("detail.prefer"), () => props.onPrefer(row.preferred !== true)) : null,
             row !== void 0 ? action(t("detail.export"), props.onExport) : null,
             row !== void 0 && row.rootWritable ? action(t("detail.delete"), props.onDelete, true) : null
@@ -1434,6 +1455,18 @@
         domain.fail(String(cause?.message ?? cause));
       }
     };
+    const verifySkill = async (name) => {
+      try {
+        const result = await callOp("verify", { name });
+        if (!result.inCatalog) {
+          props.notify(result.userInvocable ? t("toast.verifyManual", { name }) : t("toast.verifyOff", { name }));
+          return;
+        }
+        props.notify(result.modelInvocable ? t("toast.verifyOn", { name, provider: result.provider ?? "?" }) : t("toast.verifyOff", { name }));
+      } catch (cause) {
+        domain.fail(String(cause?.message ?? cause));
+      }
+    };
     const scanArchive = async (source, base64) => {
       const target = importTargetOf(view);
       if (target === void 0) return;
@@ -1568,13 +1601,13 @@
         busy,
         rows: visibleRows(root),
         onToggleSource: (enabled) => {
-          void domain.act("set-source", { root: root.key, enabled });
+          void domain.act("set-source", { root: root.key, enabled }, enabled ? t("toast.sourceOn", { name: root.label }) : t("toast.sourceOff", { name: root.label }));
         },
         onToggleRemoved: (removed) => {
           void domain.act("remove-source", { root: root.key, removed }, removed ? t("toast.rootRemoved") : t("toast.rootAdded"));
         },
         onToggleSkill: (row, enabled) => {
-          void domain.act("set-skill", { root: row.rootKey, name: row.name, enabled });
+          void domain.act("set-skill", { root: row.rootKey, name: row.name, enabled }, enabled ? t("toast.skillOn", { name: row.declaredName }) : t("toast.skillOff", { name: row.declaredName }));
         },
         onOpen: (row) => {
           void openDetail(row.rootKey, row.name);
@@ -1608,6 +1641,10 @@
         onExport: () => {
           if (detail === null) return;
           void exportSelection([{ root: detail.row.rootKey, name: detail.row.name }]);
+        },
+        onVerify: () => {
+          if (detail === null) return;
+          void verifySkill(detail.row.declaredName);
         },
         onPrefer: (preferred) => {
           if (detail === null) return;

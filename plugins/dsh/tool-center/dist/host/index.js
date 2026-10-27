@@ -72,6 +72,31 @@ function skillsOf(value) {
         : undefined;
 }
 /**
+ * 「宿主到底认为有哪些技能」的读取器。
+ *
+ * 核验必须问宿主的合并目录，而不是我们自己的视图：我们的视图只说明「打算让宿主看到什么」。
+ * 没有 `snapshot` 能力的宿主（或服务未装载）返回 undefined，由 op 层报「无法核验」。
+ */
+function snapshotSkillsReader(ctx) {
+    return async (options) => {
+        const skills = skillsOf(ctx.get('skills'));
+        if (skills === undefined || typeof skills.snapshot !== 'function')
+            return undefined;
+        try {
+            const snapshot = await skills.snapshot({ cwd: options.cwd, scope: options.scope });
+            return snapshot.skills.map((skill) => ({
+                name: skill.name,
+                provider: skill.provider,
+                invocation: skill.invocation,
+            }));
+        }
+        catch (error) {
+            ctx.logger?.warn?.(`[tool-center] snapshot failed: ${describe(error)}`);
+            return undefined;
+        }
+    };
+}
+/**
  * 从一个（可能是作用域的）context 上取 skills 服务。
  *
  * 优先 `get('skills')`（作用域 context 会把服务绑到自己的层），其次属性访问；
@@ -368,6 +393,7 @@ function registerRoute(ctx, service, logger, dshHome) {
             providerName: service.providerName,
             dshHome,
             listWorkspaces: workspaceOptions(ctx),
+            snapshotSkills: snapshotSkillsReader(ctx),
         });
         const handler = createRequestHandler({ handlers, logger, connection: connectionResolver(ctx) });
         const dispose = webServer.register({ kind: 'exact', path: ROUTE_PATH, handler });

@@ -128,6 +128,38 @@ export function createHandlers(service, meta) {
                 return enabled;
             return service.setSource(str(payload.root), enabled, optional(payload.scope), optional(payload.cwd));
         },
+        /**
+         * 以宿主注册表为准核验一条技能「到底还在不在模型面前」。
+         *
+         * 关闭技能不是删文件，而是由我们发布一条 rank 更低、`modelInvocable:false` 的覆盖候选；
+         * 所以「真的关掉了吗」只有一个可信答案来源：宿主合并后的目录。这里就是去问它。
+         */
+        verify: async (payload) => domainCall(async () => {
+            const name = str(payload.name);
+            if (name === '')
+                return { ok: false, error: 'name 不能为空', code: 'error.args.required' };
+            if (meta.snapshotSkills === undefined) {
+                return { ok: false, error: '宿主技能服务不可用，无法核验', code: 'error.verify.unavailable' };
+            }
+            const skills = await meta.snapshotSkills({ cwd: optional(payload.cwd), scope: optional(payload.scope) });
+            if (skills === undefined) {
+                return { ok: false, error: '宿主技能服务不可用，无法核验', code: 'error.verify.unavailable' };
+            }
+            const hit = skills.find((skill) => skill.name === name);
+            if (hit === undefined) {
+                return { ok: true, data: { name, inCatalog: false, modelInvocable: false, userInvocable: false } };
+            }
+            return {
+                ok: true,
+                data: {
+                    name,
+                    inCatalog: true,
+                    modelInvocable: hit.invocation?.modelInvocable === true,
+                    userInvocable: hit.invocation?.userInvocable === true,
+                    provider: hit.provider,
+                },
+            };
+        }),
         'remove-source': async (payload) => service.setRemoved(str(payload.root), payload.removed !== false, optional(payload.cwd)),
         prefer: async (payload) => {
             const preferred = requireBool(payload, 'preferred');

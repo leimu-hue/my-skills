@@ -19,6 +19,8 @@ export interface DetailHandlers {
   onEdit(): void
   onDelete(): void
   onExport(): void
+  /** 去宿主的合并目录里核验这条技能现在到底对模型可不可见。 */
+  onVerify(): void
   onPrefer(preferred: boolean): void
 }
 
@@ -48,6 +50,7 @@ export function renderDetail(t: Translate, props: DetailHandlers): unknown {
         buttonOf({ label: t('detail.close'), small: true, onClick: props.onClose })),
       h('div', { className: 'dsk-panel-actions' },
         row !== undefined && row.rootWritable ? action(t('detail.edit'), props.onEdit) : null,
+        row === undefined ? null : action(t('detail.verify'), props.onVerify),
         row !== undefined
           ? action(row.preferred ? t('detail.unprefer') : t('detail.prefer'), () => props.onPrefer(row.preferred !== true))
           : null,

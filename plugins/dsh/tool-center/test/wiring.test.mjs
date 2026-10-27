@@ -47,6 +47,10 @@ function fakeHost() {
     async list() {
       return registry.candidates
     },
+    /** 宿主合并目录（核验用）。测试通过 `registry.snapshot` 决定它回什么。 */
+    async snapshot() {
+      return { skills: registry.snapshot ?? [], complete: true }
+    },
     registerProvider(create) {
       const provider = create({ invalidate() {}, signal: new AbortController().signal })
       providers.push(provider)
@@ -326,6 +330,59 @@ test('the switch tool only exists when the user opts in', async () => {
   assert.equal(again.changed, false, 'a repeated switch is reported as a no-op')
 
   await assert.rejects(() => tool('skill_switch').execute({ name: 'beta', enabled: false, scope: 'session' }, exec), /reserved/)
+})
+
+test('verify asks the host registry, not our own panel view', async () => {
+  // 面板开关只是「我们的意图」，用户真正想知道的是「宿主合并目录里还算不算数」。
+  // 所以 verify 必须读 ctx.skills.snapshot()，并把它如实翻成三种结论。
+  const host = fakeHost()
+  const f = await fixture()
+  apply(host.ctx, { dshHome: f.dshHome, claudeHome: f.claudeHome, codexHome: f.codexHome, watch: false })
+  const handler = host.routes[0].handler
+
+  const verify = async (name) => {
+    const res = fakeResponse()
+    await handler(fakeRequest({ op: 'verify', args: { name } }), res)
+    return res
+  }
+
+  // ① 宿主目录里没有它 → 真的关掉了。
+  host.registry.snapshot = []
+  const gone = await verify('alpha')
+  assert.equal(gone.status, 200)
+  assert.deepEqual(gone.payload.data, { name: 'alpha', inCatalog: false, modelInvocable: false, userInvocable: false })
+
+  // ② 宿主目录里仍在、且对模型可调用 → 没关掉，必须如实说「仍可见」。
+  host.registry.snapshot = [{ name: 'alpha', provider: 'filesystem', invocation: { modelInvocable: true, userInvocable: true } }]
+  const stillOn = await verify('alpha')
+  assert.equal(stillOn.payload.data.inCatalog, true)
+  assert.equal(stillOn.payload.data.modelInvocable, true)
+  assert.equal(stillOn.payload.data.provider, 'filesystem')
+
+  // ③ 在目录里但只对人工可见 → 模型加载会被拒，回执也不该说「可见」。
+  host.registry.snapshot = [{ name: 'alpha', provider: 'tool-center', invocation: { modelInvocable: false, userInvocable: true } }]
+  const manual = await verify('alpha')
+  assert.equal(manual.payload.data.inCatalog, true)
+  assert.equal(manual.payload.data.modelInvocable, false)
+  assert.equal(manual.payload.data.userInvocable, true)
+
+  // ④ 没有名字是参数错误，不是 500。
+  assert.equal(respCode(await verify('')), 'error.args.required')
+})
+
+test('verify degrades explicitly when the host skills service has no snapshot()', async () => {
+  const host = fakeHost()
+  const f = await fixture()
+  // 把 snapshot 摘掉：老宿主 / 精简宿主。
+  const skills = host.ctx.get('skills')
+  delete skills.snapshot
+  apply(host.ctx, { dshHome: f.dshHome, claudeHome: f.claudeHome, codexHome: f.codexHome, watch: false })
+
+  const res = fakeResponse()
+  await host.routes[0].handler(fakeRequest({ op: 'verify', args: { name: 'alpha' } }), res)
+  assert.equal(res.status, 200)
+  assert.equal(res.payload.ok, false)
+  assert.equal(res.payload.code, 'error.verify.unavailable')
 })
 
 test('disposing the plugin removes every registration', async () => {

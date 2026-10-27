@@ -17,7 +17,7 @@ import { createLogger, type PluginLogger } from './shared/log.js'
 import { describe } from './shared/result.js'
 import { createScanner } from './skills/scan.js'
 import { createService, type HostCandidate, type SkillService } from './skills/service.js'
-import { createHandlers } from './api/routes.js'
+import { createHandlers, type RouteMeta } from './api/routes.js'
 import { ROUTE_PATH, createRequestHandler } from './api/server.js'
 import { createTools, type ToolDefinition } from './api/tools.js'
 
@@ -43,6 +43,15 @@ interface ToolsLike {
 
 interface SkillsLike {
   registerProvider(create: (control: { invalidate(): void; signal?: AbortSignal }) => unknown): () => void
+  /** 合并后的宿主目录；核验用。 */
+  snapshot?(options?: { cwd?: string; scope?: unknown; signal?: AbortSignal }): Promise<{
+    skills: {
+      name: string
+      provider?: string
+      invocation?: { modelInvocable?: boolean; userInvocable?: boolean }
+    }[]
+    complete?: boolean
+  }>
 }
 
 interface AgentsLike {
@@ -123,6 +132,30 @@ function skillsOf(value: unknown): SkillsLike | undefined {
   return candidate !== undefined && candidate !== null && typeof candidate?.registerProvider === 'function'
     ? candidate
     : undefined
+}
+
+/**
+ * 「宿主到底认为有哪些技能」的读取器。
+ *
+ * 核验必须问宿主的合并目录，而不是我们自己的视图：我们的视图只说明「打算让宿主看到什么」。
+ * 没有 `snapshot` 能力的宿主（或服务未装载）返回 undefined，由 op 层报「无法核验」。
+ */
+function snapshotSkillsReader(ctx: PluginContext): RouteMeta['snapshotSkills'] {
+  return async (options) => {
+    const skills = skillsOf(ctx.get('skills'))
+    if (skills === undefined || typeof skills.snapshot !== 'function') return undefined
+    try {
+      const snapshot = await skills.snapshot({ cwd: options.cwd, scope: options.scope })
+      return snapshot.skills.map((skill) => ({
+        name: skill.name,
+        provider: skill.provider,
+        invocation: skill.invocation,
+      }))
+    } catch (error) {
+      ctx.logger?.warn?.(`[tool-center] snapshot failed: ${describe(error)}`)
+      return undefined
+    }
+  }
 }
 
 /**
@@ -418,6 +451,7 @@ function registerRoute(ctx: PluginContext, service: SkillService, logger: Plugin
       providerName: service.providerName,
       dshHome,
       listWorkspaces: workspaceOptions(ctx),
+      snapshotSkills: snapshotSkillsReader(ctx),
     })
     const handler = createRequestHandler({ handlers, logger, connection: connectionResolver(ctx) })
     const dispose = webServer.register({ kind: 'exact', path: ROUTE_PATH, handler })

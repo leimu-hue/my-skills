@@ -14,12 +14,26 @@ import { applyScene, deleteScene, exitScene, loadScenes, saveScene } from '../sc
 
 export type Handler = (payload: Record<string, unknown>) => Promise<OpResult>
 
+/** 宿主技能注册表里的一条摘要（只取核验用得到的字段）。 */
+export interface HostSkillSummary {
+  name: string
+  provider?: string
+  invocation?: { modelInvocable?: boolean; userInvocable?: boolean }
+}
+
 export interface RouteMeta {
   version: string
   providerName: string
   dshHome: string
   /** 可选作用范围（全局 + 宿主工作区登记表），给提示词域用。 */
   listWorkspaces?: () => { kind: 'global' | 'workspace'; label: string; path: string }[]
+  /**
+   * 以**宿主注册表**为准的合并目录（`ctx.skills.snapshot`）。
+   *
+   * 面板自己的视图是「我们打算让宿主看到什么」，而这里拿到的是「宿主最终认为有哪些」——
+   * 两者要能对上，用户才敢相信「关掉就不会被用到」。服务不可用时返回 undefined（只降级）。
+   */
+  snapshotSkills?: (options: { cwd?: string; scope?: string }) => Promise<HostSkillSummary[] | undefined>
 }
 
 const str = (value: unknown, fallback = ''): string => (typeof value === 'string' ? value : fallback)
@@ -169,6 +183,38 @@ export function createHandlers(service: SkillService, meta: RouteMeta): Record<s
       if (isResult(enabled)) return enabled
       return service.setSource(str(payload.root), enabled, optional(payload.scope), optional(payload.cwd))
     },
+
+    /**
+     * 以宿主注册表为准核验一条技能「到底还在不在模型面前」。
+     *
+     * 关闭技能不是删文件，而是由我们发布一条 rank 更低、`modelInvocable:false` 的覆盖候选；
+     * 所以「真的关掉了吗」只有一个可信答案来源：宿主合并后的目录。这里就是去问它。
+     */
+    verify: async (payload) => domainCall(async () => {
+      const name = str(payload.name)
+      if (name === '') return { ok: false, error: 'name 不能为空', code: 'error.args.required' }
+      if (meta.snapshotSkills === undefined) {
+        return { ok: false, error: '宿主技能服务不可用，无法核验', code: 'error.verify.unavailable' }
+      }
+      const skills = await meta.snapshotSkills({ cwd: optional(payload.cwd), scope: optional(payload.scope) })
+      if (skills === undefined) {
+        return { ok: false, error: '宿主技能服务不可用，无法核验', code: 'error.verify.unavailable' }
+      }
+      const hit = skills.find((skill) => skill.name === name)
+      if (hit === undefined) {
+        return { ok: true, data: { name, inCatalog: false, modelInvocable: false, userInvocable: false } }
+      }
+      return {
+        ok: true,
+        data: {
+          name,
+          inCatalog: true,
+          modelInvocable: hit.invocation?.modelInvocable === true,
+          userInvocable: hit.invocation?.userInvocable === true,
+          provider: hit.provider,
+        },
+      }
+    }),
 
     'remove-source': async (payload) => service.setRemoved(
       str(payload.root),
