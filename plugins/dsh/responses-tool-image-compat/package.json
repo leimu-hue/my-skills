@@ -1,0 +1,29 @@
+{
+  "name": "@local/dsh-responses-tool-image-compat",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Keeps Responses-API sessions alive when a gateway only accepts string tool outputs: normalizes multimodal function_call_output payloads at the HTTP boundary, so an image returned by a tool no longer poisons the whole session.",
+  "exports": {
+    ".": "./dist/host/index.js"
+  },
+  "files": [
+    "dist",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test \"test/*.test.mjs\"",
+    "typecheck:host": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

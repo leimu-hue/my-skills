@@ -1,0 +1,17 @@
+# Responses tool-image compatibility: one Host row, no UI.
+#
+# Defaults are chosen to be safe on any OpenAI-compatible Responses gateway:
+# only `function_call_output` / `custom_tool_call_output` items whose `output`
+# is an array are touched, and only on URLs ending in `/responses`.
+- insert:
+    - id: responses-tool-image-compat
+      name: '@local/dsh-responses-tool-image-compat'
+      config:
+        enabled: true
+        # hoist: 图片移到紧随其后的 user 消息（保留视觉能力）
+        # flatten: 只留文本，图片降级为占位说明
+        strategy: hoist
+        # '*' = 所有 Responses 端点；也可填具体主机名，例如 api.example.com
+        endpoints:
+          - '*'
+        verbose: false
