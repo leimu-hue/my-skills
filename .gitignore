@@ -1,3 +1,5 @@
 .skills-cache/
 __pycache__/
 *.pyc
+# 本地验证截图（headless 截图核对 UI，不进版本库）
+.preview/

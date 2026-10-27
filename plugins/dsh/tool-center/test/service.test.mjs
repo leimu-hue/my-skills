@@ -240,6 +240,84 @@ test('a zip can be scanned first, then only the picked skills are imported', asy
   assert.equal(again.data.candidates.find((entry) => entry.name === 'alpha-skill').exists, true)
   assert.equal(again.data.candidates.find((entry) => entry.name === 'beta-skill').exists, false)
 })
+test('a scan reports one line per stray file and ignores the obviously irrelevant ones', async () => {
+  const f = await fixture()
+  const zip = writeZip([
+    { name: 'bundle/bundle-manifest.json', data: Buffer.from('{}\n') },
+    { name: 'bundle/使用指引.md', data: Buffer.from('# 怎么用\n') },
+    { name: 'bundle/alpha-skill/SKILL.md', data: Buffer.from('---\nname: alpha-skill\ndescription: a\n---\n') },
+    { name: 'bundle/alpha-skill/references/x.md', data: Buffer.from('x\n') },
+    { name: 'bundle/broken/references/notes.md', data: Buffer.from('orphan\n') },
+    { name: '__MACOSX/._alpha-skill', data: Buffer.from('junk\n') },
+    { name: 'bundle/.DS_Store', data: Buffer.from('junk\n') },
+  ])
+  const scan = await f.service.scanImport('import', zip.toString('base64'))
+  assert.equal(scan.ok, true)
+
+  // 说不清的那个文件：单独一行，带原因码。
+  assert.deepEqual(scan.data.orphans.map((note) => note.path), ['bundle/broken/references/notes.md'])
+  assert.equal(scan.data.orphans[0].code, 'noDoc')
+
+  // 与技能目录并列的说明 / 清单、以及系统垃圾：只进「已忽略」，不进问题列表。
+  assert.deepEqual(
+    scan.data.ignored.map((note) => note.path).sort(),
+    ['__MACOSX/._alpha-skill', 'bundle/.DS_Store', 'bundle/bundle-manifest.json', 'bundle/使用指引.md'],
+  )
+  assert.equal(scan.data.ignored.find((note) => note.path.endsWith('.md')).code, 'bundleDoc')
+  assert.equal(scan.data.ignored.find((note) => note.path.includes('MACOSX')).code, 'junk')
+
+  // 技能级 rejected 里不再有「N 个文件不在任何技能目录下」这种聚合条目。
+  assert.equal(scan.data.rejected.some((entry) => entry.name.includes('不在任何技能目录下')), false)
+  // 垃圾文件也不该算进技能的文件数。
+  assert.equal(scan.data.candidates.find((entry) => entry.name === 'alpha-skill').files, 2)
+})
+
+test('a skill keeps its own dotfiles; a stray one is ignored, not reported', async () => {
+  const f = await fixture()
+  const zip = writeZip([
+    // 技能目录里的 .gitignore 是包里真带的文件，导入时必须保留（导出也会带走它）。
+    { name: 'bundle/alpha-skill/SKILL.md', data: Buffer.from('---\nname: alpha-skill\ndescription: a\n---\n') },
+    { name: 'bundle/alpha-skill/.gitignore', data: Buffer.from('node_modules\n') },
+    // 无主的 .gitignore / .editorconfig：配置而非技能文件，进「已忽略」。
+    { name: 'bundle/.gitignore', data: Buffer.from('dist\n') },
+    { name: 'bundle/.editorconfig', data: Buffer.from('root = true\n') },
+  ])
+  const base64 = zip.toString('base64')
+  const scan = await f.service.scanImport('import', base64)
+  assert.equal(scan.ok, true)
+  assert.deepEqual(scan.data.orphans, [])
+  assert.deepEqual(
+    scan.data.ignored.map((note) => note.path).sort(),
+    ['bundle/.editorconfig', 'bundle/.gitignore'],
+  )
+  assert.equal(scan.data.ignored.every((note) => note.code === 'meta'), true)
+  // 技能自己的文件数含 .gitignore。
+  assert.equal(scan.data.candidates.find((entry) => entry.name === 'alpha-skill').files, 2)
+
+  const imported = await f.service.importZip('import', base64, undefined, ['alpha-skill'])
+  assert.equal(imported.ok, true)
+  assert.equal(
+    await readFile(join(f.dshHome, 'tool-center', 'skills', 'alpha-skill', '.gitignore'), 'utf8'),
+    'node_modules\n',
+  )
+})
+
+test('importing reports each stray file on its own line, not as one blob', async () => {
+  const f = await fixture()
+  const zip = writeZip([
+    { name: 'bundle/alpha-skill/SKILL.md', data: Buffer.from('---\nname: alpha-skill\ndescription: a\n---\n') },
+    { name: 'bundle/broken/notes.md', data: Buffer.from('orphan\n') },
+    { name: 'bundle/manifest.json', data: Buffer.from('{}\n') },
+  ])
+  const imported = await f.service.importZip('import', zip.toString('base64'))
+  assert.equal(imported.ok, true)
+  assert.deepEqual(imported.data.imported.map((entry) => entry.name), ['alpha-skill'])
+  // 无主文件逐个列出（不是「1 个文件不在任何技能目录下」）。
+  assert.deepEqual(imported.data.skipped.map((entry) => entry.name), ['bundle/broken/notes.md'])
+  // bundle 级清单不算问题，只报个数。
+  assert.equal(imported.data.ignored, 1)
+})
+
 test('import from a zip and export back to a zip', async () => {
   const f = await fixture()
   const zip = writeZip([

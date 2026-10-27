@@ -17,7 +17,10 @@ import { alertOf, badgeOf, buttonOf, fieldOf, modalOf, mutedOf } from '../core/u
 
 export interface ImportOutcome {
   imported: { name: string; files: number }[]
-  skipped: { name: string; reason: string }[]
+  /** 跳过的条目；`code` 有值时按它取词条，否则直接用 `reason`。 */
+  skipped: { name: string; reason: string; code?: string }[]
+  /** 已知与技能无关、被直接忽略的文件数。 */
+  ignored?: number
 }
 
 /** 扫描出来的一个候选技能。 */
@@ -29,14 +32,26 @@ export interface ImportCandidate {
   flat?: boolean
 }
 
+/** 一条文件级诊断（Host 的 `FileNote` 镜像）：一个进不了技能目录的文件 + 为什么。 */
+export interface FileNote {
+  path: string
+  /** 原因码，取 `import.reason.*` 词条；取不到就用 `reason`。 */
+  code?: string
+  reason: string
+}
+
 export interface ImportState {
   /** 来源显示名（文件夹名或 ZIP 文件名）。 */
   source: string
   /** 待导入内容（base64）；扫描后才有。 */
   base64: string | null
   candidates: ImportCandidate[]
-  /** 包内认不出来的部分。 */
+  /** 技能级问题（名字不合法、同名……）。 */
   rejected: { name: string; reason: string }[]
+  /** 文件级问题：一条文件一行。 */
+  orphans: FileNote[]
+  /** 与技能无关、被直接忽略的文件。 */
+  ignored: FileNote[]
   /** 勾选的技能名。 */
   picked: string[]
   result: ImportOutcome | null
@@ -78,6 +93,35 @@ function pickerProps(busy: boolean, onPicked: (files: File[]) => void): Record<s
       if (picked.length > 0) onPicked(picked)
     },
   }
+}
+
+/** 一条诊断的句子：先按原因码查词典，词条不存在就用宿主给的兜底句子。 */
+function reasonOf(t: Translate, note: FileNote): string {
+  if (note.code === undefined) return note.reason
+  const key = `import.reason.${note.code}`
+  const translated = t(key)
+  return translated === key ? note.reason : translated
+}
+
+/** 「文件 — 原因」列表：一个文件一行（路径等宽、原因右对齐）。 */
+function failsOf(rows: { path: string; reason: string }[], keyPrefix: string): unknown {
+  return h('div', { className: 'dsk-fails' }, rows.map((row) => h('div', {
+    className: 'dsk-fail',
+    key: `${keyPrefix}:${row.path}`,
+  },
+  h('span', { className: 'dsk-fail-path', title: row.path }, row.path),
+  h('span', { className: 'dsk-fail-reason' }, row.reason))))
+}
+
+/**
+ * 与技能无关、被直接忽略的文件（系统垃圾、bundle 级说明与清单）。
+ *
+ * 折叠着只报个数 —— 它们不打扰人，但也不能真的消失：点开就是全部路径。
+ */
+function ignoredOf(t: Translate, notes: FileNote[]): unknown {
+  return h('details', { className: 'dsk-fails-more' },
+    h('summary', null, `${t('import.ignored', { n: notes.length })} · ${t('import.ignoredHint')}`),
+    failsOf(notes.map((note) => ({ path: note.path, reason: reasonOf(t, note) })), 'ignored'))
 }
 
 export function renderImport(t: Translate, props: ImportHandlers): unknown {
@@ -140,19 +184,35 @@ export function renderImport(t: Translate, props: ImportHandlers): unknown {
       }))))
   }
 
-  if (state.rejected.length > 0) {
+  if (state.rejected.length > 0 || state.orphans.length > 0) {
+    /* 一个文件一行「文件 — 原因」：早先这些是全塞进一个 `<pre>` 的一句聚合话
+       （「3 个文件不在任何技能目录下」+ 逗号拼接），既看不出是哪个文件，也看不出为什么。 */
+    const problems = [
+      ...state.rejected.map((item) => ({ path: item.name, reason: item.reason })),
+      ...state.orphans.map((note) => ({ path: note.path, reason: reasonOf(t, note) })),
+    ]
     body.push(h('div', { className: 'dsk-section' },
-      h('p', { className: 'dsk-section-title' }, t('import.rejectedTitle')),
-      h('pre', { className: 'dsk-pre' }, state.rejected.map((item) => `${item.name} — ${item.reason}`).join('\n'))))
+      h('p', { className: 'dsk-section-title' },
+        `${t('import.rejectedTitle')} · ${t('import.fileCount', { n: problems.length })}`),
+      failsOf(problems, 'problem'),
+      state.ignored.length > 0 ? ignoredOf(t, state.ignored) : null))
+  } else if (state.ignored.length > 0) {
+    body.push(ignoredOf(t, state.ignored))
   }
 
   if (state.result !== null) {
-    body.push(h('div', null,
+    body.push(h('div', { className: 'dsk-section' },
       badgeOf(t('import.done', { imported: state.result.imported.length, skipped: state.result.skipped.length }), 'ok'),
+      (state.result.ignored ?? 0) > 0
+        ? mutedOf(t('import.ignored', { n: state.result.ignored ?? 0 }))
+        : null,
       state.result.skipped.length > 0
         ? h('div', null,
           h('p', { className: 'dsk-section-title' }, t('import.skipped')),
-          h('pre', { className: 'dsk-pre' }, state.result.skipped.map((item) => `${item.name} — ${item.reason}`).join('\n')))
+          failsOf(state.result.skipped.map((item) => ({
+            path: item.name,
+            reason: reasonOf(t, { path: item.name, code: item.code, reason: item.reason }),
+          })), 'skipped'))
         : null))
   }
 

@@ -26,7 +26,7 @@ import {
 import { renderRoot } from './list.js'
 import { renderDetail } from './detail.js'
 import { renderForm, type FormState } from './form.js'
-import { renderImport, type ImportCandidate, type ImportOutcome, type ImportState } from './import.js'
+import { renderImport, type FileNote, type ImportCandidate, type ImportOutcome, type ImportState } from './import.js'
 import { renderTrash } from './trash.js'
 
 /** 折叠状态在 localStorage 里的键。 */
@@ -162,18 +162,25 @@ export function SkillsView(props: DomainProps): unknown {
   const scanArchive = async (source: string, base64: string): Promise<void> => {
     const target = importTargetOf(view)
     if (target === undefined) return
-    setImporting({ source, base64: null, candidates: [], rejected: [], picked: [], result: null })
+    setImporting({ source, base64: null, candidates: [], rejected: [], orphans: [], ignored: [], picked: [], result: null })
     const done = await domain.act('import-scan', { root: target.key, base64 })
     if (!done.ok) {
       setImporting(null)
       return
     }
-    const scan = done.result as { candidates: ImportCandidate[]; rejected: { name: string; reason: string }[] }
+    const scan = done.result as {
+      candidates: ImportCandidate[]
+      rejected: { name: string; reason: string }[]
+      orphans: FileNote[]
+      ignored: FileNote[]
+    }
     setImporting({
       source,
       base64,
       candidates: scan.candidates,
       rejected: scan.rejected,
+      orphans: scan.orphans ?? [],
+      ignored: scan.ignored ?? [],
       // 默认勾上所有还能导入的（已存在的不勾、也不允许勾）。
       picked: scan.candidates.filter((candidate) => !candidate.exists).map((candidate) => candidate.name),
       result: null,
@@ -222,7 +229,7 @@ export function SkillsView(props: DomainProps): unknown {
     })
     if (!done.ok) return
     // 导入完清掉候选，面板改为展示结果（用户可以接着选下一个文件夹）。
-    setImporting({ ...importing, candidates: [], rejected: [], picked: [], result: done.result as ImportOutcome })
+    setImporting({ ...importing, candidates: [], rejected: [], orphans: [], ignored: [], picked: [], result: done.result as ImportOutcome })
   }
 
   const toggleCandidate = (name: string): void => {
@@ -289,7 +296,7 @@ export function SkillsView(props: DomainProps): unknown {
       buttonOf({
         label: t('page.import'),
         disabled: busy !== '',
-        onClick: () => setImporting({ source: '', base64: null, candidates: [], rejected: [], picked: [], result: null }),
+        onClick: () => setImporting({ source: '', base64: null, candidates: [], rejected: [], orphans: [], ignored: [], picked: [], result: null }),
       }),
       buttonOf({ label: t('page.export'), disabled: busy !== '' || view === null, onClick: () => { void exportSelection(undefined) } }),
       buttonOf({ label: t('page.trash'), disabled: busy !== '', onClick: () => { void openTrash() } }),

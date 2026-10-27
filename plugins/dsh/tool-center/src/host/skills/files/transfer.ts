@@ -5,7 +5,8 @@
  *   * **平铺技能读 `docPath`，不读 `entryPath`**：`entryPath` 是它所在目录，导出平铺技能
  *     会直接 EISDIR；
  *   * **落在任何技能目录之外的文件必须报出来**，不能静默丢掉 —— 「压缩包导入成功但
- *     references/ 不见了」正是这个插件要避免的那种静默损失。
+ *     references/ 不见了」正是这个插件要避免的那种静默损失。报出来分两档：能确定与技能
+ *     无关的（系统垃圾、bundle 级说明与清单）只计数；说不清楚的逐条列出「文件 — 原因」。
  */
 import { lstat, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { basename, dirname, join, relative } from 'node:path'
@@ -18,7 +19,10 @@ import { assertWritable, isValidSkillName, targetOf } from './guard.js'
 
 export interface ImportOutcome {
   imported: { name: string; files: number }[]
-  skipped: { name: string; reason: string }[]
+  /** 跳过的条目；`code` 有值时界面按它取词条，否则直接用 `reason`。 */
+  skipped: { name: string; reason: string; code?: string }[]
+  /** 已知与技能无关、直接忽略的文件数（系统垃圾、bundle 级说明/清单）。 */
+  ignored: number
 }
 
 
@@ -33,19 +37,75 @@ export interface ZipSkill {
   flat: boolean
 }
 
+/**
+ * 一条「进不了技能目录」的文件级诊断。
+ *
+ * `code` 是给界面翻译用的原因码（`import.reason.*`），`reason` 是宿主侧的兜底句子 ——
+ * 面板按 code 取词条，取不到就直接显示 reason，所以中英文界面都不会露出别的语言。
+ */
+export interface FileNote {
+  /** 压缩包内的完整路径（不是技能名）。 */
+  path: string
+  code: 'junk' | 'bundleDoc' | 'noDoc' | 'meta'
+  reason: string
+}
+
 /** 一个压缩包「解析后」的样子：能导入的、不能导入的原因、以及无主文件。 */
 export interface ZipPlan {
   skills: ZipSkill[]
-  /** 认不出来的部分，带着原因（面板直接展示，不静默丢）。 */
+  /** 认不出来的**技能**（名字不合法、同名、缺目录名）。 */
   rejected: { name: string; reason: string }[]
-  /** 落在任何技能目录之外的文件（同样要报出来）。 */
-  orphans: string[]
+  /** 落在任何技能目录之外、值得人看一眼的文件（一条文件一行）。 */
+  orphans: FileNote[]
+  /** 已知与技能无关、不值得打扰的文件（垃圾 / bundle 级说明与清单）。 */
+  ignored: FileNote[]
 }
 
 /** 扫描结果：在 plan 之上补一句「这台机器上是不是已经有了」。 */
 export interface ZipScan {
   candidates: { name: string; files: number; exists: boolean; flat: boolean }[]
   rejected: { name: string; reason: string }[]
+  orphans: FileNote[]
+  ignored: FileNote[]
+}
+
+/* --------------------------------- 过滤规则 -------------------------------- */
+
+/**
+ * 系统 / 编辑器垃圾：整条路径里出现这些目录，或者文件名命中这些模式，就不必再看了。
+ *
+ * 刻意**不**把 `.gitignore` / `.editorconfig` 这类配置算进来：它们可能真是技能包里带的
+ * 文件（导出时也会原样带走），一刀砍掉就是静默丢文件。它们只在「无主」时才被忽略，见
+ * `isRepoConfig`。
+ */
+const JUNK_DIRECTORIES = new Set(['__macosx', '.git', '.svn', '.hg', '.idea', '.vscode', 'node_modules'])
+const JUNK_NAMES = new Set(['.ds_store', 'thumbs.db', 'desktop.ini'])
+const JUNK_SUFFIXES = ['.swp', '.swo', '.tmp', '.crdownload', '.part']
+
+/** 说明 / 清单类扩展名：与技能目录并列出现时，它们显然不是技能文件。 */
+const DOC_EXTENSIONS = ['.md', '.markdown', '.json', '.yml', '.yaml', '.txt']
+
+/** 这条路径是不是系统垃圾（`__MACOSX/`、`.DS_Store`、`~$x.docx` 等）。 */
+function isJunkPath(name: string): boolean {
+  const segments = segmentsOf(name)
+  if (segments.some((segment) => JUNK_DIRECTORIES.has(segment.toLowerCase()))) return true
+  const base = (segments.at(-1) ?? '').toLowerCase()
+  if (base === '' || JUNK_NAMES.has(base)) return true
+  if (base.startsWith('~$') || base.startsWith('.~lock.') || base.endsWith('~')) return true
+  return JUNK_SUFFIXES.some((suffix) => base.endsWith(suffix))
+}
+
+/** 说明 / 清单类文件（与技能目录并列时，导入它们没有任何意义）。 */
+function isDocLike(name: string): boolean {
+  const base = (segmentsOf(name).at(-1) ?? '').toLowerCase()
+  if (base === 'skill.md') return false
+  return DOC_EXTENSIONS.some((extension) => base.endsWith(extension))
+}
+
+/** 仓库 / 编辑器配置的隐藏文件：只在「不属于任何技能」时才忽略。 */
+function isRepoConfig(name: string): boolean {
+  const base = segmentsOf(name).at(-1) ?? ''
+  return base.startsWith('.') && !isJunkPath(name)
 }
 
 /**
@@ -55,9 +115,21 @@ export interface ZipScan {
  * 目录名，每个文件按**相对该目录**的路径落盘 —— 所以 `dist/my-skill/SKILL.md` 与
  * `my-skill/SKILL.md` 都产出 `my-skill/SKILL.md`，而 `dist/my-skill/references/a.md`
  * 会保住它的 `references/` 目录。
+ *
+ * 落到技能目录之外的文件分两档，都不静默丢，但不混在一起：
+ *   * `ignored`：一看就与技能无关（`__MACOSX/`、`.DS_Store`、与技能目录并列的
+ *     `bundle-manifest.json` / `使用指引.md` 这类说明与清单）—— 界面只报个数；
+ *   * `orphans`：说不清楚的**逐条列出**（「文件 — 原因」），例如一个只有 `references/`
+ *     却没有 `SKILL.md` 的目录。压缩包导入后少文件，正是这一档要防的事。
  */
 function planZip(buffer: Buffer): ZipPlan {
-  const files = readZip(buffer)
+  const raw = readZip(buffer)
+  const ignored: FileNote[] = []
+  const files = raw.filter((file) => {
+    if (!isJunkPath(file.name)) return true
+    ignored.push({ path: file.name, code: 'junk', reason: '系统 / 编辑器临时文件' })
+    return false
+  })
 
   // 第一遍：哪些目录是技能？（含 SKILL.md 的目录）
   const skillDirectories = new Set<string>()
@@ -69,10 +141,18 @@ function planZip(buffer: Buffer): ZipPlan {
   // 最长前缀优先：这样嵌在某个技能 bundle 内部的另一个技能，自己的文件不会被外层吞掉。
   const ordered = [...skillDirectories].sort((left, right) => right.length - left.length)
 
+  /* 「装技能的目录」= 技能目录的父目录，外加压缩包根部。与这些目录**并列**的说明 / 清单
+     文件（bundle-manifest.json、使用指引.md）属于 bundle 自身的元数据，不是技能文件。 */
+  const containerDirectories = new Set<string>([''])
+  for (const directory of skillDirectories) {
+    if (directory === '') continue
+    containerDirectories.add(segmentsOf(directory).slice(0, -1).join('/'))
+  }
+
   // 第二遍：每个文件归属到它上方最内层的那条技能目录。
   const byDirectory = new Map<string, ZipFile[]>()
   const flatFiles: ZipFile[] = []
-  const orphans: string[] = []
+  const orphans: FileNote[] = []
   for (const file of files) {
     const segments = segmentsOf(file.name)
     if (segments.length === 0) continue
@@ -88,7 +168,17 @@ function planZip(buffer: Buffer): ZipPlan {
       flatFiles.push(file)
       continue
     }
-    orphans.push(file.name)
+    const parent = segments.slice(0, -1).join('/')
+    if (containerDirectories.has(parent) && isDocLike(file.name)) {
+      ignored.push({ path: file.name, code: 'bundleDoc', reason: 'bundle 级说明或清单，不是技能文件' })
+      continue
+    }
+    // 无主的仓库 / 编辑器配置（`.gitignore`、`.editorconfig`）：不是技能文件，也不必报成问题。
+    if (isRepoConfig(file.name)) {
+      ignored.push({ path: file.name, code: 'meta', reason: '仓库 / 编辑器配置，不属于任何技能' })
+      continue
+    }
+    orphans.push({ path: file.name, code: 'noDoc', reason: '不在任何技能目录下（所在目录没有 SKILL.md）' })
   }
 
   const skills: ZipSkill[] = []
@@ -130,7 +220,7 @@ function planZip(buffer: Buffer): ZipPlan {
     skills.push({ name, directory: '', entries: [file], flat: true })
   }
 
-  return { skills, rejected, orphans }
+  return { skills, rejected, orphans, ignored }
 }
 
 /** 一条技能落盘的目标路径（bundle 是目录，平铺是 `.md` 文件）。 */
@@ -150,14 +240,7 @@ export async function scanZip(root: SkillRoot, buffer: Buffer): Promise<ZipScan>
       flat: skill.flat,
     })
   }
-  const rejected = [...plan.rejected]
-  if (plan.orphans.length > 0) {
-    rejected.push({
-      name: `${plan.orphans.length} 个文件不在任何技能目录下`,
-      reason: plan.orphans.slice(0, 8).join(', '),
-    })
-  }
-  return { candidates, rejected }
+  return { candidates, rejected: plan.rejected, orphans: plan.orphans, ignored: plan.ignored }
 }
 
 /**
@@ -177,6 +260,8 @@ export async function importZip(
   const imported: ImportOutcome['imported'] = []
   const skipped: ImportOutcome['skipped'] = []
   for (const rejection of plan.rejected) skipped.push(rejection)
+  // 逐条报，不聚合：少的是哪几个文件，得能照着路径去找。
+  for (const note of plan.orphans) skipped.push({ name: note.path, reason: note.reason, code: note.code })
 
   for (const skill of plan.skills) {
     if (wanted !== undefined && !wanted.has(skill.name)) continue
@@ -214,10 +299,7 @@ export async function importZip(
     imported.push({ name: skill.name, files: count })
   }
 
-  if (plan.orphans.length > 0) {
-    skipped.push({ name: `${plan.orphans.length} 个文件不在任何技能目录下`, reason: plan.orphans.slice(0, 8).join(', ') })
-  }
-  return { imported, skipped, groups: plan.skills.length + plan.rejected.length }
+  return { imported, skipped, ignored: plan.ignored.length, groups: plan.skills.length + plan.rejected.length }
 }
 
 /** 把给定的行导出成一个 zip，每条技能放在自己的声明名下。 */

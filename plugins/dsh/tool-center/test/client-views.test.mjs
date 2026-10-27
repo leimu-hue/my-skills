@@ -215,7 +215,7 @@ test('neither the create form nor the import panel asks for a root key', async (
   // 导入面板：落点固定，入口是「选择文件夹 / 选择 ZIP」两个按钮，而不是先选来源。
   const target = { key: 'import', label: '导入技能', path: 'C:/h/tool-center/skills', writable: true, removed: false }
   const imported = views.renderImport(t, {
-    state: { source: '', base64: null, candidates: [], rejected: [], picked: [], result: null },
+    state: { source: '', base64: null, candidates: [], rejected: [], orphans: [], ignored: [], picked: [], result: null },
     target,
     busy: '',
     onClose: () => {},
@@ -289,7 +289,7 @@ test('picking a folder survives clearing the input value', async () => {
   const previousDocument = globalThis.document
   globalThis.document = { createElement: () => ({ webkitdirectory: '' }) }
   const tree = views.renderImport(t, {
-    state: { source: '', base64: null, candidates: [], rejected: [], picked: [], result: null },
+    state: { source: '', base64: null, candidates: [], rejected: [], orphans: [], ignored: [], picked: [], result: null },
     target,
     busy: '',
     onClose: () => {},
@@ -337,7 +337,7 @@ test('the import panel only imports what is ticked', async () => {
     { name: 'old-skill', files: 2, exists: true },
   ]
   const tree = views.renderImport(t, {
-    state: { source: 'my-skills', base64: 'AAAA', candidates, rejected: [], picked: ['alpha-skill'], result: null },
+    state: { source: 'my-skills', base64: 'AAAA', candidates, rejected: [], orphans: [], ignored: [], picked: ['alpha-skill'], result: null },
     target,
     busy: '',
     onClose: () => {},
@@ -365,6 +365,74 @@ test('the import panel only imports what is ticked', async () => {
   })
   assert.ok(labels.some((label) => label.startsWith('import.confirm')), 'a confirm button must exist')
   assert.ok(labels.some((label) => label.includes('"n":1')), 'the confirm button counts the ticked skills only')
+})
+
+test('the import panel lists one row per stray file and folds away the ignored ones', async () => {
+  const views = await loadViews()
+  views.setReact(fakeReact())
+  // 只放这两条词条：它证明原因确实按 code 走了词典（词典里没有的才用宿主那句话）。
+  const dict = {
+    'import.reason.noDoc': '所在目录没有 SKILL.md',
+    'import.reason.bundleDoc': 'bundle 级说明或清单',
+  }
+  const t = (key, values) => {
+    if (values !== undefined) return key + JSON.stringify(values)
+    return dict[key] ?? key
+  }
+  const target = { key: 'import', label: '导入技能', path: 'C:/h/x', writable: true, removed: false }
+
+  const tree = views.renderImport(t, {
+    state: {
+      source: 'bundle.zip',
+      base64: 'AAAA',
+      candidates: [{ name: 'alpha-skill', files: 2, exists: false }],
+      rejected: [{ name: 'Bad_Name', reason: '技能名不合法' }],
+      orphans: [
+        { path: 'bundle/broken/references/notes.md', code: 'noDoc', reason: 'host sentence' },
+        { path: 'bundle/other/a.md', code: 'noDoc', reason: 'host sentence' },
+      ],
+      ignored: [{ path: 'bundle/bundle-manifest.json', code: 'bundleDoc', reason: 'host sentence' }],
+      picked: ['alpha-skill'],
+      result: null,
+    },
+    target,
+    busy: '',
+    onClose: () => {},
+    onPickFolder: () => {},
+    onPickZip: () => {},
+    onToggle: () => {},
+    onToggleAll: () => {},
+    onConfirm: () => {},
+  })
+
+  // 一条诊断一行：1 条技能级 + 2 条文件级（无关文件另在折叠区里，也各占一行）。
+  assert.equal(countClass(tree, 'dsk-fail'), 4, 'each problem gets its own row')
+  // 路径确实渲染出来了（不是聚合成一句话），问题在前、被忽略的在折叠区里。
+  const paths = []
+  walk(tree, (node) => {
+    if (hasClass(node, 'dsk-fail-path')) paths.push(String(node.children?.[0] ?? ''))
+  })
+  assert.deepEqual(paths, [
+    'Bad_Name',
+    'bundle/broken/references/notes.md',
+    'bundle/other/a.md',
+    'bundle/bundle-manifest.json',
+  ])
+  // 原因按 code 走词典，词典里没有才用宿主那句话。
+  const reasons = []
+  walk(tree, (node) => {
+    if (hasClass(node, 'dsk-fail-reason')) reasons.push(String(node.children?.[0] ?? ''))
+  })
+  assert.deepEqual(reasons, [
+    '技能名不合法',
+    '所在目录没有 SKILL.md',
+    '所在目录没有 SKILL.md',
+    'bundle 级说明或清单',
+  ])
+  // 无关文件折叠着只报个数，但仍然可展开。
+  const folded = findClass(tree, 'dsk-fails-more')
+  assert.ok(folded !== null, 'ignored files are summarised, not dropped')
+  assert.equal(folded.type, 'details')
 })
 
 /** 前序遍历节点树。 */

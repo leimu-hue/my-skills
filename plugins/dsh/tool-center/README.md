@@ -45,6 +45,9 @@ DeepSeek Harness 的一个左侧栏面板：**场景 / MCP / 技能 / 提示词*
 - 技能自己的 `disable-model-invocation` / `user-invocable` 照旧生效，插件的开关叠加在上；
 - 同名多份时按 rank（项目 > 导入 > DSH > agents > codex > claude > 自定义），可一键「设为首选」；
 - **导入用「＋ 选择技能文件夹…」，先看再导**：选完先调 host 的 `import-scan`（只读，不写盘）列出包里有哪些技能、哪些已存在，用户勾选后才 `import-zip`；不再有「手填本机路径」那一栏。浏览器拿不到磁盘真实路径（Electron 不再暴露 `File.path`），所以选中的文件在前端打成 store-only ZIP 再上传，嵌套的 `references/`、平铺 `.md` 都照旧处理；
+- **进不了技能目录的文件：一个文件一行**，写清「文件 — 原因」，而不是一句「N 个文件不在任何技能目录下」把名字挤成逗号串。两档分开报：
+  - **能确定与技能无关的直接忽略**（`已忽略 N 个无关文件`，折叠着只报个数，点开是全部路径）：`__MACOSX/`、`.DS_Store`、`~$x.docx` 这类系统/编辑器垃圾，以及与技能目录**并列**的 `bundle-manifest.json`、`使用指引.md` 这类 bundle 说明与清单 —— 它们永远进不了技能，也不该算进技能的文件数；
+  - **说不清的逐条列出**：例如一个只有 `references/` 却没有 `SKILL.md` 的目录，每个文件一行、原因写「缺少 SKILL.md」。原因带原因码（`noDoc` / `bundleDoc` / `junk`），界面按码取词条，所以中英文界面都不会露出另一种语言；
 - **不猜技能目录，改从宿主注册表读**：宿主把技能装在哪是它自己的实现细节（`skill-filesystem.customSkillDirs`、应用自带的官方技能包等），写死路径迟早会错。所以本插件读一次 `ctx.skills.list()`，从中反推「宿主已经在发布、但我们没有对应来源」的目录，补成只读来源（`kind=host`，标题取目录名）：
 
   - 宿主路径变了，下一次读取自然跟上；宿主不再发布，它就自动消失；
@@ -107,7 +110,7 @@ DeepSeek Harness 的一个左侧栏面板：**场景 / MCP / 技能 / 提示词*
 cd D:\custom_project\ai-project\my-skills\plugins\dsh\tool-center
 npm install        # 只装 esbuild / typescript / @types/node
 npm run build      # 必须先构建：dist/ 不存在时宿主加载会失败
-npm test           # 101 个用例
+npm test           # 130 个用例
 
 cd $env:USERPROFILE\.dsh\profiles\desktop
 npm install --no-audit --no-fund
@@ -258,7 +261,7 @@ src/client/
 
 ## 测试
 
-`npm test` → **101 个用例 / 全部通过**：
+`npm test` → **130 个用例 / 全部通过**：
 
 | 文件 | 盯的是什么 |
 |---|---|

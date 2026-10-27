@@ -45,6 +45,16 @@
 .dsk-candidate:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(38,49,72,.06))}
 .dsk-candidate[data-disabled='true']{opacity:.55}
 .dsk-candidate-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:var(--dsw-alias-label-primary,#1f2329)}
+/* \u5BFC\u5165\u8BCA\u65AD\uFF1A\u4E00\u4E2A\u6587\u4EF6\u4E00\u884C\u300C\u6587\u4EF6 \u2014 \u539F\u56E0\u300D\u3002\u8DEF\u5F84\u7528\u7B49\u5BBD\u5B57\u4F53\u4E14\u5141\u8BB8\u65AD\u884C\uFF08\u538B\u7F29\u5305\u91CC\u7684\u8DEF\u5F84\u53EF\u80FD\u5F88\u957F\uFF09\uFF0C
+   \u539F\u56E0\u53F3\u5BF9\u9F50\u3001\u7528\u6B21\u7EA7\u8272\uFF0C\u4E00\u773C\u80FD\u626B\u51FA\u662F\u54EA\u51E0\u4E2A\u6587\u4EF6\u51FA\u4E86\u95EE\u9898\u3002 */
+.dsk-fails{display:flex;flex-direction:column;gap:1px;max-height:32vh;overflow:auto;padding:4px;border:1px solid var(--dsw-alias-border-l2,#e5e6eb);border-radius:8px;background:var(--dsw-alias-bg-layer-1,#fff)}
+.dsk-fail{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,auto);gap:4px 12px;align-items:baseline;padding:3px 6px;border-radius:6px}
+.dsk-fail:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(38,49,72,.06))}
+.dsk-fail-path{font-family:var(--ds-font-family-code,ui-monospace,Consolas,monospace);font-size:11.5px;line-height:17px;color:var(--dsw-alias-label-primary,#1f2329);overflow-wrap:anywhere}
+.dsk-fail-reason{justify-self:end;text-align:right;font-size:11px;line-height:17px;color:var(--dsw-alias-label-tertiary,#8a8f99)}
+.dsk-fails-more{font-size:11px;color:var(--dsw-alias-label-tertiary,#8a8f99)}
+.dsk-fails-more>summary{cursor:pointer;padding:2px 0}
+.dsk-fails-more .dsk-fails{margin-top:4px}
 
 .dsk-list{display:flex;flex-direction:column;gap:10px;min-height:0}
 .dsk-group{border:1px solid var(--dsw-alias-border-l2,#e5e6eb);border-radius:8px;overflow:hidden;background:var(--dsw-alias-bg-layer-1,#fff)}
@@ -106,7 +116,11 @@
 .dsk-alert{padding:6px 10px;border-radius:6px;background:var(--dsw-alias-state-warn-tertiary,rgba(212,146,69,.12));color:var(--dsw-alias-state-warn-label,#8a5a1e);font-size:12px}
 .dsk-alert-err{background:var(--dsw-alias-state-error-secondary,rgba(201,65,74,.1));color:var(--dsw-alias-state-error-primary,#b03a42)}
 .dsk-empty{padding:14px;text-align:center;color:var(--dsw-alias-label-tertiary,#8a8f99);font-size:12px}
-.dsk-toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);padding:7px 14px;border-radius:16px;background:var(--dsw-alias-toast-bg,rgba(28,32,38,.92));color:var(--dsw-alias-label-primary-inverted,#fff);font-size:12px;z-index:40;max-width:70%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* \u63D0\u793A\u6761\uFF1A\u5E95\u8272\u4E0E\u6587\u5B57\u5FC5\u987B\u7528\u5BBF\u4E3B**\u6210\u5BF9**\u7684\u90A3\u4E24\u4E2A token\u3002
+   \u65E9\u5148\u6587\u5B57\u7528\u7684\u662F label-primary-inverted \u2014\u2014 \u5B83\u5728\u6DF1\u8272\u4E3B\u9898\u91CC\u662F neutral-bluish-800\uFF08\u6DF1\u7070\uFF09\uFF0C
+   \u914D toast-bg\uFF08\u6DF1\u8272\u4E3B\u9898 neutral-bluish-750\uFF09\u5C31\u662F\u7070\u5E95\u7070\u5B57\uFF0C\u51E0\u4E4E\u770B\u4E0D\u89C1\u3002\u5BBF\u4E3B\u81EA\u5DF1\u7684 toast
+   \u7528\u7684\u662F toast-bg + toast-label\uFF0C\u8FD9\u91CC\u8DDF\u968F\u5B83\u3002 */
+.dsk-toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);padding:7px 14px;border-radius:16px;background:var(--dsw-alias-toast-bg,rgba(28,32,38,.92));color:var(--dsw-alias-toast-label,#f7f8fa);font-size:12px;z-index:40;max-width:70%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;box-shadow:var(--dsw-shadow-lv3,0 6px 20px rgba(0,0,0,.28))}
 .dsk-trash-item{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;padding:8px 10px;border:1px solid var(--dsw-alias-border-l2,#e5e6eb);border-radius:8px}
 .dsk-trash-meta{font-size:11px;color:var(--dsw-alias-label-tertiary,#8a8f99);word-break:break-all}
 .dsk-trash-actions{display:flex;gap:6px}
@@ -238,6 +252,12 @@
     "import.fileCount": "{n} \u4E2A\u6587\u4EF6",
     "import.exists": "\u5DF2\u5B58\u5728",
     "import.rejectedTitle": "\u65E0\u6CD5\u8BC6\u522B\u7684\u90E8\u5206",
+    "import.ignored": "\u5DF2\u5FFD\u7565 {n} \u4E2A\u65E0\u5173\u6587\u4EF6",
+    "import.ignoredHint": "\u7CFB\u7EDF\u4E34\u65F6\u6587\u4EF6\u3001bundle \u7EA7\u8BF4\u660E/\u6E05\u5355\u3001\u65E0\u4E3B\u7684\u4ED3\u5E93\u914D\u7F6E",
+    "import.reason.junk": "\u7CFB\u7EDF\u4E34\u65F6\u6587\u4EF6",
+    "import.reason.bundleDoc": "bundle \u7EA7\u8BF4\u660E\u6216\u6E05\u5355",
+    "import.reason.noDoc": "\u7F3A\u5C11 SKILL.md",
+    "import.reason.meta": "\u4ED3\u5E93 / \u7F16\u8F91\u5668\u914D\u7F6E",
     "import.confirm": "\u5BFC\u5165\u9009\u4E2D\uFF08{n}\uFF09",
     "import.tooLarge": "\u6240\u9009\u6587\u4EF6\u8FC7\u5927\uFF08\u4E0A\u9650 32 MiB\uFF09\uFF0C\u8BF7\u5206\u6210\u51E0\u6B21\u5BFC\u5165",
     "import.done": "\u5BFC\u5165\u5B8C\u6210\uFF1A{imported} \u4E2A\uFF0C\u8DF3\u8FC7 {skipped} \u4E2A",
@@ -340,6 +360,12 @@
     "import.fileCount": "{n} files",
     "import.exists": "already here",
     "import.rejectedTitle": "Not recognised",
+    "import.ignored": "{n} unrelated files ignored",
+    "import.ignoredHint": "OS junk, bundle-level docs/manifests, stray repo config",
+    "import.reason.junk": "OS junk",
+    "import.reason.bundleDoc": "bundle-level doc",
+    "import.reason.noDoc": "no SKILL.md here",
+    "import.reason.meta": "repo / editor config",
     "import.confirm": "Import selected ({n})",
     "import.tooLarge": "That selection is too large (32 MiB max); import it in a few batches",
     "import.done": "Imported {imported}, skipped {skipped}",
@@ -1129,6 +1155,31 @@
       }
     };
   }
+  function reasonOf(t, note) {
+    if (note.code === void 0) return note.reason;
+    const key = `import.reason.${note.code}`;
+    const translated = t(key);
+    return translated === key ? note.reason : translated;
+  }
+  function failsOf(rows, keyPrefix) {
+    return h("div", { className: "dsk-fails" }, rows.map((row) => h(
+      "div",
+      {
+        className: "dsk-fail",
+        key: `${keyPrefix}:${row.path}`
+      },
+      h("span", { className: "dsk-fail-path", title: row.path }, row.path),
+      h("span", { className: "dsk-fail-reason" }, row.reason)
+    )));
+  }
+  function ignoredOf(t, notes) {
+    return h(
+      "details",
+      { className: "dsk-fails-more" },
+      h("summary", null, `${t("import.ignored", { n: notes.length })} \xB7 ${t("import.ignoredHint")}`),
+      failsOf(notes.map((note) => ({ path: note.path, reason: reasonOf(t, note) })), "ignored")
+    );
+  }
   function renderImport(t, props) {
     const state = props.state;
     const busy = props.busy !== "";
@@ -1204,24 +1255,39 @@
         }))
       ));
     }
-    if (state.rejected.length > 0) {
+    if (state.rejected.length > 0 || state.orphans.length > 0) {
+      const problems = [
+        ...state.rejected.map((item) => ({ path: item.name, reason: item.reason })),
+        ...state.orphans.map((note) => ({ path: note.path, reason: reasonOf(t, note) }))
+      ];
       body.push(h(
         "div",
         { className: "dsk-section" },
-        h("p", { className: "dsk-section-title" }, t("import.rejectedTitle")),
-        h("pre", { className: "dsk-pre" }, state.rejected.map((item) => `${item.name} \u2014 ${item.reason}`).join("\n"))
+        h(
+          "p",
+          { className: "dsk-section-title" },
+          `${t("import.rejectedTitle")} \xB7 ${t("import.fileCount", { n: problems.length })}`
+        ),
+        failsOf(problems, "problem"),
+        state.ignored.length > 0 ? ignoredOf(t, state.ignored) : null
       ));
+    } else if (state.ignored.length > 0) {
+      body.push(ignoredOf(t, state.ignored));
     }
     if (state.result !== null) {
       body.push(h(
         "div",
-        null,
+        { className: "dsk-section" },
         badgeOf(t("import.done", { imported: state.result.imported.length, skipped: state.result.skipped.length }), "ok"),
+        (state.result.ignored ?? 0) > 0 ? mutedOf(t("import.ignored", { n: state.result.ignored ?? 0 })) : null,
         state.result.skipped.length > 0 ? h(
           "div",
           null,
           h("p", { className: "dsk-section-title" }, t("import.skipped")),
-          h("pre", { className: "dsk-pre" }, state.result.skipped.map((item) => `${item.name} \u2014 ${item.reason}`).join("\n"))
+          failsOf(state.result.skipped.map((item) => ({
+            path: item.name,
+            reason: reasonOf(t, { path: item.name, code: item.code, reason: item.reason })
+          })), "skipped")
         ) : null
       ));
     }
@@ -1371,7 +1437,7 @@
     const scanArchive = async (source, base64) => {
       const target = importTargetOf(view);
       if (target === void 0) return;
-      setImporting({ source, base64: null, candidates: [], rejected: [], picked: [], result: null });
+      setImporting({ source, base64: null, candidates: [], rejected: [], orphans: [], ignored: [], picked: [], result: null });
       const done = await domain.act("import-scan", { root: target.key, base64 });
       if (!done.ok) {
         setImporting(null);
@@ -1383,6 +1449,8 @@
         base64,
         candidates: scan.candidates,
         rejected: scan.rejected,
+        orphans: scan.orphans ?? [],
+        ignored: scan.ignored ?? [],
         // 默认勾上所有还能导入的（已存在的不勾、也不允许勾）。
         picked: scan.candidates.filter((candidate) => !candidate.exists).map((candidate) => candidate.name),
         result: null
@@ -1424,7 +1492,7 @@
         names: importing.picked
       });
       if (!done.ok) return;
-      setImporting({ ...importing, candidates: [], rejected: [], picked: [], result: done.result });
+      setImporting({ ...importing, candidates: [], rejected: [], orphans: [], ignored: [], picked: [], result: done.result });
     };
     const toggleCandidate = (name) => {
       setImporting((current) => {
@@ -1487,7 +1555,7 @@
         buttonOf({
           label: t("page.import"),
           disabled: busy !== "",
-          onClick: () => setImporting({ source: "", base64: null, candidates: [], rejected: [], picked: [], result: null })
+          onClick: () => setImporting({ source: "", base64: null, candidates: [], rejected: [], orphans: [], ignored: [], picked: [], result: null })
         }),
         buttonOf({ label: t("page.export"), disabled: busy !== "" || view === null, onClick: () => {
           void exportSelection(void 0);

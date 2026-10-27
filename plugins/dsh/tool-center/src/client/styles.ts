@@ -51,6 +51,16 @@ export const CSS = `
 .dsk-candidate:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(38,49,72,.06))}
 .dsk-candidate[data-disabled='true']{opacity:.55}
 .dsk-candidate-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:var(--dsw-alias-label-primary,#1f2329)}
+/* 导入诊断：一个文件一行「文件 — 原因」。路径用等宽字体且允许断行（压缩包里的路径可能很长），
+   原因右对齐、用次级色，一眼能扫出是哪几个文件出了问题。 */
+.dsk-fails{display:flex;flex-direction:column;gap:1px;max-height:32vh;overflow:auto;padding:4px;border:1px solid var(--dsw-alias-border-l2,#e5e6eb);border-radius:8px;background:var(--dsw-alias-bg-layer-1,#fff)}
+.dsk-fail{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,auto);gap:4px 12px;align-items:baseline;padding:3px 6px;border-radius:6px}
+.dsk-fail:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(38,49,72,.06))}
+.dsk-fail-path{font-family:var(--ds-font-family-code,ui-monospace,Consolas,monospace);font-size:11.5px;line-height:17px;color:var(--dsw-alias-label-primary,#1f2329);overflow-wrap:anywhere}
+.dsk-fail-reason{justify-self:end;text-align:right;font-size:11px;line-height:17px;color:var(--dsw-alias-label-tertiary,#8a8f99)}
+.dsk-fails-more{font-size:11px;color:var(--dsw-alias-label-tertiary,#8a8f99)}
+.dsk-fails-more>summary{cursor:pointer;padding:2px 0}
+.dsk-fails-more .dsk-fails{margin-top:4px}
 
 .dsk-list{display:flex;flex-direction:column;gap:10px;min-height:0}
 .dsk-group{border:1px solid var(--dsw-alias-border-l2,#e5e6eb);border-radius:8px;overflow:hidden;background:var(--dsw-alias-bg-layer-1,#fff)}
@@ -112,7 +122,11 @@ export const CSS = `
 .dsk-alert{padding:6px 10px;border-radius:6px;background:var(--dsw-alias-state-warn-tertiary,rgba(212,146,69,.12));color:var(--dsw-alias-state-warn-label,#8a5a1e);font-size:12px}
 .dsk-alert-err{background:var(--dsw-alias-state-error-secondary,rgba(201,65,74,.1));color:var(--dsw-alias-state-error-primary,#b03a42)}
 .dsk-empty{padding:14px;text-align:center;color:var(--dsw-alias-label-tertiary,#8a8f99);font-size:12px}
-.dsk-toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);padding:7px 14px;border-radius:16px;background:var(--dsw-alias-toast-bg,rgba(28,32,38,.92));color:var(--dsw-alias-label-primary-inverted,#fff);font-size:12px;z-index:40;max-width:70%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 提示条：底色与文字必须用宿主**成对**的那两个 token。
+   早先文字用的是 label-primary-inverted —— 它在深色主题里是 neutral-bluish-800（深灰），
+   配 toast-bg（深色主题 neutral-bluish-750）就是灰底灰字，几乎看不见。宿主自己的 toast
+   用的是 toast-bg + toast-label，这里跟随它。 */
+.dsk-toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);padding:7px 14px;border-radius:16px;background:var(--dsw-alias-toast-bg,rgba(28,32,38,.92));color:var(--dsw-alias-toast-label,#f7f8fa);font-size:12px;z-index:40;max-width:70%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;box-shadow:var(--dsw-shadow-lv3,0 6px 20px rgba(0,0,0,.28))}
 .dsk-trash-item{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;padding:8px 10px;border:1px solid var(--dsw-alias-border-l2,#e5e6eb);border-radius:8px}
 .dsk-trash-meta{font-size:11px;color:var(--dsw-alias-label-tertiary,#8a8f99);word-break:break-all}
 .dsk-trash-actions{display:flex;gap:6px}
