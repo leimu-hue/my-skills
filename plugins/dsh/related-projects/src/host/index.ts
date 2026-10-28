@@ -30,12 +30,12 @@ export const name = 'related-projects'
 export const inject = ['webServer', 'tools']
 
 export interface Config {
-  /** 注册表文件；缺省写到 `$DSH_HOME/related-projects.json`。 */
+  /** 注册表文件；缺省写到 `$DSH_HOME/related-projects/settings.json`。 */
   dataFile?: string
 }
 
 export const Config: Schema<Config> = Schema.object({
-  dataFile: Schema.string().description('注册表文件；缺省写到 $DSH_HOME/related-projects.json'),
+  dataFile: Schema.string().description('注册表文件；缺省写到 $DSH_HOME/related-projects/settings.json'),
 })
 
 /** 在操作系统文件管理器里打开目录；失败不是调用方的问题。 */

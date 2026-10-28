@@ -1,7 +1,7 @@
-# Related Projects: one Host row. The data file lives in the DSH data directory,
-# resolved the same way the shipped bundles resolve theirs.
+# Related Projects: one Host row. Its settings live in the plugin's own directory
+# under the DSH data home, so the owner is obvious at a glance.
 - insert:
     - id: related-projects
       name: '@local/dsh-related-projects'
       config:
-        dataFile: !!js dshHomePath('related-projects.json')
+        dataFile: !!js dshHomePath('related-projects', 'settings.json')

@@ -7,7 +7,7 @@
  */
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join, parse } from 'node:path'
 import { Readable } from 'node:stream'
@@ -144,6 +144,28 @@ test('registry: update, find, remove, copy and persistence', () => {
     const reloaded = new Registry(file)
     assert.equal(reloaded.getSettings().alwaysShowDock, false)
     assert.deepEqual(reloaded.snapshot(box.other).projects.map((row) => row.name), ['Renamed'], 'the copy kept the name it was copied with')
+  } finally {
+    box.dispose()
+  }
+})
+
+test('registry: an unreadable store is set aside, never overwritten in place', () => {
+  const box = sandbox()
+  try {
+    const file = join(box.root, 'store.json')
+    const damaged = '{ "version": 1, "groups": {'
+    writeFileSync(file, damaged)
+
+    /* 损坏的文件读成空表，而不是让插件抛错或整个不可用。 */
+    const registry = new Registry(file)
+    assert.deepEqual(registry.snapshot(box.ws).projects, [])
+
+    registry.add(box.ws, { path: box.proj })
+
+    const backups = readdirSync(box.root).filter((name) => name.startsWith('store.json.broken-'))
+    assert.equal(backups.length, 1, 'the damaged bytes are kept beside the file')
+    assert.equal(readFileSync(join(box.root, backups[0]), 'utf8'), damaged, 'the backup keeps the original bytes verbatim')
+    assert.equal(new Registry(file).snapshot(box.ws).projects.length, 1, 'the rewritten file is valid')
   } finally {
     box.dispose()
   }

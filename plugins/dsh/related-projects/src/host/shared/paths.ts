@@ -6,14 +6,23 @@ import { statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { isAbsolute, join, parse, resolve, sep } from 'node:path'
 
-const DATA_FILE_NAME = 'related-projects.json'
+/** 插件自己的数据目录与文件名：`$DSH_HOME/related-projects/settings.json`。 */
+const DATA_DIR_NAME = 'related-projects'
+const DATA_FILE_NAME = 'settings.json'
 
 /** DSH 数据目录：`$DSH_HOME`，否则 `~/.dsh`。 */
-export function defaultDataFile(): string {
-  const home = typeof process.env.DSH_HOME === 'string' && process.env.DSH_HOME !== ''
+function dataHome(): string {
+  return typeof process.env.DSH_HOME === 'string' && process.env.DSH_HOME !== ''
     ? process.env.DSH_HOME
     : join(homedir(), '.dsh')
-  return join(home, DATA_FILE_NAME)
+}
+
+/**
+ * 默认注册表：放在插件自己的目录里。插件一多，散在 `$DSH_HOME` 根下的平铺
+ * 文件很难认领；按目录进入，一眼就看得出这是哪个插件的配置。
+ */
+export function defaultDataFile(): string {
+  return join(dataHome(), DATA_DIR_NAME, DATA_FILE_NAME)
 }
 
 /**

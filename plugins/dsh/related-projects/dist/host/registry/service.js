@@ -52,6 +52,8 @@ export class Registry {
     file;
     document = emptyDocument();
     loaded = false;
+    /** 磁盘上的文件读不懂：下一次写入前先备份，绝不原地覆盖。 */
+    damaged = false;
     constructor(file) {
         this.file = file !== undefined && file !== '' ? file : defaultDataFile();
     }
@@ -62,42 +64,61 @@ export class Registry {
         if (!existsSync(this.file))
             return this.document;
         try {
-            const raw = JSON.parse(readFileSync(this.file, 'utf8'));
-            const document = emptyDocument();
-            if (raw.settings !== undefined && typeof raw.settings.alwaysShowDock === 'boolean') {
-                document.settings.alwaysShowDock = raw.settings.alwaysShowDock;
-            }
-            for (const [key, group] of Object.entries(raw.groups ?? {})) {
-                if (group === null || typeof group !== 'object' || !Array.isArray(group.projects))
-                    continue;
-                const projects = [];
-                for (const project of group.projects) {
-                    if (project === null || typeof project !== 'object' || typeof project.path !== 'string')
-                        continue;
-                    projects.push(makeProject(project));
-                }
-                document.groups[key] = {
-                    key,
-                    path: typeof group.path === 'string' && group.path !== '' ? group.path : key,
-                    updatedAt: typeof group.updatedAt === 'number' ? group.updatedAt : 0,
-                    projects,
-                };
-            }
-            this.document = document;
+            this.document = this.parse(readFileSync(this.file, 'utf8'));
         }
         catch {
-            /* 文档损坏也不能让插件彻底废掉：内存里保留一个空注册表，
-               下一次写入时会替换掉该文件。 */
+            /* 文件读不懂也不能让插件彻底废掉：内存里先当作空注册表继续服务。
+               但那串字节可能是用户全部的数据（手改错、写到一半、编码问题），
+               所以标记下来，第一次写入前先改名备份。 */
+            this.damaged = true;
         }
         return this.document;
+    }
+    /** 解析磁盘上的文档；格式不对就抛错，由调用方决定怎么处理。 */
+    parse(raw) {
+        const data = JSON.parse(raw);
+        const document = emptyDocument();
+        if (data.settings !== undefined && typeof data.settings.alwaysShowDock === 'boolean') {
+            document.settings.alwaysShowDock = data.settings.alwaysShowDock;
+        }
+        for (const [key, group] of Object.entries(data.groups ?? {})) {
+            if (group === null || typeof group !== 'object' || !Array.isArray(group.projects))
+                continue;
+            const projects = [];
+            for (const project of group.projects) {
+                if (project === null || typeof project !== 'object' || typeof project.path !== 'string')
+                    continue;
+                projects.push(makeProject(project));
+            }
+            document.groups[key] = {
+                key,
+                path: typeof group.path === 'string' && group.path !== '' ? group.path : key,
+                updatedAt: typeof group.updatedAt === 'number' ? group.updatedAt : 0,
+                projects,
+            };
+        }
+        return document;
     }
     persist() {
         const directory = dirname(this.file);
         if (!existsSync(directory))
             mkdirSync(directory, { recursive: true });
+        if (this.damaged)
+            this.backupDamaged();
         const temporary = this.file + '.tmp-' + String(process.pid);
         writeFileSync(temporary, JSON.stringify(this.document, null, 2), 'utf8');
         renameSync(temporary, this.file);
+    }
+    /** 把读不懂的旧文件改名保留；备份失败也不能阻挡新数据写入。 */
+    backupDamaged() {
+        const backup = this.file + '.broken-' + String(Date.now());
+        try {
+            renameSync(this.file, backup);
+            this.damaged = false;
+        }
+        catch {
+            /* 备份不了（被占用 / 无权限）也照常写：写入失败会自己报错。 */
+        }
     }
     /* ------------------------------ 设置 ------------------------------ */
     getSettings() {

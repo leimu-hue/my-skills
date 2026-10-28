@@ -8,7 +8,7 @@
 - 侧栏面板按工作区分节管理：新增、改名、写备注、启停、删除、打开目录、整组复制；
 - 模型自己也能查列表、能新增（只能写当前会话所属工作区），改名与删除仍然只由人来做。
 
-当前版本 `0.8.0`，适配 DSH `>=0.2.1-rc.3 <0.3.0`。
+当前版本 `0.9.1`，适配 DSH `>=0.2.1-rc.3 <0.3.0`。
 
 ---
 
@@ -40,7 +40,10 @@
 - 每个工作区最多 **10** 个关联项目；备注 ≤200 字，名称 ≤60 字。
 - 拒绝：不存在 / 非目录 / 盘根 / 用户主目录 / 当前工作区自身 / 相对路径。
 - 路径失效（改名、移动、拔盘）：条目保留并标红，注入时跳过，只报「另有 N 个不可用」。
-- 注册表数据在 `$DSH_HOME/related-projects.json`（默认 `%USERPROFILE%\.dsh\related-projects.json`），原子写；卸载插件不会删它。
+- 注册表数据在**插件自己的目录**里：`$DSH_HOME/related-projects/settings.json`（默认 `%USERPROFILE%\.dsh\related-projects\settings.json`），临时文件 + rename 原子写；卸载插件不会删它。
+- 旧版的平铺文件 `$DSH_HOME/related-projects.json` 不会被自动读取或迁移；升级请按「从 0.8.x 迁移配置」手动移动。
+- 如果 settings.json 已经读不懂（手改错、写到一半、编码问题），插件会当作空表继续服务，并在**第一次写入前**先把它改名为 `settings.json.broken-<时间戳>`，不会静默覆盖。
+- 已知取舍：不持跨进程文件锁（多个 DSH 实例共用一个 `$DSH_HOME` 时是后写覆盖先写），也不做 `fsync`（断电可能丢最后一次写，但不会把已有文件写成半截）。
 
 ---
 
@@ -85,6 +88,7 @@ plugin_manager(action: "install_bundle", target: "D:\\custom_project\\ai-project
 |---|---|
 | 只改 `src/host/**` | 重载插件行（见下），无需刷新页面 |
 | 只改 `src/client/**`（含 `styles.ts`） | `npm run build` + **刷新页面** |
+| 改了 `cordis.patch.yml`（含 `config.dataFile`） | 生效的是 profile 里那份（`~/.dsh/profiles/<名字>/cordis.patch.yml`），改它或重装，并且**完整重启**；重载插件行无效 |
 | 改了 `package.json` 的 `version` / `exports` / `dsh` | `remove_bundle` 后重新 `install_bundle` |
 
 重载插件行（entryId 以 `Config.listConfigs` 报出的为准，通常是 `include:related-projects`）：
@@ -94,7 +98,39 @@ plugin_manager(action: "set_plugin", target: "include:related-projects", enabled
 plugin_manager(action: "set_plugin", target: "include:related-projects", enabled: true)
 ```
 
-### 4. 卸载
+### 4. 从 0.8.x 迁移配置（手动）
+
+0.9.0 起配置放在插件自己的目录里，文件名也变了：
+
+| | 位置 |
+|---|---|
+| 旧（≤ 0.8.x） | `$DSH_HOME/related-projects.json` |
+| 新（≥ 0.9.0） | `$DSH_HOME/related-projects/settings.json` |
+
+两边 JSON 结构完全一致（`version` / `settings` / `groups`），所以迁移就是「建目录 + 移动并改名」。**插件不会自动迁移**：新位置没有文件时它从空表开始；旧文件既不读取也不删除。
+
+在**关闭 DeepSeek Harness** 之后执行（`$DSH_HOME` 默认是 `%USERPROFILE%\.dsh`）：
+
+```powershell
+$dsh = "$env:USERPROFILE\.dsh"   # 自定义过 DSH_HOME 就换成那个路径
+
+# 1. 备份
+Copy-Item "$dsh\related-projects.json" "$dsh\related-projects.json.bak"
+
+# 2. 建插件目录并移入
+New-Item -ItemType Directory -Force "$dsh\related-projects" | Out-Null
+Move-Item "$dsh\related-projects.json" "$dsh\related-projects\settings.json"
+
+# 3. 确认
+Get-Content "$dsh\related-projects\settings.json" -TotalCount 3
+```
+
+然后重新启动 DSH。要点：
+
+- 两个位置同时存在时，只有新位置会被读取；确认新文件正常后再删 `.bak`。
+- 迁移期间不要同时跑两个 DSH 实例（插件没有跨进程文件锁）。
+
+### 5. 卸载
 
 ```
 plugin_manager(action: "remove_bundle", target: "@local/dsh-related-projects")
@@ -124,7 +160,7 @@ Agent 执行清单与判定：
 |---|---|
 | 读清单 | `engines.dsh` 覆盖当前 DSH；`dsh.client.inject` 列出的官方包都在 profile 里 |
 | 构建 | `npm run build` 退出码 0，`dist/host/index.js` 与 `dist/client.js` 都存在 |
-| 测试 | `npm test` 全绿（当前 11 项：注册表规则、prompt 文案、文件索引、路由与信任栅栏） |
+| 测试 | `npm test` 全绿（当前 12 项：注册表规则、prompt 文案、文件索引、路由与信任栅栏） |
 | 安装 | `install_bundle` 返回 `application: "applied"` |
 | 收尾 | 提醒人类刷新页面；若是升级且只动了 `src/host`，可改用 `set_plugin` 关-开重载 |
 
