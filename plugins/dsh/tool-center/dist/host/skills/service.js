@@ -16,9 +16,9 @@ import { isFile } from '../shared/fs.js';
 import { createLock, isInside, pathIdSync, realOrResolved } from '../shared/paths.js';
 import { createScanner } from './scan.js';
 import { DEFAULT_RANKS, dedupeRoots, hostRoots, overlapsExisting, projectRootsFor, staticRoots } from './roots.js';
-import { customRootKey, customRootOf, defaultStatePath, forgetSkillEverywhere, loadState, pruneState, saveState, uniqueStrings, } from './state.js';
+import { customRootKey, customRootOf, defaultStatePath, forgetSkillEverywhere, loadState, pruneState, saveState, uniqueStrings, workspaceScopeOf, } from './state.js';
 import { allRows, buildStateView, liveNameIndex } from './view.js';
-import { rowIdOf, rowMatchesRef } from './policy.js';
+import { rowMatchesRef } from './policy.js';
 import { createSkill, readSkillDetail, updateSkill } from './files/authoring.js';
 import { deleteSkillToTrash, emptyTrash, listTrash, purgeTrashItem, restoreTrashItem } from './files/trash.js';
 import { exportRowAsZip, exportRowsAsZip, importZip, scanZip } from './files/transfer.js';
@@ -50,10 +50,48 @@ function applySkillSwitch(state, rootKey, name, enabled) {
         state.hiddenSkills[rootKey] = next;
     return true;
 }
+/**
+ * 把调用方给的一层收成规范形状：名字去重排序、空组丢掉、空层变成 null。
+ *
+ * 场景写进来的是「这个工作区里谁开着、谁关着」；规范化让同一份意图的两次写入得到
+ * 完全相同的 JSON，`setLayer` 才能靠比较短路。
+ */
+function normaliseLayer(layer) {
+    if (layer === null)
+        return null;
+    const clean = {};
+    for (const key of ['hiddenSkills', 'enabledSkills']) {
+        const groups = layer[key];
+        if (groups === undefined)
+            continue;
+        const out = {};
+        for (const [rootKey, names] of Object.entries(groups)) {
+            if (!Array.isArray(names))
+                continue;
+            const unique = uniqueStrings(names);
+            if (unique.length > 0)
+                out[rootKey] = unique;
+        }
+        if (Object.keys(out).length > 0)
+            clean[key] = out;
+    }
+    if (layer.whitelist === true)
+        clean.whitelist = true;
+    if (layer.preferredSkills !== undefined) {
+        const preferred = {};
+        for (const [name, rootKey] of Object.entries(layer.preferredSkills)) {
+            if (typeof rootKey === 'string' && rootKey !== '')
+                preferred[name] = rootKey;
+        }
+        if (Object.keys(preferred).length > 0)
+            clean.preferredSkills = preferred;
+    }
+    return Object.keys(clean).length === 0 ? null : clean;
+}
 function reservedScope() {
     return {
         ok: false,
-        error: '会话/工作区分层作用域已预留但尚未启用（当前只有全局层）。接口已就位，功能待实现。',
+        error: '会话层作用域已预留但尚未启用（工作区层已启用）。接口已就位，功能待实现。',
         code: 'error.scope.reserved',
     };
 }
@@ -189,12 +227,17 @@ export function createService(options) {
     async function view(cwd, scopeKey, read) {
         const loaded = await readState();
         const roots = await rootsFor(cwd, read);
+        // 显式作用域优先；否则由 cwd 落到它所在的工作区层。会话在哪个工作区，就按那个
+        // 工作区的场景解析 —— 这正是「只在一个工作区生效」的实现点。
+        const scope = scopeKey !== undefined && scopeKey !== ''
+            ? scopeKey
+            : workspaceScopeOf(loaded.state, cwd);
         return buildStateView({
             state: loaded.state,
             scanner,
             roots,
             warnings: loaded.warnings,
-            scopeKey,
+            scopeKey: scope,
             stateHealthy: !loaded.degraded,
         });
     }
@@ -234,34 +277,36 @@ export function createService(options) {
                 value: { root: rootKey, name: row.name, enabled },
             }));
         },
-        async setAll(items, enabled, cwd, scopeKey) {
-            if (scopeKey !== undefined && scopeKey !== '')
-                return reservedScope();
-            const current = await view(cwd);
-            const wanted = new Map();
-            for (const row of allRows(current)) {
-                if (items.some((item) => rowMatchesRef(row, item)))
-                    wanted.set(rowIdOf(row.rootKey, row.name), row);
+        async setLayer(scopeKey, layer) {
+            const kind = typeof scopeKey === 'string' && scopeKey.startsWith('ws:')
+                ? 'workspace'
+                : (typeof scopeKey === 'string' && scopeKey.startsWith('ss:') ? 'session' : null);
+            if (kind === null) {
+                return {
+                    ok: false,
+                    error: '作用域键必须是 ws:<工作区绝对路径> 或 ss:<根会话 id>。',
+                    code: 'error.scope.invalid',
+                };
             }
-            if (wanted.size === 0)
-                return { ok: true, data: { changed: false, updated: 0, missing: items.length } };
+            const key = scopeKey.slice(3);
+            if (key.trim() === '') {
+                return { ok: false, error: '作用域键不能为空', code: 'error.scope.invalid' };
+            }
+            const table = kind === 'workspace' ? 'workspaces' : 'sessions';
             return mutate(async (state) => {
-                let updated = 0;
-                for (const row of wanted.values()) {
-                    if (applySkillSwitch(state, row.rootKey, row.name, enabled))
-                        updated += 1;
+                const next = normaliseLayer(layer);
+                const current = state.layers[table][key];
+                if (next === null) {
+                    if (current === undefined)
+                        return { changed: false, value: { scope: scopeKey, cleared: true } };
+                    delete state.layers[table][key];
+                    return { changed: true, value: { scope: scopeKey, cleared: true } };
                 }
-                return { changed: updated > 0, value: { updated } };
-            });
-        },
-        async restoreSkills(items) {
-            return mutate(async (state) => {
-                let updated = 0;
-                for (const item of items) {
-                    if (applySkillSwitch(state, item.root, item.name, item.enabled))
-                        updated += 1;
+                if (current !== undefined && JSON.stringify(current) === JSON.stringify(next)) {
+                    return { changed: false, value: { scope: scopeKey } };
                 }
-                return { changed: updated > 0, value: { updated } };
+                state.layers[table][key] = next;
+                return { changed: true, value: { scope: scopeKey } };
             });
         },
         async setSource(rootKey, enabled, scopeKey, cwd) {
@@ -521,13 +566,14 @@ export function createService(options) {
             });
             return { ok: true, data: { generation: scanner.generation(), pruned: pruned.data, stats: scanner.stats() } };
         },
-        makeProvider() {
+        makeProvider(scopeKey) {
             // 这条路径是宿主 `skills.list()` 回调进来的：再问注册表就是无限递归（面板会一直
             // 停在加载中），所以只读宿主目录的缓存，绝不探测。
             const read = { probeHost: false };
             return createProvider({
-                viewFor: (cwd, scopeKey) => view(cwd, scopeKey, read),
+                viewFor: (cwd, scope) => view(cwd, scope, read),
                 rootsFor: (cwd) => rootsFor(cwd, read),
+                ...(scopeKey === undefined ? {} : { scopeKey }),
             });
         },
         stateInfo() {

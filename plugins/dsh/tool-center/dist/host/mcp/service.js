@@ -149,6 +149,7 @@ function serversOf(parsed) {
         servers.push({
             id,
             name: declaration.serverName || id,
+            serverName: declaration.serverName,
             transport: declaration.transport || (declaration.command === '' ? 'http' : 'stdio'),
             command: declaration.command,
             args: declaration.args,

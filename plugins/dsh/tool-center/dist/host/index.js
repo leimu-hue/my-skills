@@ -18,10 +18,14 @@ import { createService } from './skills/service.js';
 import { createHandlers } from './api/routes.js';
 import { ROUTE_PATH, createRequestHandler } from './api/server.js';
 import { createTools } from './api/tools.js';
+import { createSceneCommand } from './commands/scene.js';
+import { createSceneGate } from './scenes/gate.js';
+import { reconcileSessionLayers } from './scenes/service.js';
+import { workspaceOfAgent, rootSessionIdOf } from './scope/agent-scope.js';
 export const name = 'tool-center';
 /** `skills` 与 `tools` 是必需的，其余缺失只降级（见 `apply`）。 */
 export const inject = ['skills', 'tools', 'webServer', 'agents', 'workspaceRegistry'];
-const VERSION = '0.2.0';
+const VERSION = '0.4.3';
 export function apply(ctx, config) {
     const dshHome = resolveDshHome(config?.dshHome);
     const builtinDir = typeof config?.builtinSkillDir === 'string' && config.builtinSkillDir !== ''
@@ -45,8 +49,17 @@ export function apply(ctx, config) {
     registerProviders(ctx, service, logger);
     registerSkillsEvents(ctx, service);
     registerTools(ctx, service, config, logger);
-    registerRoute(ctx, service, logger, dshHome);
+    const gate = registerSceneToolGate(ctx, dshHome, logger);
+    registerSceneCommand(ctx, service, dshHome, logger, gate.refresh);
+    registerRoute(ctx, service, logger, dshHome, gate.refresh);
     registerWatcher(ctx, service, config);
+    // 启动时按当前文档重新物化会话层：层是快照，场景定义或工作区映射可能在上次退出后变过。
+    ctx.effect(() => {
+        void reconcileSessionLayers(dshHome, service).catch((error) => {
+            logger.system(`scene reconcile failed: ${describe(error)}`);
+        });
+        return () => undefined;
+    }, 'tool-center: scene reconcile');
 }
 /* ------------------------------- provider ------------------------------- */
 /**
@@ -55,10 +68,10 @@ export function apply(ctx, config) {
  * `invalidate()` 是 provider 告诉注册表「我的目录变了」的方式。每次注册都有自己的
  * control，所以每一个都要留住 —— 拆注册时顺手摘掉，避免句柄集合越攒越大。
  */
-function registerProviderInto(service, skills) {
+function registerProviderInto(service, skills, scopeKey) {
     if (skills === undefined || skills === null || typeof skills.registerProvider !== 'function')
         return undefined;
-    const provider = service.makeProvider();
+    const provider = service.makeProvider(scopeKey);
     return skills.registerProvider((control) => {
         service.invalidators.add(control.invalidate);
         control.signal?.addEventListener('abort', () => service.invalidators.delete(control.invalidate), { once: true });
@@ -166,7 +179,9 @@ function registerProviders(ctx, service, logger) {
             return;
         }
         try {
-            const dispose = registerProviderInto(service, skills);
+            // 会话级场景：这个 agent 的 provider 按**根会话**的作用域解析，会话层才压得过工作区层。
+            const sessionId = rootSessionIdOf(agent);
+            const dispose = registerProviderInto(service, skills, sessionId === null ? undefined : `ss:${sessionId}`);
             if (dispose !== undefined)
                 scoped.set(id, dispose);
         }
@@ -337,6 +352,154 @@ function registerTools(ctx, service, config, logger) {
         };
     }, 'tool-center: tools');
 }
+/** agent 所在的工作区：从会话身份解析（子会话上溯到根会话，见 scope/agent-scope.ts）。 */
+/** agent 作用域里的 tools 服务（`agent.ctx.get('tools')`）。 */
+function scopedToolsOf(agent) {
+    const agentCtx = agent?.ctx;
+    if (agentCtx === undefined || typeof agentCtx.get !== 'function')
+        return undefined;
+    try {
+        const tools = agentCtx.get('tools');
+        return tools !== undefined && tools !== null && typeof tools.restrict === 'function' ? tools : undefined;
+    }
+    catch {
+        return undefined;
+    }
+}
+/**
+ * 把「工作区场景」落到工具层：在 agent 作用域里遮蔽不属于该场景的 MCP 工具。
+ *
+ * 返回一个 `refresh()`：场景被写入 / 退出之后调用它，正在跑的会话下一轮就能看到新目录
+ * （工具目录按步组装，所以不需要重开会话）。服务缺失时它是空操作 —— 插件其余部分照常。
+ */
+function registerSceneToolGate(ctx, dshHome, logger) {
+    const handle = { refresh: () => { } };
+    ctx.effect(() => {
+        let tools;
+        try {
+            const value = ctx.get('tools');
+            tools = value !== undefined && value !== null && typeof value.schemas === 'function' ? value : undefined;
+        }
+        catch {
+            tools = undefined;
+        }
+        if (tools === undefined) {
+            logger.system('tools service has no schemas(); MCP tools cannot be gated per workspace');
+            return () => undefined;
+        }
+        const gate = createSceneGate({
+            dshHome,
+            globalToolNames: () => {
+                try {
+                    return (tools?.schemas?.() ?? []).map((schema) => schema.name);
+                }
+                catch {
+                    return [];
+                }
+            },
+            toolsScopeOf: scopedToolsOf,
+            cwdOf: workspaceOfAgent,
+            sessionIdOf: rootSessionIdOf,
+            liveAgents: () => {
+                try {
+                    const agents = ctx.get('agents');
+                    const list = typeof agents?.list === 'function' ? [...agents.list()] : [];
+                    // 先把每个会话的 cwd 记一遍：子会话要沿 parentSession 上溯到根会话，
+                    // 而父会话可能排在列表后面（顺序不由我们决定）。
+                    for (const agent of list)
+                        workspaceOfAgent(agent);
+                    return list;
+                }
+                catch {
+                    return [];
+                }
+            },
+            log: (event, detail) => logger.system(`${event}: ${detail}`),
+        });
+        handle.refresh = () => { void gate.refresh(); };
+        const disposers = [];
+        let timer = null;
+        if (typeof ctx.on === 'function') {
+            disposers.push(ctx.on('agent/created', ((payload) => {
+                void gate.install(payload?.agent);
+            })));
+            disposers.push(ctx.on('agent/disposed', ((payload) => {
+                gate.uninstall(payload?.agent);
+            })));
+            // 工具集合变化（MCP 服务器连上 / 掉线 / 启停）就重算。我们自己的 restrict 也会触发
+            // 这个事件，靠 gate 内部「名单没变就不重挂」收敛。
+            disposers.push(ctx.on('tools/change', (() => {
+                if (timer !== null)
+                    return;
+                timer = setTimeout(() => {
+                    timer = null;
+                    void gate.refresh();
+                }, 150);
+                timer.unref?.();
+            })));
+        }
+        // 启动时先给已经活着的 agent 装上。
+        void gate.refresh();
+        return () => {
+            if (timer !== null)
+                clearTimeout(timer);
+            for (const dispose of disposers) {
+                try {
+                    dispose();
+                }
+                catch {
+                    /* 忽略 */
+                }
+            }
+            gate.uninstallAll();
+            handle.refresh = () => { };
+        };
+    }, 'tool-center: scene tool gate');
+    return handle;
+}
+/**
+ * 注册 `/scene`。
+ *
+ * 命令服务不在注入链里时不报错、只降级：装了这个插件的宿主几乎都带 `dsh-commands`，
+ * 但没有它的宿主（UI-less 组合）不该因此整个插件都装不上。
+ *
+ * 有 `ctx.inject` 时走它：命令服务可能比本插件晚装载，直接 `get` 会拿到空值，命令就
+ * 静默消失了。没有 `inject` 的宿主退回「立刻试一次」。
+ */
+function registerSceneCommand(ctx, service, dshHome, logger, scenesChanged) {
+    const mount = (scoped) => {
+        let commands;
+        try {
+            const value = scoped.get('commands');
+            commands = value !== undefined && value !== null && typeof value.register === 'function' ? value : undefined;
+        }
+        catch {
+            commands = undefined;
+        }
+        if (commands === undefined) {
+            logger.system('commands service unavailable; /scene will not be registered');
+            return;
+        }
+        try {
+            const dispose = commands.register(createSceneCommand({ dshHome, service, scenesChanged }));
+            scoped.effect(() => () => {
+                try {
+                    dispose?.();
+                }
+                catch {
+                    /* 已经没了 */
+                }
+            }, 'tool-center: scene command');
+        }
+        catch (error) {
+            logger.system(`command registration failed (/scene): ${describe(error)}`);
+        }
+    };
+    if (typeof ctx.inject === 'function')
+        ctx.inject(['commands'], mount);
+    else
+        mount(ctx);
+}
 /** 宿主的 `connection` 服务（存在时用它做栅栏，否则退回回环地址）。 */
 function connectionResolver(ctx) {
     return () => {
@@ -381,7 +544,33 @@ function workspaceOptions(ctx) {
         return options;
     };
 }
-function registerRoute(ctx, service, logger, dshHome) {
+/**
+ * 按会话 id 反查工作区（会话头里的 `cwd`）。
+ *
+ * 「新会话页」的选择器只拿得到 sessionId，工作区在服务端解析：客户端拿不到 cwd，
+ * 也不该猜一个 —— 猜错就是把会话挂到别的工作区上。
+ */
+function sessionCwdOf(ctx) {
+    return (sessionId) => {
+        if (sessionId === '')
+            return null;
+        try {
+            const sessions = ctx.get('sessions');
+            if (sessions === undefined)
+                return null;
+            const session = typeof sessions.get === 'function'
+                ? sessions.get(sessionId)
+                : [...(sessions.list?.() ?? [])].find((item) => item?.id === sessionId);
+            const cwd = session;
+            const value = cwd?.header?.cwd ?? cwd?.meta?.cwd;
+            return typeof value === 'string' && value.trim() !== '' ? value.trim() : null;
+        }
+        catch {
+            return null;
+        }
+    };
+}
+function registerRoute(ctx, service, logger, dshHome, scenesChanged) {
     ctx.effect(() => {
         const webServer = ctx.get('webServer');
         if (webServer === undefined || webServer === null || typeof webServer.register !== 'function') {
@@ -394,6 +583,8 @@ function registerRoute(ctx, service, logger, dshHome) {
             dshHome,
             listWorkspaces: workspaceOptions(ctx),
             snapshotSkills: snapshotSkillsReader(ctx),
+            scenesChanged,
+            sessionCwd: sessionCwdOf(ctx),
         });
         const handler = createRequestHandler({ handlers, logger, connection: connectionResolver(ctx) });
         const dispose = webServer.register({ kind: 'exact', path: ROUTE_PATH, handler });

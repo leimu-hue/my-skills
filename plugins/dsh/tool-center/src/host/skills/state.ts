@@ -17,7 +17,7 @@
 import { readFile, rename } from 'node:fs/promises'
 import { isAbsolute, join } from 'node:path'
 import type { CustomRoot, SkillLayer, SkillManagerState, StateLoad } from '../shared/types.js'
-import { pathId, writeFileAtomic } from '../shared/paths.js'
+import { isInside, pathId, pathKey, writeFileAtomic } from '../shared/paths.js'
 import { isRecord } from '../shared/json.js'
 
 const STATE_VERSION = 1
@@ -178,6 +178,14 @@ function layersOf(value: unknown): Record<string, SkillLayer> {
       }
       clean.hiddenSkills = hidden
     }
+    if (isRecord(layer.enabledSkills)) {
+      const enabled: Record<string, string[]> = {}
+      for (const [rootKey, names] of Object.entries(layer.enabledSkills)) {
+        if (Array.isArray(names)) enabled[rootKey] = uniqueStrings(names)
+      }
+      clean.enabledSkills = enabled
+    }
+    if (layer.whitelist === true) clean.whitelist = true
     if (isRecord(layer.preferredSkills)) {
       const preferred: Record<string, string> = {}
       for (const [name, rootKey] of Object.entries(layer.preferredSkills)) {
@@ -197,20 +205,46 @@ export function saveState(file: string, state: SkillManagerState): Promise<void>
 /**
  * 一个作用域的覆盖只从这里查。
  *
- * v0.1：只有全局层，所以对任何作用域都返回 `undefined`，调用方一律退回 `state`。
- * 将来会话 / 工作区编辑落地时，只有这一个函数需要改。
+ * 两种作用域键：`ws:<工作区绝对路径>`（该工作区**默认**用哪个场景）与
+ * `ss:<根会话 id>`（这个会话自己的选择）。会话比工作区更近，所以 `ss:` 直接返回会话层
+ * —— 会话层是**整层替代**而不是叠加：会话选了「不用」时，工作区的层不该再漏进来。
  */
 export function resolveLayer(state: SkillManagerState, scopeKey?: string): SkillLayer | undefined {
   if (typeof scopeKey !== 'string' || scopeKey === '') return undefined
-  const session = state.layers.sessions[scopeKey]
-  if (session !== undefined) return session
+  if (scopeKey.startsWith('ss:')) return state.layers.sessions[scopeKey.slice(3)]
   if (scopeKey.startsWith('ws:')) return state.layers.workspaces[scopeKey.slice(3)]
-  return undefined
+  // 旧形状：直接给会话 id。
+  return state.layers.sessions[scopeKey]
+}
+
+/**
+ * 由会话 cwd 找出它落在哪个工作区层里。
+ *
+ * 取**最深**的那一层：`D:\repo` 与 `D:\repo\sub` 上都可能绑了场景，子目录应当命中最深的那个。
+ * 判定与比较都走 `shared/paths.ts` 的同一个口径（`isInside` / `pathKey`）—— 大小写、分隔符、
+ * `..` 这些事只在一个地方决定，否则「技能按 A 项目隔离、场景却命中了 B」。
+ */
+export function workspaceScopeOf(state: SkillManagerState, cwd?: string): string | undefined {
+  if (typeof cwd !== 'string' || cwd.trim() === '') return undefined
+  let best: string | undefined
+  for (const key of Object.keys(state.layers.workspaces)) {
+    if (!isInside(key, cwd)) continue
+    if (best === undefined || pathKey(key).length > pathKey(best).length) best = key
+  }
+  return best === undefined ? undefined : `ws:${best}`
 }
 
 /** 某条技能最终生效的单条开关（分层感知）。 */
 export function skillSwitchOf(state: SkillManagerState, rootKey: string, name: string, scopeKey?: string): boolean {
   const layer = resolveLayer(state, scopeKey)
+  // 白名单作用域只留列出来的那些：没列出来的（包括之后才装的技能）都不算这个场景的一部分。
+  if (layer?.whitelist === true) {
+    const listed = layer.enabledSkills?.[rootKey]
+    return Array.isArray(listed) && listed.includes(name)
+  }
+  // 正向覆盖先生效：场景允许「在这个工作区用一条平时关着的技能」。
+  const layerEnabled = layer?.enabledSkills?.[rootKey]
+  if (Array.isArray(layerEnabled) && layerEnabled.includes(name)) return true
   const layerHidden = layer?.hiddenSkills?.[rootKey]
   if (Array.isArray(layerHidden) && layerHidden.includes(name)) return false
   const hidden = state.hiddenSkills[rootKey]
@@ -252,6 +286,11 @@ export function forgetSkillEverywhere(state: SkillManagerState, rootKey: string,
     const layerHidden = layer.hiddenSkills?.[rootKey]
     if (Array.isArray(layerHidden) && layerHidden.includes(name)) {
       layer.hiddenSkills![rootKey] = layerHidden.filter((item) => item !== name)
+      changed = true
+    }
+    const layerEnabled = layer.enabledSkills?.[rootKey]
+    if (Array.isArray(layerEnabled) && layerEnabled.includes(name)) {
+      layer.enabledSkills![rootKey] = layerEnabled.filter((item) => item !== name)
       changed = true
     }
     if (layer.preferredSkills?.[name] === rootKey) {

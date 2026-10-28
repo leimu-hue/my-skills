@@ -10,7 +10,7 @@ import { skillRefsOf } from '../skills/policy.js'
 import { errorResult, type OpResult } from '../shared/result.js'
 import { deletePreset, loadPrompts, readPreset, savePreset, setPresetEnabled } from '../prompts/service.js'
 import { deleteMcpServer, loadMcp, setMcpEnabled } from '../mcp/service.js'
-import { applyScene, deleteScene, exitScene, loadScenes, saveScene } from '../scenes/service.js'
+import { deleteScene, loadScenes, saveScene, setSessionScene, setWorkspaceScene } from '../scenes/service.js'
 
 export type Handler = (payload: Record<string, unknown>) => Promise<OpResult>
 
@@ -34,6 +34,20 @@ export interface RouteMeta {
    * 两者要能对上，用户才敢相信「关掉就不会被用到」。服务不可用时返回 undefined（只降级）。
    */
   snapshotSkills?: (options: { cwd?: string; scope?: string }) => Promise<HostSkillSummary[] | undefined>
+  /**
+   * 场景被写入 / 退出之后的通知：工具闸门要按新状态重算（`scenes/gate.ts`）。
+   *
+   * 放在这里而不是让场景服务直接依赖 `ctx.tools`：场景域只写自己的文档，
+   * 「谁去把结果落到运行中的 agent 上」是接线层的事。
+   */
+  scenesChanged?: () => void
+  /**
+   * 按会话 id 反查它的工作区（会话头里的 `cwd`）。
+   *
+   * 有了它，`/scene` 与「新会话页」的选择器都只要给会话 id：工作区由服务端解析，
+   * 客户端拿不到（也不该猜）会话的 cwd。
+   */
+  sessionCwd?: (sessionId: string) => string | null
 }
 
 const str = (value: unknown, fallback = ''): string => (typeof value === 'string' ? value : fallback)
@@ -139,33 +153,48 @@ export function createHandlers(service: SkillService, meta: RouteMeta): Record<s
 
     'scene-state': async () => domainCall(async () => ({ ok: true, data: await loadScenes(meta.dshHome) })),
 
-    'scene-save': async (payload) => domainCall(async () => ({
-      ok: true,
-      data: await saveScene(meta.dshHome, {
+    'scene-save': async (payload) => domainCall(async () => {
+      const data = await saveScene(meta.dshHome, {
         name: str(payload.name),
         description: payload.description === undefined ? undefined : str(payload.description),
         skills: payload.skills === undefined ? undefined : skillRefsOf(payload.skills),
         mcp: Array.isArray(payload.mcp) ? payload.mcp.filter((id): id is string => typeof id === 'string') : undefined,
         prompt: payload.prompt === undefined ? undefined : str(payload.prompt) || null,
-        promptTarget: payload.promptTarget,
         exclusive: payload.exclusive === undefined ? undefined : payload.exclusive === true,
-      }),
-    })),
+      })
+      meta.scenesChanged?.()
+      return { ok: true, data }
+    }),
 
     'scene-delete': async (payload) => domainCall(async () => {
       await deleteScene(meta.dshHome, str(payload.name))
+      meta.scenesChanged?.()
       return { ok: true, data: { name: str(payload.name) } }
     }),
 
-    'scene-apply': async (payload) => domainCall(async () => ({
-      ok: true,
-      data: await applyScene(meta.dshHome, service, optional(payload.cwd), str(payload.name)),
-    })),
+    /** 某个工作区用哪个场景：`scene: null` = 这个工作区不用场景。 */
+    'scene-workspace': async (payload) => domainCall(async () => {
+      const scene = typeof payload.scene === 'string' && payload.scene !== '' ? payload.scene : null
+      const data = await setWorkspaceScene(meta.dshHome, service, str(payload.workspace), scene)
+      meta.scenesChanged?.()
+      return { ok: true, data }
+    }),
 
-    'scene-exit': async () => domainCall(async () => ({
-      ok: true,
-      data: await exitScene(meta.dshHome, service),
-    })),
+    /**
+     * 某个会话用哪个场景。
+     *
+     * `scene` 缺省 = 跟随工作区（删掉会话选择）；`null` = 这个会话明确不用；名字 = 用这个场景。
+     */
+    'scene-session': async (payload) => domainCall(async () => {
+      const scene = payload.scene === undefined
+        ? undefined
+        : (typeof payload.scene === 'string' && payload.scene !== '' ? payload.scene : null)
+      const sessionId = str(payload.sessionId)
+      const workspace = str(payload.workspace) || (meta.sessionCwd?.(sessionId) ?? '')
+      const data = await setSessionScene(meta.dshHome, service, sessionId, workspace, scene)
+      meta.scenesChanged?.()
+      return { ok: true, data }
+    }),
 
     /* ------------------------------- 技能 ------------------------------- */
 

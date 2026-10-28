@@ -2,7 +2,7 @@ import { skillRefsOf } from '../skills/policy.js';
 import { errorResult } from '../shared/result.js';
 import { deletePreset, loadPrompts, readPreset, savePreset, setPresetEnabled } from '../prompts/service.js';
 import { deleteMcpServer, loadMcp, setMcpEnabled } from '../mcp/service.js';
-import { applyScene, deleteScene, exitScene, loadScenes, saveScene } from '../scenes/service.js';
+import { deleteScene, loadScenes, saveScene, setSessionScene, setWorkspaceScene } from '../scenes/service.js';
 const str = (value, fallback = '') => (typeof value === 'string' ? value : fallback);
 const optional = (value) => str(value) || undefined;
 /** 必填布尔参数：缺失或类型不对时报 `error.args.required`。 */
@@ -90,30 +90,45 @@ export function createHandlers(service, meta) {
         })),
         /* ------------------------------- 场景 ------------------------------- */
         'scene-state': async () => domainCall(async () => ({ ok: true, data: await loadScenes(meta.dshHome) })),
-        'scene-save': async (payload) => domainCall(async () => ({
-            ok: true,
-            data: await saveScene(meta.dshHome, {
+        'scene-save': async (payload) => domainCall(async () => {
+            const data = await saveScene(meta.dshHome, {
                 name: str(payload.name),
                 description: payload.description === undefined ? undefined : str(payload.description),
                 skills: payload.skills === undefined ? undefined : skillRefsOf(payload.skills),
                 mcp: Array.isArray(payload.mcp) ? payload.mcp.filter((id) => typeof id === 'string') : undefined,
                 prompt: payload.prompt === undefined ? undefined : str(payload.prompt) || null,
-                promptTarget: payload.promptTarget,
                 exclusive: payload.exclusive === undefined ? undefined : payload.exclusive === true,
-            }),
-        })),
+            });
+            meta.scenesChanged?.();
+            return { ok: true, data };
+        }),
         'scene-delete': async (payload) => domainCall(async () => {
             await deleteScene(meta.dshHome, str(payload.name));
+            meta.scenesChanged?.();
             return { ok: true, data: { name: str(payload.name) } };
         }),
-        'scene-apply': async (payload) => domainCall(async () => ({
-            ok: true,
-            data: await applyScene(meta.dshHome, service, optional(payload.cwd), str(payload.name)),
-        })),
-        'scene-exit': async () => domainCall(async () => ({
-            ok: true,
-            data: await exitScene(meta.dshHome, service),
-        })),
+        /** 某个工作区用哪个场景：`scene: null` = 这个工作区不用场景。 */
+        'scene-workspace': async (payload) => domainCall(async () => {
+            const scene = typeof payload.scene === 'string' && payload.scene !== '' ? payload.scene : null;
+            const data = await setWorkspaceScene(meta.dshHome, service, str(payload.workspace), scene);
+            meta.scenesChanged?.();
+            return { ok: true, data };
+        }),
+        /**
+         * 某个会话用哪个场景。
+         *
+         * `scene` 缺省 = 跟随工作区（删掉会话选择）；`null` = 这个会话明确不用；名字 = 用这个场景。
+         */
+        'scene-session': async (payload) => domainCall(async () => {
+            const scene = payload.scene === undefined
+                ? undefined
+                : (typeof payload.scene === 'string' && payload.scene !== '' ? payload.scene : null);
+            const sessionId = str(payload.sessionId);
+            const workspace = str(payload.workspace) || (meta.sessionCwd?.(sessionId) ?? '');
+            const data = await setSessionScene(meta.dshHome, service, sessionId, workspace, scene);
+            meta.scenesChanged?.();
+            return { ok: true, data };
+        }),
         /* ------------------------------- 技能 ------------------------------- */
         detail: async (payload) => service.detail(str(payload.root), str(payload.name), optional(payload.cwd)),
         'set-skill': async (payload) => {

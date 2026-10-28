@@ -813,22 +813,3 @@ test('the provider never publishes a candidate the host would reject', async () 
   await writeFile(join(f.codexHome, 'skills', 'codex-only', 'SKILL.md'), '---\nname: codex-only\ndescription: ""\n---\nbody\n')
   assert.equal(await f.service.makeProvider().get(codexOnly), undefined, 'a skill that lost its description must report gone')
 })
-test('restoring a skill snapshot goes through the lock and invalidates once', async () => {
-  const f = await fixture()
-  let invalidated = 0
-  f.service.invalidators.add(() => { invalidated += 1 })
-
-  // 场景回滚用：同一个条目重复出现时，只有第一次算变更。
-  const off = await f.service.restoreSkills([
-    { root: 'local', name: 'local-one', enabled: false },
-    { root: 'local', name: 'local-one', enabled: false },
-  ])
-  assert.equal(off.ok, true)
-  assert.equal(off.data.updated, 1, 'a repeated entry is a no-op')
-  assert.equal(invalidated, 1, 'one write, one invalidation')
-  assert.equal((await rowOfService(f.service, 'local', 'local-one')).policy.skillOn, false)
-
-  const on = await f.service.restoreSkills([{ root: 'local', name: 'local-one', enabled: true }])
-  assert.equal(on.data.updated, 1)
-  assert.equal((await rowOfService(f.service, 'local', 'local-one')).policy.skillOn, true)
-})

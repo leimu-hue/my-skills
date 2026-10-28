@@ -12,6 +12,8 @@ function fakeHost() {
   const tools = []
   const routes = []
   const disposers = []
+  /** 活着的 agent（宿主的 `agents.list()`；场景闸门刷新时按它重算）。 */
+  const agents = []
   const services = new Map()
   const events = new Map()
   /** 插件通过 ctx.emit 发出去的事件（远端转发用）。 */
@@ -66,6 +68,10 @@ function fakeHost() {
         tools.splice(tools.indexOf(definition), 1)
       }
     },
+    /** 全局工具名（场景闸门算 deny 名单用）。测试通过 `registry.toolSchemas` 决定。 */
+    schemas() {
+      return (registry.toolSchemas ?? []).map((name) => ({ name }))
+    },
   })
   services.set('webServer', {
     register(route) {
@@ -75,7 +81,7 @@ function fakeHost() {
       }
     },
   })
-  services.set('agents', { list: () => [] })
+  services.set('agents', { list: () => agents })
   services.set('sessions', { list: () => [{ id: 'session-abc', header: { agentPreset: 'standard' } }] })
 
   /** 某个 agent 作用域里的 skills 服务（与全局那份是两个层级）。 */
@@ -93,7 +99,7 @@ function fakeHost() {
     for (const listener of events.get(event) ?? []) listener(...args)
   }
 
-  return { ctx, providers, agentProviders, agentSkills, tools, routes, disposers, registry, emitted, emit }
+  return { ctx, providers, agentProviders, agentSkills, tools, routes, disposers, registry, emitted, emit, agents }
 }
 
 async function fixture() {
@@ -395,3 +401,192 @@ test('disposing the plugin removes every registration', async () => {
   assert.equal(host.tools.length, 0)
   assert.equal(host.routes.length, 0)
 })
+
+test('the /scene command is registered with the host command service and disposed with it', async () => {
+  const host = fakeHost()
+  const f = await fixture()
+  const commands = []
+  host.ctx.get = ((original) => (serviceName) => (
+    serviceName === 'commands'
+      ? {
+        register(definition) {
+          commands.push(definition)
+          return () => {
+            commands.splice(commands.indexOf(definition), 1)
+          }
+        },
+      }
+      : original.call(host.ctx, serviceName)
+  ))(host.ctx.get)
+
+  apply(host.ctx, { dshHome: f.dshHome, claudeHome: f.claudeHome, codexHome: f.codexHome, watch: false })
+  assert.equal(commands.length, 1)
+  assert.equal(commands[0].name, 'scene')
+  assert.equal(typeof commands[0].handler, 'function')
+
+  for (const dispose of host.disposers) dispose()
+  assert.equal(commands.length, 0)
+})
+
+test('a host without a command service still loads the plugin', async () => {
+  const host = fakeHost()
+  const f = await fixture()
+  // fakeHost 默认没有 commands：注册必须降级，而不是把整个插件掀掉。
+  apply(host.ctx, { dshHome: f.dshHome, claudeHome: f.claudeHome, codexHome: f.codexHome, watch: false })
+  assert.equal(host.providers.length, 1)
+  assert.ok(host.routes.length >= 1)
+})
+
+test('with cordis inject the command waits for the command service instead of racing it', async () => {
+  const host = fakeHost()
+  const f = await fixture()
+  const commands = []
+  const waits = []
+  // 命令服务在 apply 之后才装好：只有 inject 那条路能注册成功。
+  host.ctx.inject = (names, callback) => {
+    waits.push(names)
+    servicesForCommands()
+    callback(host.ctx)
+  }
+  const servicesForCommands = () => {
+    const original = host.ctx.get
+    host.ctx.get = (serviceName) => (serviceName === 'commands'
+      ? {
+        register(definition) {
+          commands.push(definition)
+          return () => {
+            commands.splice(commands.indexOf(definition), 1)
+          }
+        },
+      }
+      : original(serviceName))
+  }
+
+  apply(host.ctx, { dshHome: f.dshHome, claudeHome: f.claudeHome, codexHome: f.codexHome, watch: false })
+  assert.deepEqual(waits, [['commands']], 'the plugin declares the wait instead of polling')
+  assert.equal(commands.length, 1)
+  assert.equal(commands[0].name, 'scene')
+})
+
+test('scene-workspace over HTTP needs a workspace and applies the chosen scene', async () => {
+  const host = fakeHost()
+  const f = await fixture()
+  apply(host.ctx, { dshHome: f.dshHome, claudeHome: f.claudeHome, codexHome: f.codexHome, watch: false })
+  const handler = host.routes[0].handler
+
+  const save = fakeResponse()
+  await handler(fakeRequest({
+    op: 'scene-save',
+    args: { name: 'a', skills: [], exclusive: true },
+  }), save)
+  assert.equal(save.payload.ok, true)
+
+  const noWorkspace = fakeResponse()
+  await handler(fakeRequest({ op: 'scene-workspace', args: { workspace: '' } }), noWorkspace)
+  assert.equal(noWorkspace.payload.ok, false)
+  assert.equal(noWorkspace.payload.code, 'error.scene.workspace')
+
+  const applied = fakeResponse()
+  await handler(fakeRequest({ op: 'scene-workspace', args: { workspace: f.base, scene: 'a' } }), applied)
+  assert.equal(applied.payload.ok, true)
+  assert.equal(applied.payload.data.workspace, f.base)
+  assert.equal(applied.payload.data.scene, 'a')
+
+  const cleared = fakeResponse()
+  await handler(fakeRequest({ op: 'scene-workspace', args: { workspace: f.base, scene: null } }), cleared)
+  assert.equal(cleared.payload.ok, true)
+  assert.equal(cleared.payload.data.scene, null)
+})
+
+test('an agent created inside the scene workspace gets the MCP tools of other servers restricted', async () => {
+  const host = fakeHost()
+  const f = await fixture()
+  host.registry.toolSchemas = ['read_file', 'mcp__rea__search', 'mcp__other__deploy']
+  apply(host.ctx, { dshHome: f.dshHome, claudeHome: f.claudeHome, codexHome: f.codexHome, watch: false })
+
+  // 场景：整套切换 + 不列任何服务器 → 这个工作区里所有 MCP 工具都该被遮掉。
+  const save = fakeResponse()
+  await host.routes[0].handler(fakeRequest({
+    op: 'scene-save',
+    args: { name: 'no-mcp', workspace: f.base, skills: [], mcp: [], exclusive: true },
+  }), save)
+  assert.equal(save.payload.ok, true)
+  const applyRes = fakeResponse()
+  await host.routes[0].handler(fakeRequest({
+    op: 'scene-workspace',
+    args: { workspace: f.base, scene: 'no-mcp' },
+  }), applyRes)
+  assert.equal(applyRes.payload.ok, true)
+
+  const calls = []
+  const agent = {
+    id: 'session-mcp',
+    session: { header: { cwd: f.base } },
+    ctx: {
+      get: (name) => (name === 'tools'
+        ? {
+          restrict(filter) {
+            calls.push(filter)
+            return () => calls.push({ disposed: true })
+          },
+        }
+        : undefined),
+    },
+  }
+  host.emit('agent/created', { agent })
+  await new Promise((resolve) => setTimeout(resolve, 150))
+
+  assert.equal(calls.length, 1, 'the gate installed exactly one restriction')
+  assert.deepEqual(calls[0].deny.sort(), ['mcp__other__deploy', 'mcp__rea__search'].sort())
+  assert.equal(calls[0].deny.includes('read_file'), false, 'ordinary tools are untouched')
+
+  host.emit('agent/disposed', { agent })
+  assert.equal(calls.length, 2, 'disposing the agent lifts the restriction')
+})
+
+test('refreshing when the tool set grows only adds the newly visible tools to the deny list', async () => {
+  const host = fakeHost()
+  const f = await fixture()
+  // 场景要引用一台真实声明的服务器，否则「只留它」会退化成「什么都不留」。
+  await writeFile(join(f.dshHome, 'cordis.patch.yml'), `- insert:
+    - id: rea-mcp
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: rea
+        command: cmd.exe
+`)
+  host.registry.toolSchemas = ['mcp__rea__search']
+  apply(host.ctx, { dshHome: f.dshHome, claudeHome: f.claudeHome, codexHome: f.codexHome, watch: false })
+
+  await host.routes[0].handler(fakeRequest({
+    op: 'scene-save',
+    args: { name: 'only-rea', workspace: f.base, skills: [], mcp: ['rea-mcp'], exclusive: true },
+  }), fakeResponse())
+  await host.routes[0].handler(fakeRequest({
+    op: 'scene-workspace',
+    args: { workspace: f.base, scene: 'only-rea' },
+  }), fakeResponse())
+
+  const calls = []
+  const agent = {
+    id: 'session-grow',
+    session: { header: { cwd: f.base } },
+    ctx: {
+      get: (name) => (name === 'tools'
+        ? { restrict(filter) { calls.push(filter); return () => undefined } }
+        : undefined),
+    },
+  }
+  host.emit('agent/created', { agent })
+  host.agents.push(agent)
+  await new Promise((resolve) => setTimeout(resolve, 150))
+  assert.equal(calls.length, 0, 'the only registered tool belongs to the scene')
+
+  // 另一台服务器连上来了 → tools/change → 重算，只遮它。
+  host.registry.toolSchemas = ['mcp__rea__search', 'mcp__other__deploy']
+  host.emit('tools/change')
+  await new Promise((resolve) => setTimeout(resolve, 300))
+  assert.equal(calls.length, 1)
+  assert.deepEqual(calls[0].deny, ['mcp__other__deploy'])
+})
+

@@ -1,16 +1,20 @@
 /**
- * 场景域视图：场景列表 + 「进入 / 退出」+ 编辑器。
+ * 场景域视图：上半是**场景定义**（可复用），下半是**工作区各自选择用哪个**。
  *
- * 编辑器是三样东西的组合：要启用的技能、要启用的 MCP 服务器、要应用的提示词预设。
- * 技能与服务器的清单都从各自的域读，所以这里不会有一份会漂移的副本。
+ * 这个分工是被用户纠正过的：场景不该在创建时锁死到一个工作区（那样同一个场景没法给
+ * 第二个项目用）。正确的关系是「场景是被选择的，工作区是选择的人」—— 所以列表里不再有
+ * 「未绑定工作区」这种半成品状态，也没有「进入场景」按钮；改由每个工作区那一行去选。
+ *
+ * 会话级的再选择不在这里（面板没有会话上下文）：那是 `/scene` 与「新会话页」的活。
  */
 import { callOp } from '../core/api.js'
-import { h, useStateOf } from '../core/runtime.js'
+import { h, useClientEffect, useStateOf } from '../core/runtime.js'
 import type { DomainProps } from '../core/domain.js'
 import { useDomain, noticeWithWarnings } from '../core/domain.js'
 import type {
   McpStateView,
   PromptState,
+  PromptTargetOption,
   SceneRow,
   ScenesStateView,
   SkillRef,
@@ -35,22 +39,16 @@ import {
   toolbarOf,
 } from '../core/ui.js'
 
-/** 技能行的稳定键。Host 侧用 owIdOf；浏览器侧不能 import Host 代码，这里保持同一格式。 */
+/** 技能行的稳定键。Host 侧用 `rowIdOf`；浏览器侧不能 import Host 代码，这里保持同一格式。 */
 const refKeyOf = (root: string, name: string): string => root + '\u0000' + name
 
 interface Draft {
   name: string
   description: string
   isNew: boolean
-  /** 要启用的技能（白名单）。 */
   skills: SkillRef[]
-  /** 要启用的 MCP 服务器 id（白名单）。 */
   mcp: string[]
   prompt: string
-  /** 提示词作用范围（由预设自己决定，编辑器只负责原样带回去）。 */
-  promptScope: 'global' | 'workspace'
-  promptWorkspace: string
-  /** 整套切换：未选中的关掉。 */
   exclusive: boolean
 }
 
@@ -65,8 +63,25 @@ interface SkillOption {
 interface DraftSources {
   skills: SkillOption[]
   servers: { id: string; name: string; on: boolean }[]
-  presets: string[]
+  presets: PromptState['presets']
 }
+
+/**
+ * 工作区路径是否同一个。
+ *
+ * 这是**宿主 `shared/paths.ts` 的 `samePath` 的镜像**，不是第二套规则：浏览器半侧不能 import
+ * Host 代码（另一个 bundle、另一套运行时），所以只能照抄语义 —— 空串不等于任何路径、
+ * 统一分隔符、盘符路径忽略大小写。改这里必须同时改宿主那一份，否则「界面里选中的工作区」
+ * 与「宿主实际生效的工作区」会不是同一个。
+ */
+function samePath(left: string, right: string): boolean {
+  const norm = (value: string): string => {
+    const slashed = value.trim().replace(/[\\/]+/g, '/').replace(/\/+$/, '')
+    return /^[A-Za-z]:/.test(slashed) ? slashed.toLowerCase() : slashed
+  }
+  return left !== '' && right !== '' && norm(left) === norm(right)
+}
+
 
 export function ScenesView(props: DomainProps): unknown {
   const t = props.t
@@ -75,13 +90,20 @@ export function ScenesView(props: DomainProps): unknown {
   const [skills, setSkills] = useStateOf<SkillStateView | null>(null)
   const [mcp, setMcp] = useStateOf<McpStateView | null>(null)
   const [prompts, setPrompts] = useStateOf<PromptState | null>(null)
+  const [targets, setTargets] = useStateOf<PromptTargetOption[]>([])
   const [draft, setDraft] = useStateOf<Draft | null>(null)
   const [search, setSearch] = useStateOf('')
 
-  /**
-   * 编辑器要的三份清单来自各自的域，所以这里只读它们的状态，不维护副本。
-   * 挂在 draft 打开时才算：不开编辑器就不必付这三个请求。
-   */
+  /** 工作区清单来自宿主的工作区登记表（`prompt-targets` 已经把它吐出来了，复用即可）。 */
+  useClientEffect(() => {
+    void callOp<{ options: PromptTargetOption[] }>('prompt-targets', {})
+      .then((data) => setTargets(data.options ?? []))
+      .catch(() => setTargets([]))
+  }, [])
+
+  const workspaces = targets.filter((option) => option.kind === 'workspace')
+
+  /** 编辑器要的三份清单来自各自的域，所以这里只读它们的状态，不维护副本。 */
   const loadSources = async (): Promise<void> => {
     const [skillState, mcpState, promptState] = await Promise.all([
       callOp<SkillStateView>('state', {}).catch(() => null),
@@ -104,21 +126,51 @@ export function ScenesView(props: DomainProps): unknown {
         on: row.policy.skillOn,
       }))) ?? [],
     servers: mcp?.servers.map((server) => ({ id: server.id, name: server.name, on: server.enabled })) ?? [],
-    presets: prompts?.presets.map((preset) => preset.name) ?? [],
+    presets: prompts?.presets ?? [],
   }
 
   const scenes = state?.scenes ?? []
-  const active = state?.active ?? null
+  const active = state?.active ?? {}
+  const sessions = state?.sessions ?? {}
   const warnings = state?.warnings ?? []
 
+
+  /** 这个场景被多少工作区当作默认、被多少会话自己选中。 */
+  const usageOf = (scene: SceneRow): { workspaces: number; sessions: number } => ({
+    workspaces: Object.values(active).filter((name) => name === scene.name).length,
+    sessions: Object.values(sessions).filter((choice) => choice.scene === scene.name).length,
+  })
+
+  const sessionOverrides = Object.keys(sessions).length
   const badges: unknown[] = []
   if (scenes.length > 0) badges.push(badgeOf(String(scenes.length)))
-  if (active !== null) badges.push(badgeOf(`${t('scenes.active')}: ${active}`, 'ok'))
+  if (Object.keys(active).length > 0) badges.push(badgeOf(`${t('scenes.workspacesUsing')} ${Object.keys(active).length}`, 'ok'))
+  if (sessionOverrides > 0) badges.push(badgeOf(`${t('scenes.sessionsUsing')} ${sessionOverrides}`, 'off'))
 
   const openDraft = (next: Draft): void => {
     setDraft(next)
     void loadSources()
   }
+
+  const openNew = (): void => openDraft({
+    name: '',
+    description: '',
+    isNew: true,
+    skills: [],
+    mcp: [],
+    prompt: '',
+    exclusive: true,
+  })
+
+  const openEdit = (scene: SceneRow): void => openDraft({
+    name: scene.name,
+    description: scene.description,
+    isNew: false,
+    skills: scene.skills.slice(),
+    mcp: scene.mcp.slice(),
+    prompt: scene.prompt ?? '',
+    exclusive: scene.exclusive !== false,
+  })
 
   return h('div', { className: 'dsk-root' },
     headOf({
@@ -133,60 +185,70 @@ export function ScenesView(props: DomainProps): unknown {
 
     toolbarOf([
       actionsOf([
-        buttonOf({
-          label: t('scenes.new'),
-          variant: 'primary',
-          disabled: domain.busy !== '',
-          onClick: () => openDraft({
-            name: '',
-            description: '',
-            isNew: true,
-            skills: [],
-            mcp: [],
-            prompt: '',
-            promptScope: 'global',
-            promptWorkspace: '',
-            exclusive: true,
-          }),
-        }),
-        active === null
-          ? null
-          : buttonOf({
-            label: t('scenes.exit'),
-            disabled: domain.busy !== '',
-            onClick: () => { void domain.act('scene-exit', {}, (result) => noticeWithWarnings(t('scenes.exited'), result)) },
-          }),
+        buttonOf({ label: t('scenes.new'), variant: 'primary', disabled: domain.busy !== '', onClick: openNew }),
       ]),
     ]),
 
     scenes.length === 0
       ? emptyOf(t('scenes.empty'))
-      : listOf(scenes.map((scene) => renderScene(t, scene, {
-        busy: domain.busy,
-        active,
-        onApply: () => {
-          void domain.act(
-            'scene-apply',
-            { name: scene.name },
-            (result) => noticeWithWarnings(t('scenes.applied', { name: scene.name }), result),
-          )
-        },
-        onEdit: () => openDraft({
-          name: scene.name,
-          description: scene.description,
-          isNew: false,
-          skills: scene.skills.slice(),
-          mcp: scene.mcp.slice(),
-          prompt: scene.prompt ?? '',
-          promptScope: scene.promptTarget?.scope === 'workspace' ? 'workspace' : 'global',
-          promptWorkspace: scene.promptTarget?.workspace ?? '',
-          exclusive: scene.exclusive !== false,
-        }),
-        onDelete: () => {
-          if (!window.confirm(t('scenes.confirmDelete', { name: scene.name }))) return
-          void domain.act('scene-delete', { name: scene.name })
-        },
-      }))),
+      : listOf(scenes.map((scene) => {
+        const usage = usageOf(scene)
+        return groupOf(scene.name, [
+          h('span', { className: 'dsk-group-name' }, scene.name),
+          usage.workspaces > 0 ? badgeOf(t('scenes.usedByWorkspaces', { n: usage.workspaces }), 'ok') : null,
+          usage.sessions > 0 ? badgeOf(t('scenes.usedBySessions', { n: usage.sessions }), 'off') : null,
+          scene.skills.length > 0 ? badgeOf(t('scenes.count.skills', { n: scene.skills.length }), 'off') : null,
+          scene.mcp.length > 0 ? badgeOf(t('scenes.count.mcp', { n: scene.mcp.length }), 'off') : null,
+          scene.prompt === null ? null : badgeOf(`${t('scenes.prompt')}: ${scene.prompt}`, 'off'),
+          groupActionsOf([
+            buttonOf({ label: t('scenes.edit'), small: true, disabled: domain.busy !== '', onClick: () => openEdit(scene) }),
+            buttonOf({
+              label: t('scenes.delete'),
+              small: true,
+              variant: 'danger',
+              disabled: domain.busy !== '' || usage.workspaces > 0 || usage.sessions > 0,
+              onClick: () => {
+                if (!window.confirm(t('scenes.confirmDelete', { name: scene.name }))) return
+                void domain.act('scene-delete', { name: scene.name })
+              },
+            }),
+          ]),
+        ], [
+          scene.description === '' ? null : mutedOf(scene.description),
+        ])
+      })),
+
+    /* ── 工作区各自选择用哪个场景 ── */
+    h('div', { className: 'dsk-section' },
+      h('p', { className: 'dsk-section-title' }, t('scenes.byWorkspace')),
+      mutedOf(t('scenes.byWorkspaceHint')),
+      workspaces.length === 0
+        ? mutedOf(t('scenes.noWorkspaces'))
+        : h('div', null, workspaces.map((workspace) => {
+          const key = Object.keys(active).find((candidate) => samePath(candidate, workspace.path))
+          const value = key === undefined ? '' : active[key]
+          return h('div', { className: 'dsk-row', key: workspace.path },
+            h('div', { className: 'dsk-row-main' },
+              h('div', { className: 'dsk-row-name' }, workspace.label),
+              mutedOf(workspace.path)),
+            selectOf({
+              value,
+              options: [
+                { value: '', label: t('scenes.workspaceNone') },
+                ...scenes.map((scene) => ({ value: scene.name, label: scene.name })),
+              ],
+              onChange: (next) => {
+                void domain.act(
+                  'scene-workspace',
+                  { workspace: workspace.path, scene: next === '' ? null : next },
+                  (result) => noticeWithWarnings(
+                    next === '' ? t('scenes.workspaceCleared') : t('scenes.workspaceApplied', { name: next }),
+                    result,
+                  ),
+                )
+              },
+            }))
+        }))),
 
     draft === null
       ? null
@@ -199,51 +261,23 @@ export function ScenesView(props: DomainProps): unknown {
         onSearch: setSearch,
         onCancel: () => setDraft(null),
         onSave: () => {
-          if (draft.name.trim() === '') return
+          if (draft.name.trim() === '') {
+            domain.fail(t('scenes.nameRequired'))
+            return
+          }
           void domain.act('scene-save', {
             name: draft.name.trim(),
             description: draft.description,
             skills: draft.skills,
             mcp: draft.mcp,
             prompt: draft.prompt === '' ? null : draft.prompt,
-            promptTarget: draft.promptScope === 'workspace' && draft.promptWorkspace.trim() !== ''
-              ? { scope: 'workspace', workspace: draft.promptWorkspace.trim() }
-              : { scope: 'global' },
             exclusive: draft.exclusive,
           }, t('common.save')).then((done) => {
             if (done.ok) setDraft(null)
           })
         },
-      }))
-}
-
-function renderScene(
-  t: DomainProps['t'],
-  scene: SceneRow,
-  handlers: {
-    busy: string
-    active: string | null
-    onApply(): void
-    onEdit(): void
-    onDelete(): void
-  },
-): unknown {
-  const isActive = handlers.active === scene.name
-  const disabled = handlers.busy !== ''
-  return groupOf(scene.name, [
-    h('span', { className: 'dsk-group-name' }, scene.name),
-    isActive ? badgeOf(t('scenes.active'), 'ok') : null,
-    scene.skills.length > 0 ? badgeOf(t('scenes.count.skills', { n: scene.skills.length }), 'off') : null,
-    scene.mcp.length > 0 ? badgeOf(t('scenes.count.mcp', { n: scene.mcp.length }), 'off') : null,
-    scene.prompt === null ? null : badgeOf(`${t('scenes.prompt')}: ${scene.prompt}`, 'off'),
-    groupActionsOf([
-      buttonOf({ label: t('scenes.apply'), small: true, disabled: disabled || isActive, onClick: handlers.onApply }),
-      buttonOf({ label: t('scenes.edit'), small: true, disabled, onClick: handlers.onEdit }),
-      buttonOf({ label: t('scenes.delete'), small: true, variant: 'danger', disabled: disabled || isActive, onClick: handlers.onDelete }),
-    ]),
-  ], [
-    scene.description === '' ? null : mutedOf(scene.description),
-  ])
+      })
+  )
 }
 
 function renderDraft(
@@ -266,6 +300,8 @@ function renderDraft(
     : props.sources.skills.filter((row) => row.label.toLowerCase().includes(needle) || row.name.toLowerCase().includes(needle))
   ).slice(0, 120)
   const picked = new Set(draft.skills.map((ref) => refKeyOf(ref.root, ref.name)))
+  const preset = props.sources.presets.find((item) => item.name === draft.prompt)
+  const presetNotWorkspace = preset !== undefined && preset.scope.kind !== 'workspace'
 
   return modalOf(
     draft.isNew ? t('scenes.new') : `${t('scenes.edit')}: ${draft.name}`,
@@ -280,7 +316,7 @@ function renderDraft(
         onChange: (description) => props.onChange({ description }),
       })),
 
-      /* ── 切换行为：先说清楚「进这个场景会做什么」，再列具体勾选 ── */
+      /* ── 切换行为：先说清楚「用这个场景会发生什么」，再列具体勾选 ── */
       h('div', { className: 'dsk-section' },
         h('p', { className: 'dsk-section-title' }, t('scenes.behaviourTitle')),
         h('label', { className: 'dsk-check' },
@@ -299,27 +335,29 @@ function renderDraft(
             value: draft.prompt,
             options: [
               { value: '', label: t('scenes.promptNone') },
-              ...props.sources.presets.map((name) => ({ value: name, label: name })),
+              ...props.sources.presets.map((item) => ({ value: item.name, label: item.name })),
             ],
             onChange: (prompt) => props.onChange({ prompt }),
           }),
-          /* 作用范围由那份预设自己决定，这里只说明，避免让人再选一次。 */
-          draft.prompt === '' ? null : mutedOf(t('scenes.promptScopeFromPreset')))),
-        fieldOf(t('scenes.mcp'), props.sources.servers.length === 0
-          ? mutedOf(t('scenes.noMcp'))
-          : h('div', { className: 'dsk-files' }, props.sources.servers.map((server) => {
-            const checked = draft.mcp.includes(server.id)
-            return h('label', { className: 'dsk-file', key: server.id, style: { cursor: 'pointer' } },
-              h('input', {
-                type: 'checkbox',
-                checked,
-                onChange: () => props.onChange({
-                  mcp: checked ? draft.mcp.filter((id) => id !== server.id) : [...draft.mcp, server.id],
+          draft.prompt === '' ? null : mutedOf(preset?.scope.label ?? t('scenes.promptScopeFromPreset')),
+          presetNotWorkspace ? alertOf(t('scenes.promptScopeNotWorkspace')) : null)),
+        fieldOf(t('scenes.mcp'), h('div', null,
+          mutedOf(t('scenes.mcpGlobal')),
+          props.sources.servers.length === 0
+            ? mutedOf(t('scenes.noMcp'))
+            : h('div', { className: 'dsk-files' }, props.sources.servers.map((server) => {
+              const checked = draft.mcp.includes(server.id)
+              return h('label', { className: 'dsk-file', key: server.id, style: { cursor: 'pointer' } },
+                h('input', {
+                  type: 'checkbox',
+                  checked,
+                  onChange: () => props.onChange({
+                    mcp: checked ? draft.mcp.filter((id) => id !== server.id) : [...draft.mcp, server.id],
+                  }),
                 }),
-              }),
-              server.name,
-              server.on ? null : mutedOf(` (${t('mcp.disabled')})`))
-          }))),
+                server.name,
+                server.on ? null : mutedOf(` (${t('mcp.disabled')})`))
+            })))),
 
         fieldOf(`${t('scenes.skills')} (${draft.skills.length})`, h('div', null,
           inputOf({

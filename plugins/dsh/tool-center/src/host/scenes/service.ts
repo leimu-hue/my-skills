@@ -1,169 +1,214 @@
 /**
- * 场景域：一个场景 = 一次「把这三样拨到一起」的命名组合 —— 启用的 MCP 服务器、启用的技能、
- * 以及要应用的提示词预设（可以指定只对某个工作区生效）。
+ * 场景域：场景是**可复用的定义**，不是某个工作区的私有物。
  *
- * 语义（用户视角，而不是实现视角）：
- *   * 场景记的是**你要用什么**（白名单），不是「你要关什么」；
- *   * `exclusive`（默认开）= 整套切换：没选中的技能与服务器会被关掉。想只「加启用、不动其它」，
- *     把它关掉；
- *   * 应用前先**回滚上一个场景改过的东西**（按记录的「改之前是什么」逐项恢复），
- *     所以场景之间不会互相叠加成「越切越关」，也不会碰你自己手工关掉的技能。
+ *   * 一个场景 = 一批要启用的技能 + 要保留的 MCP 服务器 + 一份提示词预设（+ 是否整套切换）；
+ *   * **每个工作区自己决定用不用它**（`active[工作区] = 场景名`），同一个场景可以被多个
+ *     工作区同时启用；
+ *   * **每个会话还能再选一次**（`sessions[根会话 id]`）：跟随工作区 / 指定某个场景 /
+ *     明确不用。会话层是**整层替代**，不是叠加。
  *
- * 没有「意图 / 运行态 / 租约」那套对账器：应用是一次有起点、有终点的同步操作，记下改了哪些、
- * 原来是什么，就足够精确回滚 —— 也就没有那个每秒自我触发的写循环。
+ * 生效方式（这是它敢这么做的前提）：
+ *   * 技能写进**作用域层**（`state.layers.workspaces['<工作区>']` 与
+ *     `state.layers.sessions['<根会话>']`），全局策略一个字节都不改；
+ *   * MCP 不改配置，只按会话遮工具（见 `scenes/gate.ts`）；
+ *   * 提示词按预设自己的作用范围落地 —— 只认绑定该工作区的预设。**提示词没有会话级**：
+ *     `AGENTS.md` 是文件、宿主按目录读，按会话开关不了；所以会话选择只覆盖技能与 MCP 工具。
+ *
+ * 层是**物化**的（写进状态文件），所以场景定义、工作区映射或会话选择一变就要重新物化
+ * （`reconcileSessionLayers`），否则会话会停在旧场景上。
  */
-import { join } from 'node:path'
+import { isAbsolute, join, resolve, sep } from 'node:path'
 import type { SkillService } from '../skills/service.js'
-import type { SkillRef } from '../shared/types.js'
+import type { SkillLayer, SkillRef, SkillRow } from '../shared/types.js'
 import { allRows } from '../skills/view.js'
-import { rowIdOf, skillRefsOf } from '../skills/policy.js'
-import { loadMcp, setMcpEnabled } from '../mcp/service.js'
+import { rowMatchesRef, skillRefsOf } from '../skills/policy.js'
+import { loadMcp } from '../mcp/service.js'
 import { DomainError, describe } from '../shared/result.js'
 import { isRecord } from '../shared/json.js'
-import { loadPrompts, promptTargetOf, setPresetEnabled } from '../prompts/service.js'
+import { loadPrompts, promptTargetOf, readPreset, setPresetEnabled } from '../prompts/service.js'
 import { readTextOrNull } from '../shared/fs.js'
-import { writeFileAtomic } from '../shared/paths.js'
-
-/** 场景里提示词的目标：全局，或某个工作区。 */
-export interface ScenePromptTarget {
-  scope: 'global' | 'workspace'
-  workspace?: string
-}
+import { samePath, writeFileAtomic } from '../shared/paths.js'
 
 export interface Scene {
   name: string
   description: string
   /** 要**启用**的技能（白名单）。 */
   skills: SkillRef[]
-  /** 要**启用**的 MCP 服务器 id（白名单）。 */
+  /** 要保留的 MCP 服务器 id（其余服务器的工具在该场景里被遮掉）。 */
   mcp: string[]
   /** 要应用的提示词预设；null = 不碰提示词。 */
   prompt: string | null
-  /** 提示词应用到哪：默认全局。 */
-  promptTarget: ScenePromptTarget
-  /** 整套切换：未选中的技能与服务器关掉。默认 true。 */
+  /** 整套切换：该作用域里未选中的技能挡掉。默认 true。 */
   exclusive: boolean
   createdAt: number
   updatedAt: number
 }
 
-/** 「应用时改过的东西 + 改之前的状态」，用于精确回滚。 */
+/** 一个会话自己的选择。`scene: null` = 明确不用（压过工作区默认）。 */
+export interface SessionChoice {
+  scene: string | null
+  /** 选的时候所在的工作区（重新物化层时要用它算行）。 */
+  workspace: string
+  at: number
+}
+
+/** 进入场景时提示词那一步改了什么，用于退出 / 换场景时恢复。 */
+interface PromptSnapshot {
+  targetKey: string
+  previousPreset: string | null
+}
+
 interface AppliedSnapshot {
   scene: string
   at: number
-  skills: { root: string; name: string; wasOn: boolean }[]
-  mcp: { id: string; wasOn: boolean }[]
-  /** 应用提示词之前，那个目标上是哪份预设（null = 当时没有）。 */
-  promptBefore: { targetKey: string; previousPreset: string | null } | null
+  promptBefore: PromptSnapshot | null
 }
 
 interface ScenesDocument {
-  version: 2
+  version: 4
   scenes: Scene[]
-  active: string | null
-  applied: AppliedSnapshot | null
+  /** 工作区路径 → 该工作区默认用哪个场景。 */
+  active: Record<string, string>
+  /** 根会话 id → 这个会话自己的选择。 */
+  sessions: Record<string, SessionChoice>
+  /** 工作区 → 提示词快照（只有提示词需要回滚；技能层整层替换 / 删除）。 */
+  applied: Record<string, AppliedSnapshot>
 }
 
 export interface ScenesState {
   scenes: Scene[]
-  active: string | null
+  active: Record<string, string>
+  sessions: Record<string, SessionChoice>
   warnings: string[]
   path: string
 }
 
-/** 回滚统计（报告与「是否有变化」都用它）。 */
-export interface Reverted {
-  skills: number
-  mcp: number
-  prompt: boolean
-}
-
 export interface SceneApplyReport {
-  scene: string
+  scene: string | null
+  workspace: string
+  session: string | null
   changed: boolean
-  reverted: Reverted
+  /** 被替换掉的上一个场景。 */
+  replaced: string | null
   applied: { skills: number; mcp: number; prompt: string | null }
   warnings: string[]
 }
 
 const SCENES_NAME = 'scenes.json'
-const NO_REVERT: Reverted = { skills: 0, mcp: 0, prompt: false }
+const WS_PREFIX = 'ws:'
+const SS_PREFIX = 'ss:'
 
-function scenesPathOf(dshHome: string): string {
-  return join(dshHome, 'tool-center', SCENES_NAME)
-}
+const scenesPathOf = (dshHome: string): string => join(dshHome, 'tool-center', SCENES_NAME)
 
 function emptyDocument(): ScenesDocument {
-  return { version: 2, scenes: [], active: null, applied: null }
+  return { version: 4, scenes: [], active: {}, sessions: {}, applied: {} }
 }
 
-function normaliseTargetInput(value: unknown): ScenePromptTarget {
-  if (!isRecord(value)) return { scope: 'global' }
-  const record = value as Record<string, unknown>
-  const workspace = typeof record.workspace === 'string' ? record.workspace.trim() : ''
-  if (record.scope === 'workspace' && workspace !== '') return { scope: 'workspace', workspace }
-  return { scope: 'global' }
+/**
+ * 工作区路径的规范写法：绝对路径、去尾部分隔符。不改变大小写（它也是界面标签的一部分）。
+ */
+export function normaliseWorkspace(value: string): string {
+  const trimmed = value.trim()
+  if (trimmed === '') return ''
+  if (!isAbsolute(trimmed)) return ''
+  const resolved = resolve(trimmed)
+  return resolved.length > 1 && resolved.endsWith(sep) ? resolved.slice(0, -1) : resolved
 }
 
-function normaliseSceneDocument(value: unknown): ScenesDocument {
+
+/**
+ * 场景里的服务器引用能不能对上这一台。
+ *
+ * 场景存的是 patch 行的 `id`，但手写 / 迁移来的数据可能写 `serverName` —— 两个都认，
+ * 且只在这一处认：`mcpNotes`（声明 / 停用检查）与工具闸门必须用同一条规则，否则会被
+ * 「勾了但没生效 / 没勾却没被遮」这种自相矛盾咬到。
+ */
+export function serverMatches(server: { id: string; serverName: string }, wanted: string): boolean {
+  return server.id === wanted || (server.serverName !== '' && server.serverName === wanted)
+}
+
+function normaliseScene(raw: Record<string, unknown>): Scene | null {
+  const name = typeof raw.name === 'string' ? raw.name.trim() : ''
+  if (name === '') return null
+  return {
+    name,
+    description: typeof raw.description === 'string' ? raw.description : '',
+    skills: skillRefsOf(raw.skills),
+    mcp: Array.isArray(raw.mcp) ? raw.mcp.filter((id): id is string => typeof id === 'string') : [],
+    prompt: typeof raw.prompt === 'string' && raw.prompt !== '' ? raw.prompt : null,
+    // v1 的「关闭清单」语义没有 exclusive 字段；按白名单读进来后默认整套切换。
+    exclusive: raw.exclusive !== false,
+    createdAt: typeof raw.createdAt === 'number' ? raw.createdAt : Date.now(),
+    updatedAt: typeof raw.updatedAt === 'number' ? raw.updatedAt : Date.now(),
+  }
+}
+
+function normaliseDocument(value: unknown): ScenesDocument {
   const document = emptyDocument()
   if (!isRecord(value)) return document
   const record = value as Record<string, unknown>
+
   if (Array.isArray(record.scenes)) {
     for (const item of record.scenes) {
       if (!isRecord(item)) continue
-      const scene = item as Record<string, unknown>
-      const name = typeof scene.name === 'string' ? scene.name.trim() : ''
-      if (name === '') continue
-      document.scenes.push({
-        name,
-        description: typeof scene.description === 'string' ? scene.description : '',
-        skills: skillRefsOf(scene.skills),
-        mcp: Array.isArray(scene.mcp) ? scene.mcp.filter((id): id is string => typeof id === 'string') : [],
-        prompt: typeof scene.prompt === 'string' && scene.prompt !== '' ? scene.prompt : null,
-        promptTarget: normaliseTargetInput(scene.promptTarget),
-        // v1 的「关闭清单」语义没有 exclusive 字段；按白名单读进来后默认整套切换。
-        exclusive: scene.exclusive !== false,
-        createdAt: typeof scene.createdAt === 'number' ? scene.createdAt : Date.now(),
-        updatedAt: typeof scene.updatedAt === 'number' ? scene.updatedAt : Date.now(),
-      })
+      const scene = normaliseScene(item as Record<string, unknown>)
+      if (scene !== null) document.scenes.push(scene)
     }
   }
-  document.active = typeof record.active === 'string' && record.active !== '' ? record.active : null
+  const byName = new Map(document.scenes.map((scene) => [scene.name, scene] as const))
+
+  if (isRecord(record.active)) {
+    for (const [workspace, scene] of Object.entries(record.active)) {
+      if (typeof scene !== 'string' || scene === '') continue
+      const key = normaliseWorkspace(workspace)
+      if (key === '' || !byName.has(scene)) continue
+      document.active[key] = scene
+    }
+  }
+
+  if (isRecord(record.sessions)) {
+    for (const [sessionId, choice] of Object.entries(record.sessions)) {
+      if (sessionId === '' || !isRecord(choice)) continue
+      const entry = choice as Record<string, unknown>
+      const scene = typeof entry.scene === 'string' && entry.scene !== '' ? entry.scene : null
+      if (scene !== null && !byName.has(scene)) continue
+      document.sessions[sessionId] = {
+        scene,
+        workspace: typeof entry.workspace === 'string' ? normaliseWorkspace(entry.workspace) : '',
+        at: typeof entry.at === 'number' ? entry.at : Date.now(),
+      }
+    }
+  }
+
+  // v3：场景自己带 workspace（一个场景锁死一个项目）。迁移成「那个工作区的默认场景」。
+  if (record.version === 3 && Array.isArray(record.scenes)) {
+    for (const item of record.scenes) {
+      if (!isRecord(item)) continue
+      const name = typeof item.name === 'string' ? item.name.trim() : ''
+      const legacy = typeof item.workspace === 'string' ? normaliseWorkspace(item.workspace) : ''
+      if (name === '' || legacy === '' || !byName.has(name)) continue
+      if (document.active[legacy] === undefined) document.active[legacy] = name
+    }
+  }
+
   if (isRecord(record.applied)) {
-    const applied = record.applied as Record<string, unknown>
-    const promptBefore = applied.promptBefore
-    document.applied = {
-      scene: typeof applied.scene === 'string' ? applied.scene : '',
-      at: typeof applied.at === 'number' ? applied.at : Date.now(),
-      skills: Array.isArray(applied.skills)
-        ? applied.skills.filter((ref): ref is { root: string; name: string; wasOn: boolean } =>
-          isRecord(ref)
-          && typeof ref.root === 'string'
-          && typeof ref.name === 'string'
-          && typeof ref.wasOn === 'boolean')
-        : [],
-      mcp: Array.isArray(applied.mcp)
-        ? applied.mcp.filter((entry): entry is { id: string; wasOn: boolean } =>
-          isRecord(entry)
-          && typeof entry.id === 'string'
-          && typeof entry.wasOn === 'boolean')
-        : [],
-      // 旧文档用过 `key` / `preset` 两个名字，读的时候一并认下来。
-      promptBefore: isRecord(promptBefore)
-        ? {
-          targetKey: String(
-            (promptBefore as { targetKey?: unknown }).targetKey
-            ?? (promptBefore as { key?: unknown }).key
-            ?? 'global',
-          ),
-          previousPreset: typeof (promptBefore as { previousPreset?: unknown }).previousPreset === 'string'
-            ? String((promptBefore as { previousPreset?: unknown }).previousPreset)
-            : (typeof (promptBefore as { preset?: unknown }).preset === 'string'
-              ? String((promptBefore as { preset?: unknown }).preset)
-              : null),
-        }
-        : null,
+    for (const [workspace, snapshot] of Object.entries(record.applied)) {
+      const key = normaliseWorkspace(workspace)
+      if (key === '' || !isRecord(snapshot)) continue
+      const entry = snapshot as Record<string, unknown>
+      const promptBefore = entry.promptBefore
+      document.applied[key] = {
+        scene: typeof entry.scene === 'string' ? entry.scene : '',
+        at: typeof entry.at === 'number' ? entry.at : Date.now(),
+        promptBefore: isRecord(promptBefore)
+          ? {
+            targetKey: String((promptBefore as Record<string, unknown>).targetKey ?? 'global'),
+            previousPreset: typeof (promptBefore as Record<string, unknown>).previousPreset === 'string'
+              ? String((promptBefore as Record<string, unknown>).previousPreset)
+              : null,
+          }
+          : null,
+      }
     }
   }
   return document
@@ -174,7 +219,7 @@ async function readDocument(dshHome: string): Promise<{ document: ScenesDocument
   const raw = await readTextOrNull(scenesPathOf(dshHome))
   if (raw === null || raw === '') return { document: emptyDocument(), warnings: [] }
   try {
-    return { document: normaliseSceneDocument(JSON.parse(raw)), warnings: [] }
+    return { document: normaliseDocument(JSON.parse(raw)), warnings: [] }
   } catch {
     return { document: emptyDocument(), warnings: ['场景文件不是合法 JSON，本次按空场景继续'] }
   }
@@ -186,7 +231,50 @@ async function writeDocument(dshHome: string, document: ScenesDocument): Promise
 
 export async function loadScenes(dshHome: string): Promise<ScenesState> {
   const { document, warnings } = await readDocument(dshHome)
-  return { scenes: document.scenes, active: document.active, warnings, path: scenesPathOf(dshHome) }
+  return {
+    scenes: document.scenes,
+    active: document.active,
+    sessions: document.sessions,
+    warnings,
+    path: scenesPathOf(dshHome),
+  }
+}
+
+/**
+ * 在一张「工作区 → 值」的表里找出这个工作区已有的键。
+ *
+ * 为什么不能直接 `table[workspace]`：键是写盘时的原样路径（保留大小写），而宿主的登记表
+ * 与不同入口给的路径大小写可能不同 —— Windows 上 `D:\Repo` 与 `d:\repo` 是同一个目录，
+ * 直接拿字符串当键会存出两条互相不认识的记录。比较统一走 `samePath`（resolve + 平台大小写）。
+ */
+function keyOfWorkspace(table: Record<string, unknown>, workspace: string): string | undefined {
+  const target = normaliseWorkspace(workspace)
+  if (target === '') return undefined
+  return Object.keys(table).find((key) => samePath(key, target))
+}
+
+/** 这个工作区里默认用哪个场景。 */
+export function workspaceSceneOf(state: ScenesState, workspace: string): string | null {
+  const key = keyOfWorkspace(state.active, workspace)
+  return key === undefined ? null : (state.active[key] ?? null)
+}
+
+/**
+ * 某个会话最终用哪个场景，以及这个答案是谁给的。
+ *
+ * 会话自己的选择优先（`null` = 明确不用）；没有选择时跟随工作区；两者都没有就是不用。
+ */
+export function effectiveSceneOf(
+  state: ScenesState,
+  workspace: string,
+  sessionId?: string,
+): { name: string | null; source: 'session' | 'workspace' | 'none' } {
+  if (typeof sessionId === 'string' && sessionId !== '') {
+    const choice = state.sessions[sessionId]
+    if (choice !== undefined) return { name: choice.scene, source: 'session' }
+  }
+  const name = workspaceSceneOf(state, workspace)
+  return name === null ? { name: null, source: 'none' } : { name, source: 'workspace' }
 }
 
 export async function saveScene(dshHome: string, scene: {
@@ -195,12 +283,12 @@ export async function saveScene(dshHome: string, scene: {
   skills?: SkillRef[]
   mcp?: string[]
   prompt?: string | null
-  promptTarget?: unknown
   exclusive?: boolean
 }): Promise<Scene> {
   const name = scene.name.trim()
   if (name === '') throw new DomainError('error.scene.name', '场景名不能为空')
   if (name.length > 64) throw new DomainError('error.scene.name', '场景名最多 64 个字符')
+
   const { document } = await readDocument(dshHome)
   const existing = document.scenes.find((item) => item.name === name)
   const now = Date.now()
@@ -210,7 +298,6 @@ export async function saveScene(dshHome: string, scene: {
     skills: scene.skills ?? existing?.skills ?? [],
     mcp: scene.mcp ?? existing?.mcp ?? [],
     prompt: scene.prompt === undefined ? (existing?.prompt ?? null) : scene.prompt,
-    promptTarget: scene.promptTarget === undefined ? (existing?.promptTarget ?? { scope: 'global' }) : normaliseTargetInput(scene.promptTarget),
     exclusive: scene.exclusive === undefined ? (existing?.exclusive ?? true) : scene.exclusive === true,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
@@ -222,8 +309,13 @@ export async function saveScene(dshHome: string, scene: {
 
 export async function deleteScene(dshHome: string, name: string): Promise<void> {
   const { document } = await readDocument(dshHome)
-  if (document.active === name) {
-    throw new DomainError('error.scene.active', `「${name}」正在生效，先切到别的场景或退出再删`)
+  const usedBy = Object.entries(document.active).find(([, scene]) => scene === name)
+  if (usedBy !== undefined) {
+    throw new DomainError('error.scene.inUse', `「${name}」正在工作区 ${usedBy[0]} 使用，先在那里换成别的场景`)
+  }
+  const usedBySession = Object.entries(document.sessions).find(([, choice]) => choice.scene === name)
+  if (usedBySession !== undefined) {
+    throw new DomainError('error.scene.inUse', `会话 ${usedBySession[0]} 正在使用「${name}」，先退出再删`)
   }
   const before = document.scenes.length
   document.scenes = document.scenes.filter((item) => item.name !== name)
@@ -231,138 +323,276 @@ export async function deleteScene(dshHome: string, name: string): Promise<void> 
   await writeDocument(dshHome, document)
 }
 
-/** 把快照里的东西恢复成「应用之前」的样子。 */
-async function revertSnapshot(
+/**
+ * 把场景的白名单翻成一层技能策略，并告诉调用方真正命中了多少条。
+ *
+ * 整套切换用**白名单模式**（`whitelist: true`），而不是把未选中的名字逐条写进
+ * `hiddenSkills`：后者等于给场景拍一张快照，之后新装的技能会悄悄漏进场景；白名单是规则。
+ */
+export function layerOf(scene: Scene, rows: SkillRow[]): { layer: SkillLayer | null; hitCount: number } {
+  const enabledSkills: Record<string, string[]> = {}
+  let hitCount = 0
+  for (const row of rows) {
+    if (row.shadowed) continue
+    if (!scene.skills.some((ref) => rowMatchesRef(row, ref))) continue
+    ;(enabledSkills[row.rootKey] ??= []).push(row.name)
+    hitCount += 1
+  }
+  const layer: SkillLayer = {}
+  if (Object.keys(enabledSkills).length > 0) layer.enabledSkills = enabledSkills
+  if (scene.exclusive) layer.whitelist = true
+  if (Object.keys(layer).length === 0) return { layer: null, hitCount }
+  return { layer, hitCount }
+}
+
+/** 「明确不用」在技能层的表示：整层白名单但一条都不留。 */
+const NOTHING_LAYER: SkillLayer = { whitelist: true }
+
+/** 这个工作区的技能行（按工作区作用域算，不受会话层影响）。 */
+async function rowsOf(service: SkillService, workspace: string): Promise<SkillRow[]> {
+  return allRows(await service.view(workspace, `${WS_PREFIX}${workspace}`))
+}
+
+/** 算某个场景在某个工作区该物化成哪一层。 */
+async function layerFor(
   dshHome: string,
   service: SkillService,
-  snapshot: AppliedSnapshot,
-): Promise<{ reverted: Reverted; warnings: string[] }> {
-  const reverted: Reverted = { skills: 0, mcp: 0, prompt: false }
-  const warnings: string[] = []
-
-  if (snapshot.skills.length > 0) {
-    const restored = await service.restoreSkills(
-      snapshot.skills.map((ref) => ({ root: ref.root, name: ref.name, enabled: ref.wasOn })),
-    )
-    if (restored.ok !== true) throw new DomainError('error.scene.restore', String(restored.error ?? '恢复技能失败'))
-    reverted.skills = (restored.data as { updated?: number } | undefined)?.updated ?? 0
-  }
-
-  for (const entry of snapshot.mcp) {
-    try {
-      const result = await setMcpEnabled(dshHome, entry.id, entry.wasOn)
-      if (result.changed) reverted.mcp += 1
-    } catch (cause) {
-      warnings.push(`恢复 MCP「${entry.id}」失败：${describe(cause)}`)
-    }
-  }
-
-  if (snapshot.promptBefore !== null) {
-    const before = snapshot.promptBefore
-    try {
-      // 先停用这个目标上当前生效的那份，再恢复成之前的（可能本来就没有）。
-      const current = (await loadPrompts(dshHome)).applied.find((record) => record.key === before.targetKey)
-      if (current !== undefined) await setPresetEnabled(dshHome, current.preset, false)
-      if (before.previousPreset !== null) await setPresetEnabled(dshHome, before.previousPreset, true)
-      reverted.prompt = true
-    } catch (cause) {
-      warnings.push(`恢复提示词失败：${describe(cause)}`)
-    }
-  }
-  return { reverted, warnings }
+  workspace: string,
+  sceneName: string,
+): Promise<SkillLayer | null> {
+  const { document } = await readDocument(dshHome)
+  const scene = document.scenes.find((item) => item.name === sceneName)
+  if (scene === undefined) return NOTHING_LAYER
+  return layerOf(scene, await rowsOf(service, workspace)).layer
 }
 
 /**
- * 应用一个场景：先按记录回滚上一个场景，再按白名单把这个场景拨上去。
+ * 把上一个场景留下的提示词恢复回去。
  *
- * 顺序是「先回滚、后应用」：两个场景都启用同一台服务器时，回滚会先按旧状态恢复、应用再设成
- * 新状态，结果正确；反过来会把刚设好的又改掉。
+ * 只在「这个目标上现在生效的仍然是它当初应用的那份」时才停用：用户进入场景后手工换了
+ * 一份预设，退出场景不该把他换的那份也撤掉。
  */
-export async function applyScene(dshHome: string, service: SkillService, cwd: string | undefined, name: string): Promise<SceneApplyReport> {
-  const { document } = await readDocument(dshHome)
-  const scene = document.scenes.find((item) => item.name === name)
-  if (scene === undefined) throw new DomainError('error.scene.notFound', `场景不存在：${name}`)
-  const warnings: string[] = []
-
-  // ① 回滚上一个场景（同一个场景重入时不必回滚自己）。
-  let reverted: Reverted = NO_REVERT
-  if (document.applied !== null && document.applied.scene !== name) {
-    const undone = await revertSnapshot(dshHome, service, document.applied)
-    reverted = undone.reverted
-    warnings.push(...undone.warnings)
-  }
-
-  // ② 按白名单拨技能：算清要开 / 要关，然后各走一次批量写（不是一条一次写盘）。
-  const rows = allRows(await service.view(cwd)).filter((row) => !row.shadowed && row.rootWritable)
-  const selected = new Set(scene.skills.map((ref) => rowIdOf(ref.root, ref.name)))
-  const toEnable: SkillRef[] = []
-  const toDisable: SkillRef[] = []
-  const touched: AppliedSnapshot['skills'] = []
-  for (const row of rows) {
-    const wasOn = row.policy.skillOn
-    const wanted = selected.has(rowIdOf(row.rootKey, row.name)) ? true : (scene.exclusive ? false : wasOn)
-    if (wanted === wasOn) continue
-    touched.push({ root: row.rootKey, name: row.name, wasOn })
-    if (wanted) toEnable.push({ root: row.rootKey, name: row.name })
-    else toDisable.push({ root: row.rootKey, name: row.name })
-  }
-  if (toEnable.length > 0) await service.setAll(toEnable, true, cwd)
-  if (toDisable.length > 0) await service.setAll(toDisable, false, cwd)
-  const applied = { skills: toEnable.length + toDisable.length, mcp: 0, prompt: null as string | null }
-
-  // ③ MCP 服务器：同样按白名单。
-  const mcpState = await loadMcp(dshHome).catch(() => null)
-  const touchedMcp: AppliedSnapshot['mcp'] = []
-  if (mcpState !== null) {
-    const wanted = new Set(scene.mcp)
-    for (const server of mcpState.servers) {
-      const target = wanted.has(server.id) ? true : (scene.exclusive ? false : server.enabled)
-      if (target === server.enabled) continue
-      try {
-        const result = await setMcpEnabled(dshHome, server.id, target)
-        if (!result.changed) continue
-        touchedMcp.push({ id: server.id, wasOn: server.enabled })
-        applied.mcp += 1
-      } catch (cause) {
-        warnings.push(`设置 MCP「${server.name}」失败：${describe(cause)}`)
-      }
+async function revertPrompt(
+  dshHome: string,
+  snapshot: PromptSnapshot | null,
+  expectedPreset: string | null,
+  warnings: string[],
+): Promise<boolean> {
+  if (snapshot === null) return false
+  try {
+    const applied = (await loadPrompts(dshHome)).applied.find((record) => record.key === snapshot.targetKey)
+    if (applied !== undefined && (expectedPreset === null || applied.preset === expectedPreset)) {
+      await setPresetEnabled(dshHome, applied.preset, false)
     }
-  }
-
-  // ④ 提示词：预设自带作用范围，所以这里只需知道「它落在哪个目标」，并记下那个目标原来是谁。
-  let promptBefore: AppliedSnapshot['promptBefore'] = null
-  if (scene.prompt !== null) {
-    try {
-      const { targetKey, appliedPreset } = await promptTargetOf(dshHome, scene.prompt)
-      promptBefore = { targetKey, previousPreset: appliedPreset }
-      const result = await setPresetEnabled(dshHome, scene.prompt, true)
-      if (result.changed) applied.prompt = scene.prompt
-    } catch (cause) {
-      warnings.push(`应用提示词「${scene.prompt}」失败：${describe(cause)}`)
+    if (snapshot.previousPreset !== null) {
+      await setPresetEnabled(dshHome, snapshot.previousPreset, true)
     }
+    return true
+  } catch (cause) {
+    warnings.push(`恢复提示词失败：${describe(cause)}`)
+    return false
   }
-
-  document.active = name
-  document.applied = { scene: name, at: Date.now(), skills: touched, mcp: touchedMcp, promptBefore }
-  await writeDocument(dshHome, document)
-
-  const changed = applied.skills > 0 || applied.mcp > 0 || applied.prompt !== null
-    || reverted.skills > 0 || reverted.mcp > 0 || reverted.prompt
-  return { scene: name, changed, reverted, applied, warnings }
 }
 
-/** 退出场景：按记录把上一个场景改过的东西恢复，并清空 active。 */
-export async function exitScene(dshHome: string, service: SkillService): Promise<{ reverted: Reverted; warnings: string[] }> {
-  const { document } = await readDocument(dshHome)
-  let reverted: Reverted = NO_REVERT
-  const warnings: string[] = []
-  if (document.applied !== null) {
-    const undone = await revertSnapshot(dshHome, service, document.applied)
-    reverted = undone.reverted
-    warnings.push(...undone.warnings)
+/** 应用提示词：只对「作用范围就是这个工作区」的预设生效。 */
+async function applyPrompt(
+  dshHome: string,
+  scene: Scene | undefined,
+  workspace: string,
+  warnings: string[],
+): Promise<{ before: PromptSnapshot | null; applied: string | null; changed: boolean }> {
+  if (scene === undefined || scene.prompt === null) return { before: null, applied: null, changed: false }
+  try {
+    await readPreset(dshHome, scene.prompt)
+    const { targetKey, appliedPreset } = await promptTargetOf(dshHome, scene.prompt)
+    if (targetKey !== `${WS_PREFIX}${workspace}`) {
+      warnings.push(
+        `提示词「${scene.prompt}」的作用范围是 ${targetKey === 'global' ? '全局' : targetKey.slice(WS_PREFIX.length)}，`
+        + '不随工作区隔离，本次已跳过（把它改成绑定本工作区的预设才能进场景）',
+      )
+      return { before: null, applied: null, changed: false }
+    }
+    const before: PromptSnapshot = { targetKey, previousPreset: appliedPreset === scene.prompt ? null : appliedPreset }
+    const result = await setPresetEnabled(dshHome, scene.prompt, true)
+    return { before, applied: result.changed ? scene.prompt : null, changed: result.changed }
+  } catch (cause) {
+    warnings.push(`应用提示词「${scene.prompt}」失败：${describe(cause)}`)
+    return { before: null, applied: null, changed: false }
   }
-  document.active = null
-  document.applied = null
+}
+
+/** MCP 的两条真实限制（工具由 gate 遮，配置不动）。 */
+async function mcpNotes(dshHome: string, scene: Scene): Promise<string[]> {
+  const notes: string[] = []
+  if (!scene.exclusive) {
+    notes.push('MCP 勾选需要配合「整套切换」：工具层只能做减法，非整套切换时不会新增也不会遮蔽')
+  }
+  try {
+    const servers = (await loadMcp(dshHome)).servers
+    const missing = scene.mcp.filter((wanted) => !servers.some((server) => serverMatches(server, wanted)))
+    if (missing.length > 0) notes.push(`MCP 服务器 ${missing.join('、')} 在宿主里没有声明，场景无法引用它`)
+    const disabled = scene.mcp.filter((wanted) => servers.some((server) => serverMatches(server, wanted) && !server.enabled))
+    if (disabled.length > 0) {
+      notes.push(`MCP 服务器 ${disabled.join('、')} 在宿主里没有启用：工作区场景不会替你启动它，先在 MCP 页启用`)
+    }
+  } catch {
+    /* 读不到 patch 就不多说什么 */
+  }
+  return notes
+}
+
+/**
+ * 为某个工作区选择场景（`null` = 这个工作区不用场景）。
+ *
+ * 工作区这一档同时管技能层与提示词；MCP 工具由 gate 按会话实时算，这里不碰。
+ */
+export async function setWorkspaceScene(
+  dshHome: string,
+  service: SkillService,
+  workspace: string,
+  sceneName: string | null,
+): Promise<SceneApplyReport> {
+  const target = normaliseWorkspace(workspace)
+  if (target === '') throw new DomainError('error.scene.workspace', '先选一个具体的工作区（绝对路径）')
+
+  const { document, warnings: readWarnings } = await readDocument(dshHome)
+  const warnings = [...readWarnings]
+  const scene = sceneName === null ? undefined : document.scenes.find((item) => item.name === sceneName)
+  if (sceneName !== null && scene === undefined) throw new DomainError('error.scene.notFound', `场景不存在：${sceneName}`)
+
+  // 同一个工作区可能以不同大小写被记录过：按已有键读写，避免存出两条互不相认的记录。
+  const activeKey = keyOfWorkspace(document.active, target) ?? target
+  const previousName = document.active[activeKey] ?? null
+  if (previousName === sceneName) {
+    return {
+      scene: sceneName,
+      workspace: target,
+      session: null,
+      changed: false,
+      replaced: null,
+      applied: { skills: scene?.skills.length ?? 0, mcp: scene?.mcp.length ?? 0, prompt: null },
+      warnings,
+    }
+  }
+
+  // ① 技能：整层写入（按这个工作区的行算白名单）。
+  const rows = await rowsOf(service, target)
+  const { layer, hitCount } = scene === undefined ? { layer: null, hitCount: 0 } : layerOf(scene, rows)
+  if (scene !== undefined && hitCount < scene.skills.length) {
+    warnings.push(`场景里有 ${scene.skills.length - hitCount} 条技能已经不在这个工作区里，本次只生效了 ${hitCount} 条`)
+  }
+  const written = await service.setLayer(`${WS_PREFIX}${target}`, layer)
+  if (written.ok !== true) throw new DomainError('error.scene.layer', String(written.error ?? '写入工作区技能层失败'))
+  const layerChanged = (written.data as { changed?: boolean } | undefined)?.changed === true
+
+  // ② 提示词：先撤旧的，再应用新的。
+  const appliedKey = keyOfWorkspace(document.applied, target) ?? target
+  const previousSnapshot = document.applied[appliedKey]?.promptBefore ?? null
+  const previousScene = previousName === null ? undefined : document.scenes.find((item) => item.name === previousName)
+  const reverted = await revertPrompt(dshHome, previousSnapshot, previousScene?.prompt ?? null, warnings)
+  const prompt = await applyPrompt(dshHome, scene, target, warnings)
+
+  // ③ 记账。
+  if (sceneName === null) delete document.active[target]
+  else document.active[target] = sceneName
+  if (prompt.before === null) delete document.applied[target]
+  else document.applied[target] = { scene: sceneName ?? '', at: Date.now(), promptBefore: prompt.before }
   await writeDocument(dshHome, document)
-  return { reverted, warnings }
+
+  // ④ 跟随工作区的会话要跟着重算；有自己选择的会话不动。
+  await reconcileSessionLayers(dshHome, service, warnings)
+
+  if (scene !== undefined) warnings.push(...await mcpNotes(dshHome, scene))
+  if (previousName !== null && !reverted && previousScene?.prompt != null) {
+    warnings.push('上一个场景没有留下可恢复的提示词（可能已被外部改动）')
+  }
+
+  return {
+    scene: sceneName,
+    workspace: target,
+    session: null,
+    changed: layerChanged || prompt.changed || previousName !== sceneName,
+    replaced: previousName,
+    applied: { skills: hitCount, mcp: scene?.mcp.length ?? 0, prompt: prompt.applied },
+    warnings,
+  }
+}
+
+/** 会话自己的选择：`undefined` = 跟随工作区，`null` = 明确不用，名字 = 用这个场景。 */
+export async function setSessionScene(
+  dshHome: string,
+  service: SkillService,
+  sessionId: string,
+  workspace: string,
+  sceneName: string | null | undefined,
+): Promise<SceneApplyReport> {
+  const id = sessionId.trim()
+  if (id === '') throw new DomainError('error.scene.session', '缺少会话标识，无法设置会话级场景')
+  const target = normaliseWorkspace(workspace)
+  if (target === '') throw new DomainError('error.scene.workspace', '会话没有工作区目录，场景无法使用')
+
+  const { document, warnings } = await readDocument(dshHome)
+  const scene = typeof sceneName === 'string' ? document.scenes.find((item) => item.name === sceneName) : undefined
+  if (typeof sceneName === 'string' && scene === undefined) {
+    throw new DomainError('error.scene.notFound', `场景不存在：${sceneName}`)
+  }
+
+  const rows = await rowsOf(service, target)
+  // 「跟随工作区」= 删掉会话层；「明确不用」= 白名单但一条不留；否则就是那个场景的层。
+  const layer = sceneName === undefined
+    ? null
+    : (sceneName === null
+      ? NOTHING_LAYER
+      : (scene === undefined ? NOTHING_LAYER : (layerOf(scene, rows).layer ?? NOTHING_LAYER)))
+  const written = await service.setLayer(`${SS_PREFIX}${id}`, layer)
+  if (written.ok !== true) throw new DomainError('error.scene.layer', String(written.error ?? '写入会话技能层失败'))
+  const layerChanged = (written.data as { changed?: boolean } | undefined)?.changed === true
+
+  if (sceneName === undefined) delete document.sessions[id]
+  else document.sessions[id] = { scene: sceneName, workspace: target, at: Date.now() }
+  await writeDocument(dshHome, document)
+
+  const appliedSkills = scene === undefined
+    ? 0
+    : rows.filter((row) => !row.shadowed && scene.skills.some((ref) => rowMatchesRef(row, ref))).length
+
+  if (scene !== undefined && scene.prompt !== null) {
+    warnings.push('会话级场景不改变提示词：AGENTS.md 按工作区读取，提示词仍由工作区的场景决定')
+  }
+  if (scene !== undefined) warnings.push(...await mcpNotes(dshHome, scene))
+
+  return {
+    scene: sceneName === undefined ? (document.active[keyOfWorkspace(document.active, target) ?? target] ?? null) : sceneName,
+    workspace: target,
+    session: id,
+    changed: layerChanged,
+    replaced: null,
+    applied: { skills: appliedSkills, mcp: scene?.mcp.length ?? 0, prompt: null },
+    warnings,
+  }
+}
+
+
+/**
+ * 按当前文档重新物化每个会话的技能层。
+ *
+ * 为什么要这一步：层是写进状态文件的**快照**，而场景定义、工作区映射、会话选择都可能变。
+ * 只改文档不重算，会话就会停在旧场景上。
+ */
+export async function reconcileSessionLayers(
+  dshHome: string,
+  service: SkillService,
+  warnings: string[] = [],
+): Promise<void> {
+  const { document } = await readDocument(dshHome)
+  for (const [sessionId, choice] of Object.entries(document.sessions)) {
+    const workspace = normaliseWorkspace(choice.workspace)
+    if (workspace === '') continue
+    const layer = choice.scene === null
+      // 「明确不用」只在工作区本来有场景时才需要压一层；工作区没有场景时它本来就什么都不该遮。
+      ? (keyOfWorkspace(document.active, workspace) === undefined ? null : NOTHING_LAYER)
+      : await layerFor(dshHome, service, workspace, choice.scene)
+    const written = await service.setLayer(`${SS_PREFIX}${sessionId}`, layer)
+    if (written.ok !== true) warnings.push(`会话 ${sessionId} 的技能层没有写进去：${String(written.error ?? '')}`)
+  }
 }

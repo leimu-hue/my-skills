@@ -58,12 +58,20 @@ export interface ProviderCandidate {
 
 export interface ProviderDeps {
   /**
-   * 取当前视图。`cwd` 决定包含哪些项目来源；`scopeKey` 选择会话 / 工作区层
-   * （预留 —— 目前永远返回全局层）。
+   * 取当前视图。`cwd` 决定包含哪些项目来源；`scopeKey` 选择工作区 / 会话层
+   * （`ws:<工作区>` 或 `ss:<根会话>`）。
    */
   viewFor(cwd: string | undefined, scopeKey: string | undefined): Promise<SkillStateView>
   /** 当前 cwd 下的来源元数据（按 key）。 */
   rootsFor(cwd: string | undefined): Promise<SkillRoot[]>
+  /**
+   * 这条 provider 固定按哪个作用域解析（注册进 agent 作用域时给 `ss:<会话>`）。
+   *
+   * 给了它就要额外算一份「下层的答案」（工作区 / 全局），因为**会话层可能比下层更宽**：
+   * 下层藏着一条技能、会话层把它放开时，我们不能什么都不发 —— 下层那条隐藏候选仍然在
+   * 注册表里，只有在这个 agent 层里发一条可见候选才能压过它。
+   */
+  scopeKey?: string
 }
 
 /** 判断这条候选的「介入原因」（单独成函数，便于阅读）。 */
@@ -77,14 +85,19 @@ function overlayReasonOf(row: SkillRow, hostScans: boolean): OverlayReason {
   return 'policy'
 }
 
-function buildCandidates(rows: SkillRow[], roots: SkillRoot[]): ProviderCandidate[] {
+/**
+ * @param rows 这一层解析后的行
+ * @param roots 来源元数据（hostScans）
+ * @param widen 这些名字在**下层**不可见、但在这一层可见 —— 必须强制发候选才能压过下层
+ */
+function buildCandidates(rows: SkillRow[], roots: SkillRoot[], widen?: Set<string>): ProviderCandidate[] {
   const hostScansOf = new Map<string, boolean>()
   for (const root of roots) hostScansOf.set(root.key, root.hostScans)
   const candidates: ProviderCandidate[] = []
   for (const row of rows) {
     const hostScans = hostScansOf.get(row.rootKey) ?? false
     // 被遮蔽的行永不发布：赢家候选的 rank 已经在整组之下，早已压过宿主为这份副本发的条目。
-    if (!needsOverlay(row, hostScans)) continue
+    if (!needsOverlay(row, hostScans) && !(widen?.has(row.declaredName || row.name) ?? false)) continue
     // 宿主会拒收形状不对的候选，而且拒收是整次 list() 抛错 —— 宁可这条不发。
     if (!publishable(row)) continue
     const overlay = overlayReasonOf(row, hostScans)
@@ -137,12 +150,33 @@ export function createProvider(deps: ProviderDeps) {
     async list(options: { cwd?: string; signal?: AbortSignal } = {}) {
       const signal = options.signal
       if (isAborted(signal)) return []
-      const view = await deps.viewFor(options.cwd, undefined)
+      const view = await deps.viewFor(options.cwd, deps.scopeKey)
       if (isAborted(signal)) return []
       const roots = await deps.rootsFor(options.cwd)
+
+      // 会话层可能比下层**更宽**（下层藏着一条技能、会话里放开）。那种情况下必须在这个
+      // agent 层里主动发一条可见候选，否则下层的隐藏候选仍然赢 —— 注册表按层取，不看 rank。
+      let widen: Set<string> | undefined
+      if (deps.scopeKey !== undefined && deps.scopeKey !== '') {
+        const base = await deps.viewFor(options.cwd, undefined)
+        const hiddenBefore = new Set<string>()
+        for (const root of base.roots) {
+          for (const row of root.skills) {
+            if (!row.shadowed && !row.policy.modelInvocable) hiddenBefore.add(row.declaredName || row.name)
+          }
+        }
+        widen = new Set(
+          view.roots.flatMap((root) => root.skills)
+            .filter((row) => !row.shadowed && row.policy.modelInvocable && hiddenBefore.has(row.declaredName || row.name))
+            .map((row) => row.declaredName || row.name),
+        )
+        if (widen.size === 0) widen = undefined
+      }
+
       return buildCandidates(
         view.roots.flatMap((root) => root.skills),
         roots,
+        widen,
       )
     },
     async get(candidate: ProviderCandidate, options: { signal?: AbortSignal } = {}) {

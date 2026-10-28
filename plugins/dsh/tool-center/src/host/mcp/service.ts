@@ -30,6 +30,13 @@ export interface McpServer {
   id: string
   /** 界面上显示的名字（`config.serverName`，缺失时退回 id）。 */
   name: string
+  /**
+   * 工具命名空间（`config.serverName`）。
+   *
+   * MCP 工具叫 `mcp__<serverName>__<tool>`，所以「按工作区只留某几台服务器的工具」要靠它
+   * 把工具名映射回服务器；缺失时为空串（那就认不出归属，一律不当作已知服务器）。
+   */
+  serverName: string
   transport: string
   command: string
   args: string[]
@@ -191,6 +198,7 @@ function serversOf(parsed: PatchParse): { servers: McpServer[]; overridden: stri
     servers.push({
       id,
       name: declaration.serverName || id,
+      serverName: declaration.serverName,
       transport: declaration.transport || (declaration.command === '' ? 'http' : 'stdio'),
       command: declaration.command,
       args: declaration.args,

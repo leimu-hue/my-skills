@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Tool Center",
-    "description": "Scenes, MCP servers, skills and prompts in one panel: per-skill switches that never touch skill source files, same-name resolution by rank, create/edit/delete with trash, and import/export by path or ZIP."
+    "description": "Scenes, MCP servers, skills and prompts in one panel: a scene is a reusable definition chosen per workspace and optionally re-chosen per session; per-skill switches never touch skill source files, same-name resolution by rank, create/edit/delete with trash, and import/export by path or ZIP."
   }
 }

@@ -11,7 +11,7 @@
 import { stat } from 'node:fs/promises'
 import { homedir, tmpdir } from 'node:os'
 import { basename, dirname, isAbsolute, join } from 'node:path'
-import type { SkillManagerState, SkillRoot, SkillRow, SkillStateView, StateLoad } from '../shared/types.js'
+import type { SkillLayer, SkillManagerState, SkillRoot, SkillRow, SkillStateView, StateLoad } from '../shared/types.js'
 import { DomainError, errorResult, type OpResult } from '../shared/result.js'
 import { isFile } from '../shared/fs.js'
 import { createLock, isInside, pathIdSync, realOrResolved } from '../shared/paths.js'
@@ -27,9 +27,10 @@ import {
   pruneState,
   saveState,
   uniqueStrings,
+  workspaceScopeOf,
 } from './state.js'
 import { allRows, buildStateView, liveNameIndex } from './view.js'
-import { rowIdOf, rowMatchesRef } from './policy.js'
+import { rowMatchesRef } from './policy.js'
 import { createSkill, readSkillDetail, updateSkill } from './files/authoring.js'
 import { deleteSkillToTrash, emptyTrash, listTrash, purgeTrashItem, restoreTrashItem } from './files/trash.js'
 import { exportRowAsZip, exportRowsAsZip, importZip, scanZip } from './files/transfer.js'
@@ -105,14 +106,13 @@ export interface SkillService {
   roots(cwd?: string, read?: ReadOptions): Promise<SkillRoot[]>
   detail(rootKey: string, name: string, cwd?: string): Promise<OpResult>
   setSkill(rootKey: string, name: string, enabled: boolean, cwd?: string, scopeKey?: string): Promise<OpResult>
-  setAll(items: { root: string; name: string }[], enabled: boolean, cwd?: string, scopeKey?: string): Promise<OpResult>
   /**
-   * 按快照恢复一批技能的开关（场景回滚用）。
+   * 整体替换 / 清除一个作用域层（场景进入 / 退出用）。
    *
-   * 与 `setAll` 的区别：不按当前视图解析行 —— 退出场景时可能没有 cwd，项目来源不在
-   * 视图里，而回滚必须按记录把状态改回去。写仍然走同一把锁与同一次失效。
+   * 场景不是「逐条改开关」而是一次写一层：整套切换的语义本来就是「这个作用域里
+   * 只留这些」。这样退出时也不必逐项回滚 —— 删掉这一层，全局策略一个字节都没动过。
    */
-  restoreSkills(items: { root: string; name: string; enabled: boolean }[]): Promise<OpResult>
+  setLayer(scopeKey: string, layer: SkillLayer | null): Promise<OpResult>
   setSource(rootKey: string, enabled: boolean, scopeKey?: string, cwd?: string): Promise<OpResult>
   setRemoved(rootKey: string, removed: boolean, cwd?: string): Promise<OpResult>
   prefer(rootKey: string, name: string, preferred: boolean): Promise<OpResult>
@@ -136,8 +136,8 @@ export interface SkillService {
    * 面板读取**不再**每次去问注册表 —— 那是「进技能页卡一下」的来源。缓存由这里维护。
    */
   refreshHostDirs(): Promise<void>
-  /** 交给 `ctx.skills.registerProvider` 的 provider 对象。 */
-  makeProvider(): ReturnType<typeof createProvider>
+  /** 交给 `ctx.skills.registerProvider` 的 provider 对象。`scopeKey` 给会话级注册用。 */
+  makeProvider(scopeKey?: string): ReturnType<typeof createProvider>
   /** 外部改动（watcher）或写操作之后调用：推进扫描代号并让每个 provider 重新 list。 */
   touch(rootKey?: string): void
   /** provider 上线后由宿主登记的失效句柄集合。 */
@@ -156,10 +156,41 @@ function applySkillSwitch(state: SkillManagerState, rootKey: string, name: strin
   return true
 }
 
+/**
+ * 把调用方给的一层收成规范形状：名字去重排序、空组丢掉、空层变成 null。
+ *
+ * 场景写进来的是「这个工作区里谁开着、谁关着」；规范化让同一份意图的两次写入得到
+ * 完全相同的 JSON，`setLayer` 才能靠比较短路。
+ */
+function normaliseLayer(layer: SkillLayer | null): SkillLayer | null {
+  if (layer === null) return null
+  const clean: SkillLayer = {}
+  for (const key of ['hiddenSkills', 'enabledSkills'] as const) {
+    const groups = layer[key]
+    if (groups === undefined) continue
+    const out: Record<string, string[]> = {}
+    for (const [rootKey, names] of Object.entries(groups)) {
+      if (!Array.isArray(names)) continue
+      const unique = uniqueStrings(names)
+      if (unique.length > 0) out[rootKey] = unique
+    }
+    if (Object.keys(out).length > 0) clean[key] = out
+  }
+  if (layer.whitelist === true) clean.whitelist = true
+  if (layer.preferredSkills !== undefined) {
+    const preferred: Record<string, string> = {}
+    for (const [name, rootKey] of Object.entries(layer.preferredSkills)) {
+      if (typeof rootKey === 'string' && rootKey !== '') preferred[name] = rootKey
+    }
+    if (Object.keys(preferred).length > 0) clean.preferredSkills = preferred
+  }
+  return Object.keys(clean).length === 0 ? null : clean
+}
+
 function reservedScope(): OpResult {
   return {
     ok: false,
-    error: '会话/工作区分层作用域已预留但尚未启用（当前只有全局层）。接口已就位，功能待实现。',
+    error: '会话层作用域已预留但尚未启用（工作区层已启用）。接口已就位，功能待实现。',
     code: 'error.scope.reserved',
   }
 }
@@ -298,12 +329,17 @@ export function createService(options: ServiceOptions): SkillService {
   async function view(cwd?: string, scopeKey?: string, read?: ReadOptions): Promise<SkillStateView> {
     const loaded = await readState()
     const roots = await rootsFor(cwd, read)
+    // 显式作用域优先；否则由 cwd 落到它所在的工作区层。会话在哪个工作区，就按那个
+    // 工作区的场景解析 —— 这正是「只在一个工作区生效」的实现点。
+    const scope = scopeKey !== undefined && scopeKey !== ''
+      ? scopeKey
+      : workspaceScopeOf(loaded.state, cwd)
     return buildStateView({
       state: loaded.state,
       scanner,
       roots,
       warnings: loaded.warnings,
-      scopeKey,
+      scopeKey: scope,
       stateHealthy: !loaded.degraded,
     })
   }
@@ -346,30 +382,35 @@ export function createService(options: ServiceOptions): SkillService {
       }))
     },
 
-    async setAll(items, enabled, cwd?, scopeKey?): Promise<OpResult> {
-      if (scopeKey !== undefined && scopeKey !== '') return reservedScope()
-      const current = await view(cwd)
-      const wanted = new Map<string, SkillRow>()
-      for (const row of allRows(current)) {
-        if (items.some((item) => rowMatchesRef(row, item))) wanted.set(rowIdOf(row.rootKey, row.name), row)
+    async setLayer(scopeKey: string, layer: SkillLayer | null): Promise<OpResult> {
+      const kind = typeof scopeKey === 'string' && scopeKey.startsWith('ws:')
+        ? 'workspace'
+        : (typeof scopeKey === 'string' && scopeKey.startsWith('ss:') ? 'session' : null)
+      if (kind === null) {
+        return {
+          ok: false,
+          error: '作用域键必须是 ws:<工作区绝对路径> 或 ss:<根会话 id>。',
+          code: 'error.scope.invalid',
+        }
       }
-      if (wanted.size === 0) return { ok: true, data: { changed: false, updated: 0, missing: items.length } }
+      const key = scopeKey.slice(3)
+      if (key.trim() === '') {
+        return { ok: false, error: '作用域键不能为空', code: 'error.scope.invalid' }
+      }
+      const table = kind === 'workspace' ? 'workspaces' : 'sessions'
       return mutate(async (state) => {
-        let updated = 0
-        for (const row of wanted.values()) {
-          if (applySkillSwitch(state, row.rootKey, row.name, enabled)) updated += 1
+        const next = normaliseLayer(layer)
+        const current = state.layers[table][key]
+        if (next === null) {
+          if (current === undefined) return { changed: false, value: { scope: scopeKey, cleared: true } }
+          delete state.layers[table][key]
+          return { changed: true, value: { scope: scopeKey, cleared: true } }
         }
-        return { changed: updated > 0, value: { updated } }
-      })
-    },
-
-    async restoreSkills(items): Promise<OpResult> {
-      return mutate(async (state) => {
-        let updated = 0
-        for (const item of items) {
-          if (applySkillSwitch(state, item.root, item.name, item.enabled)) updated += 1
+        if (current !== undefined && JSON.stringify(current) === JSON.stringify(next)) {
+          return { changed: false, value: { scope: scopeKey } }
         }
-        return { changed: updated > 0, value: { updated } }
+        state.layers[table][key] = next
+        return { changed: true, value: { scope: scopeKey } }
       })
     },
 
@@ -617,13 +658,14 @@ export function createService(options: ServiceOptions): SkillService {
       return { ok: true, data: { generation: scanner.generation(), pruned: pruned.data, stats: scanner.stats() } }
     },
 
-    makeProvider() {
+    makeProvider(scopeKey?: string) {
       // 这条路径是宿主 `skills.list()` 回调进来的：再问注册表就是无限递归（面板会一直
       // 停在加载中），所以只读宿主目录的缓存，绝不探测。
       const read: ReadOptions = { probeHost: false }
       return createProvider({
-        viewFor: (cwd, scopeKey) => view(cwd, scopeKey, read),
+        viewFor: (cwd, scope) => view(cwd, scope, read),
         rootsFor: (cwd) => rootsFor(cwd, read),
+        ...(scopeKey === undefined ? {} : { scopeKey }),
       })
     },
 

@@ -140,6 +140,21 @@ export interface CustomRoot {
 export interface SkillLayer {
   sources?: Record<string, boolean>
   hiddenSkills?: Record<string, string[]>
+  /**
+   * 在这个作用域里**强制打开**的技能。
+   *
+   * 只有 `hiddenSkills` 是不够的：场景要能「在这个工作区用一条你平时关着的技能」，
+   * 而全局的关是一条隐藏记录，作用域层再隐藏也不改变它。这一层是正向覆盖，
+   * 优先级高于同层的 `hiddenSkills`（两者同时出现时以打开为准）。
+   */
+  enabledSkills?: Record<string, string[]>
+  /**
+   * 白名单模式：这个作用域里**只留** `enabledSkills` 列出的技能，其余一律不可见。
+   *
+   * 场景的「整套切换」用它，而不是把未选中的名字逐条写进 `hiddenSkills`：
+   * 逐条写等于给场景拍一张快照，之后新装的技能会悄悄漏进场景；白名单是规则，不是快照。
+   */
+  whitelist?: boolean
   preferredSkills?: Record<string, string>
 }
 

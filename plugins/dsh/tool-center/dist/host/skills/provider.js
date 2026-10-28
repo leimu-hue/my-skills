@@ -32,7 +32,12 @@ function overlayReasonOf(row, hostScans) {
         return 'external';
     return 'policy';
 }
-function buildCandidates(rows, roots) {
+/**
+ * @param rows 这一层解析后的行
+ * @param roots 来源元数据（hostScans）
+ * @param widen 这些名字在**下层**不可见、但在这一层可见 —— 必须强制发候选才能压过下层
+ */
+function buildCandidates(rows, roots, widen) {
     const hostScansOf = new Map();
     for (const root of roots)
         hostScansOf.set(root.key, root.hostScans);
@@ -40,7 +45,7 @@ function buildCandidates(rows, roots) {
     for (const row of rows) {
         const hostScans = hostScansOf.get(row.rootKey) ?? false;
         // 被遮蔽的行永不发布：赢家候选的 rank 已经在整组之下，早已压过宿主为这份副本发的条目。
-        if (!needsOverlay(row, hostScans))
+        if (!needsOverlay(row, hostScans) && !(widen?.has(row.declaredName || row.name) ?? false))
             continue;
         // 宿主会拒收形状不对的候选，而且拒收是整次 list() 抛错 —— 宁可这条不发。
         if (!publishable(row))
@@ -94,11 +99,29 @@ export function createProvider(deps) {
             const signal = options.signal;
             if (isAborted(signal))
                 return [];
-            const view = await deps.viewFor(options.cwd, undefined);
+            const view = await deps.viewFor(options.cwd, deps.scopeKey);
             if (isAborted(signal))
                 return [];
             const roots = await deps.rootsFor(options.cwd);
-            return buildCandidates(view.roots.flatMap((root) => root.skills), roots);
+            // 会话层可能比下层**更宽**（下层藏着一条技能、会话里放开）。那种情况下必须在这个
+            // agent 层里主动发一条可见候选，否则下层的隐藏候选仍然赢 —— 注册表按层取，不看 rank。
+            let widen;
+            if (deps.scopeKey !== undefined && deps.scopeKey !== '') {
+                const base = await deps.viewFor(options.cwd, undefined);
+                const hiddenBefore = new Set();
+                for (const root of base.roots) {
+                    for (const row of root.skills) {
+                        if (!row.shadowed && !row.policy.modelInvocable)
+                            hiddenBefore.add(row.declaredName || row.name);
+                    }
+                }
+                widen = new Set(view.roots.flatMap((root) => root.skills)
+                    .filter((row) => !row.shadowed && row.policy.modelInvocable && hiddenBefore.has(row.declaredName || row.name))
+                    .map((row) => row.declaredName || row.name));
+                if (widen.size === 0)
+                    widen = undefined;
+            }
+            return buildCandidates(view.roots.flatMap((root) => root.skills), roots, widen);
         },
         async get(candidate, options = {}) {
             if (isAborted(options.signal))

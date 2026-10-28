@@ -149,34 +149,34 @@ export interface McpStateView {
   backupCount: number
 }
 
-export interface ScenePromptTarget {
-  scope: 'global' | 'workspace'
-  workspace?: string
-}
-
 export interface SceneRow {
   name: string
   description: string
   /** 要启用的技能（白名单）。 */
   skills: SkillRef[]
-  /** 要启用的 MCP 服务器 id（白名单）。 */
+  /** 要保留的 MCP 服务器 id（其余服务器的工具在该场景里被遮掉）。 */
   mcp: string[]
   prompt: string | null
-  promptTarget: ScenePromptTarget
-  /** 整套切换：未选中的关掉。 */
+  /** 整套切换：该作用域里未选中的技能挡掉。 */
   exclusive: boolean
   createdAt: number
   updatedAt: number
 }
 
+/** 一个会话自己的选择：`scene: null` = 明确不用（压过工作区默认）。 */
+export interface SessionChoiceRow {
+  scene: string | null
+  workspace: string
+  at: number
+}
+
 export interface ScenesStateView {
   scenes: SceneRow[]
-  active: string | null
+  /** 工作区路径 → 该工作区默认用哪个场景。 */
+  active: Record<string, string>
+  /** 根会话 id → 这个会话自己的选择。 */
+  sessions: Record<string, SessionChoiceRow>
   warnings: string[]
   path: string
 }
 
-/** 场景应用的回执（用来把警告拼进提示）。 */
-export interface SceneApplyReport {
-  warnings?: string[]
-}

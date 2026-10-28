@@ -113,14 +113,33 @@
 .dsk-label{font-size:12px;color:var(--dsw-alias-label-secondary,#5c6068)}
 .dsk-input,.dsk-textarea,.dsk-select{width:100%;box-sizing:border-box;padding:6px 8px;border:1px solid var(--dsw-alias-border-l2,#d9dbe0);border-radius:6px;background:var(--dsw-alias-bg-layer-1,#fff);color:inherit;font-size:12px;font-family:inherit}
 .dsk-textarea{min-height:180px;font-family:var(--ds-font-family-code,ui-monospace,Consolas,monospace);line-height:18px;resize:vertical}
-.dsk-alert{padding:6px 10px;border-radius:6px;background:var(--dsw-alias-state-warn-tertiary,rgba(212,146,69,.12));color:var(--dsw-alias-state-warn-label,#8a5a1e);font-size:12px}
-.dsk-alert-err{background:var(--dsw-alias-state-error-secondary,rgba(201,65,74,.1));color:var(--dsw-alias-state-error-primary,#b03a42)}
+.dsk-alert{padding:6px 10px;border-radius:6px;background:var(--dsw-alias-state-warn-tertiary,rgba(212,146,69,.12));color:var(--dsw-alias-state-warn-label,#8a5a1e);font-size:12px;line-height:18px;white-space:pre-wrap;overflow-wrap:anywhere}
+/* \u9519\u8BEF\u6761\uFF1A\u5E95\u8272\u4E0E\u6587\u5B57\u4E5F\u5FC5\u987B\u6210\u5BF9\u3002
+   \u65E9\u5148\u5E95\u8272\u7528 state-error-secondary\uFF08\u6D45\u8272\u4E3B\u9898\u91CC\u5B83\u662F**\u5B9E\u5FC3\u7EA2** red-400\uFF09\u3001\u6587\u5B57\u7528
+   state-error-primary\uFF08red-600\uFF09\u2014\u2014 \u7EA2\u5E95\u7EA2\u5B57\uFF0C\u6574\u6761\u53EA\u5269\u4E00\u5757\u7EA2\u3002\u5BBF\u4E3B\u81EA\u5DF1\u5728 diff \u91CC\u7528\u7684\u662F
+   \u300Cprimary \u6309 12% \u6DF7\u5E95\u8272\u300D\uFF0C\u8FD9\u91CC\u8DDF\u5B83\uFF1B\u524D\u9762\u4E00\u884C rgba \u515C\u5E95\u8001\u6D4F\u89C8\u5668\uFF08\u6CA1\u6709 color-mix\uFF09\u3002 */
+.dsk-alert-err{background:rgba(201,65,74,.12);background:color-mix(in srgb,var(--dsw-alias-state-error-primary,#c9414a) 12%,var(--dsw-alias-bg-layer-1,#fff));color:var(--dsw-alias-state-error-primary,#c9414a)}
 .dsk-empty{padding:14px;text-align:center;color:var(--dsw-alias-label-tertiary,#8a8f99);font-size:12px}
+/* \u65B0\u4F1A\u8BDD\u9875\u7684\u573A\u666F\u9009\u62E9\u5668\uFF08conversation.hero.options\uFF09\u3002
+   \u8FD9\u91CC\u523B\u610F**\u4E0D\u7528\u539F\u751F <select>**\uFF1A\u5B83\u5C55\u5F00\u7684\u5019\u9009\u9879\u5217\u8868\u7531\u7CFB\u7EDF/\u6D4F\u89C8\u5668\u7ED8\u5236\uFF0C\u6E32\u67D3\u5728\u9875\u9762\u4E4B\u5916\u7684
+   \u5F39\u51FA\u5C42\u91CC\uFF0C\u6211\u4EEC\u7684\u6837\u5F0F\u4E0E\u5BBF\u4E3B\u7684\u6DF1\u8272\u4E3B\u9898\u90FD\u7BA1\u4E0D\u5230 \u2014\u2014 \u6DF1\u8272\u754C\u9762\u4E0B\u5C31\u662F\u300C\u767D\u5E95\u6D45\u7070\u5B57\u300D\uFF0C\u6B63\u597D\u662F
+   \u7528\u6237\u622A\u56FE\u91CC\u90A3\u5757\u770B\u4E0D\u6E05\u7684\u5217\u8868\u3002\u6574\u5757\u81EA\u7ED8\u4E4B\u540E\uFF0C\u989C\u8272\u5168\u90E8\u8D70\u5BBF\u4E3B\u6210\u5BF9\u7684 token\u3002 */
+.dsk-scene-pick{position:relative;display:inline-flex;align-items:center;font-size:12px;line-height:16px}
+.dsk-scene-pick-btn{display:inline-flex;align-items:center;gap:6px;max-width:220px;padding:3px 8px;border:1px solid var(--dsw-alias-border-l2,rgba(127,127,127,.35));border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary,#5c6068);font:inherit;font-size:12px;line-height:16px;cursor:pointer}
+.dsk-scene-pick-btn:hover:not(:disabled){background:var(--dsw-alias-bg-layer-2,rgba(127,127,127,.12))}
+.dsk-scene-pick-btn:disabled{opacity:.6;cursor:default}
+.dsk-scene-pick-label{color:var(--dsw-alias-label-tertiary,#8a8f99);flex:none}
+.dsk-scene-pick-value{max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-primary,#1b1d21)}
+.dsk-scene-pick-caret{flex:none;font-size:9px;color:var(--dsw-alias-label-tertiary,#8a8f99)}
+.dsk-scene-pick-list{position:absolute;bottom:calc(100% + 4px);left:0;z-index:60;min-width:150px;max-width:260px;padding:4px;display:flex;flex-direction:column;gap:2px;border:1px solid var(--dsw-alias-border-l2,rgba(127,127,127,.35));border-radius:8px;background:var(--dsw-alias-bg-layer-1,#fff);box-shadow:0 6px 20px rgba(0,0,0,.28)}
+.dsk-scene-pick-item{padding:5px 8px;border:0;border-radius:6px;background:transparent;color:var(--dsw-alias-label-primary,#1b1d21);font:inherit;font-size:12px;line-height:16px;text-align:left;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dsk-scene-pick-item:hover{background:var(--dsw-alias-bg-layer-2,rgba(127,127,127,.12))}
+.dsk-scene-pick-item[data-current="true"]{color:var(--dsw-alias-brand-primary-new-colorprimary-new-color,#4d6bfe);font-weight:600}
 /* \u63D0\u793A\u6761\uFF1A\u5E95\u8272\u4E0E\u6587\u5B57\u5FC5\u987B\u7528\u5BBF\u4E3B**\u6210\u5BF9**\u7684\u90A3\u4E24\u4E2A token\u3002
    \u65E9\u5148\u6587\u5B57\u7528\u7684\u662F label-primary-inverted \u2014\u2014 \u5B83\u5728\u6DF1\u8272\u4E3B\u9898\u91CC\u662F neutral-bluish-800\uFF08\u6DF1\u7070\uFF09\uFF0C
    \u914D toast-bg\uFF08\u6DF1\u8272\u4E3B\u9898 neutral-bluish-750\uFF09\u5C31\u662F\u7070\u5E95\u7070\u5B57\uFF0C\u51E0\u4E4E\u770B\u4E0D\u89C1\u3002\u5BBF\u4E3B\u81EA\u5DF1\u7684 toast
    \u7528\u7684\u662F toast-bg + toast-label\uFF0C\u8FD9\u91CC\u8DDF\u968F\u5B83\u3002 */
-.dsk-toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);padding:7px 14px;border-radius:16px;background:var(--dsw-alias-toast-bg,rgba(28,32,38,.92));color:var(--dsw-alias-toast-label,#f7f8fa);font-size:12px;z-index:40;max-width:70%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;box-shadow:var(--dsw-shadow-lv3,0 6px 20px rgba(0,0,0,.28))}
+.dsk-toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);padding:7px 14px;border-radius:16px;background:var(--dsw-alias-toast-bg,rgba(28,32,38,.92));color:var(--dsw-alias-toast-label,#f7f8fa);font-size:12px;z-index:40;max-width:70%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;box-shadow:0 6px 20px rgba(0,0,0,.28)}
 .dsk-trash-item{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;padding:8px 10px;border:1px solid var(--dsw-alias-border-l2,#e5e6eb);border-radius:8px}
 .dsk-trash-meta{font-size:11px;color:var(--dsw-alias-label-tertiary,#8a8f99);word-break:break-all}
 .dsk-trash-actions{display:flex;gap:6px}
@@ -131,6 +150,103 @@
 [data-platform=darwin] .dsk-page{padding-top:calc(20px + var(--dsh-frame-top-clearance,0px))}
 .dsk-page .dsk-root{padding:0;min-height:0}
 `;
+
+  // src/client/core/api.ts
+  var PLUGIN_ID = "tool-center";
+  function endpoint() {
+    return new URL("tool-center/api", document.baseURI).toString();
+  }
+  var goneListeners = /* @__PURE__ */ new Set();
+  var revivedListeners = /* @__PURE__ */ new Set();
+  var gone = false;
+  function onPluginGone(listener) {
+    goneListeners.add(listener);
+    if (gone) queueMicrotask(() => listener());
+    return () => {
+      goneListeners.delete(listener);
+    };
+  }
+  function onPluginRevived(listener) {
+    revivedListeners.add(listener);
+    return () => {
+      revivedListeners.delete(listener);
+    };
+  }
+  function isPluginGone() {
+    return gone;
+  }
+  function broadcast(listeners) {
+    for (const listener of [...listeners]) {
+      try {
+        listener();
+      } catch {
+      }
+    }
+  }
+  function reportGone() {
+    if (gone) return;
+    gone = true;
+    broadcast(goneListeners);
+  }
+  function reportRevived() {
+    if (!gone) return;
+    gone = false;
+    broadcast(revivedListeners);
+  }
+  async function callOp(op, args = {}) {
+    let response;
+    try {
+      response = await fetch(endpoint(), {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-dsh-plugin": PLUGIN_ID },
+        body: JSON.stringify({ op, args }),
+        credentials: "same-origin"
+      });
+    } catch (cause) {
+      throw opError(`\u8BF7\u6C42\u6CA1\u6709\u53D1\u51FA\u53BB\uFF1A${describeCause(cause)}`, "error.network");
+    }
+    if (response.status === 404 || response.status === 405) {
+      reportGone();
+      throw opError("\u5DE5\u5177\u4E2D\u5FC3\u5DF2\u505C\u7528\uFF08\u5BBF\u4E3B\u4E0A\u6CA1\u6709\u8FD9\u6761\u63A5\u53E3\uFF09\u3002\u91CD\u65B0\u542F\u7528\u540E\u4F1A\u81EA\u52A8\u6062\u590D\u3002", "error.pluginUnavailable");
+    }
+    const text = await response.text();
+    let payload;
+    try {
+      payload = text === "" ? {} : JSON.parse(text);
+    } catch {
+      throw opError(`\u5BBF\u4E3B\u8FD4\u56DE\u4E86\u975E JSON \u5185\u5BB9\uFF08HTTP ${response.status}\uFF09`, "error.protocol");
+    }
+    if (response.ok || payload.ok === false) reportRevived();
+    if (payload.ok === false) {
+      const message = typeof payload.error === "string" ? payload.error : `HTTP ${response.status}`;
+      throw opError(message, typeof payload.code === "string" ? payload.code : void 0, payload.params);
+    }
+    if (!response.ok) throw opError(`HTTP ${response.status}`, "error.http");
+    return payload.data;
+  }
+  function describeCause(cause) {
+    return String(cause?.message ?? cause);
+  }
+  function opError(message, code, params) {
+    const error = new Error(message);
+    error.code = code;
+    if (params !== void 0) error.params = params;
+    return error;
+  }
+  function downloadBase64(filename, base64) {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+    const blob = new Blob([bytes], { type: "application/zip" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2e3);
+  }
 
   // src/client/core/runtime.ts
   var react = null;
@@ -156,6 +272,8 @@
     "tab.mcp": "MCP",
     "tab.skills": "\u6280\u80FD",
     "tab.prompts": "\u63D0\u793A\u8BCD",
+    "error.title": "\u51FA\u9519\u4E86",
+    "error.pluginUnavailable": "\u5DE5\u5177\u4E2D\u5FC3\u5DF2\u505C\u7528\uFF1A\u5BBF\u4E3B\u4E0A\u6CA1\u6709\u8FD9\u6761\u63A5\u53E3\u3002\u91CD\u65B0\u542F\u7528\u540E\u4F1A\u81EA\u52A8\u6062\u590D\u3002",
     "common.save": "\u4FDD\u5B58",
     "common.cancel": "\u53D6\u6D88",
     "common.search": "\u641C\u7D22"
@@ -166,6 +284,8 @@
     "tab.mcp": "MCP",
     "tab.skills": "Skills",
     "tab.prompts": "Prompts",
+    "error.title": "Something went wrong",
+    "error.pluginUnavailable": "Tool center is disabled: the host no longer serves this endpoint. It recovers by itself once re-enabled.",
     "common.save": "Save",
     "common.cancel": "Cancel",
     "common.search": "Search"
@@ -506,8 +626,8 @@
   // src/client/i18n/scenes.ts
   var ZH_SCENES = {
     "scenes.title": "\u573A\u666F",
-    "scenes.subtitle": "\u4E00\u4E2A\u573A\u666F = \u4E00\u7EC4\u8981\u542F\u7528\u7684 MCP \u670D\u52A1\u5668 + \u4E00\u6279\u8981\u542F\u7528\u7684\u6280\u80FD + \u4E00\u4EFD\u63D0\u793A\u8BCD\u9884\u8BBE\u3002\u5207\u6362\u573A\u666F\u4F1A\u5148\u56DE\u6EDA\u4E0A\u4E00\u4E2A\u573A\u666F\u52A8\u8FC7\u7684\u4E1C\u897F\u3002",
-    "scenes.empty": "\u8FD8\u6CA1\u6709\u573A\u666F\u3002\u65B0\u5EFA\u4E00\u4E2A\uFF0C\u628A\u4E09\u6837\u62E8\u5230\u4E00\u8D77\u3002",
+    "scenes.subtitle": "\u573A\u666F\u662F\u53EF\u590D\u7528\u7684\u5B9A\u4E49\uFF1A\u6BCF\u4E2A\u5DE5\u4F5C\u533A\u81EA\u5DF1\u9009\u8981\u4E0D\u8981\u7528\u5B83\uFF1B\u4F1A\u8BDD\u5F00\u59CB\u65F6\u8FD8\u80FD\u518D\u9009\u4E00\u6B21\u3002\u8FDB\u5165\u540E\u53EA\u5F71\u54CD\u90A3\u4E2A\u5DE5\u4F5C\u533A\u91CC\u7684\u6280\u80FD\u4E0E MCP \u5DE5\u5177\u3002",
+    "scenes.empty": "\u8FD8\u6CA1\u6709\u573A\u666F\u3002\u65B0\u5EFA\u4E00\u4E2A\uFF0C\u518D\u4E3A\u5DE5\u4F5C\u533A\u9009\u62E9\u5B83\u3002",
     "scenes.active": "\u751F\u6548\u4E2D",
     "scenes.apply": "\u8FDB\u5165\u573A\u666F",
     "scenes.exit": "\u9000\u51FA\u573A\u666F",
@@ -515,17 +635,40 @@
     "scenes.edit": "\u7F16\u8F91",
     "scenes.delete": "\u5220\u9664",
     "scenes.name": "\u573A\u666F\u540D",
+    "scenes.nameRequired": "\u573A\u666F\u540D\u4E0D\u80FD\u4E3A\u7A7A",
     "scenes.description": "\u8BF4\u660E\uFF08\u53EF\u9009\uFF09",
-    "scenes.behaviourTitle": "\u8FDB\u5165\u8FD9\u4E2A\u573A\u666F\u4F1A\u53D1\u751F\u4EC0\u4E48",
+    "scenes.workspace": "\u5DE5\u4F5C\u533A",
+    "scenes.workspacePick": "\u9009\u62E9\u5DE5\u4F5C\u533A\u2026",
+    "scenes.workspaceRequired": "\u5148\u7ED9\u573A\u666F\u9009\u4E00\u4E2A\u5DE5\u4F5C\u533A",
+    "scenes.workspaceUnbound": "\u672A\u7ED1\u5B9A\u5DE5\u4F5C\u533A",
+    "scenes.workspaceUnboundHint": "\u7F16\u8F91\u8FD9\u4E2A\u573A\u666F\uFF0C\u9009\u4E00\u4E2A\u5DE5\u4F5C\u533A\u540E\u624D\u80FD\u5728\u5B83\u91CC\u9762\u8FDB\u5165\u3002",
+    "scenes.workspaceHint": "\u573A\u666F\u53EA\u5728\u8FD9\u4E2A\u5DE5\u4F5C\u533A\u91CC\u6253\u5F00\u7684\u4F1A\u8BDD\u751F\u6548\uFF1B\u5176\u5B83\u5DE5\u4F5C\u533A\u5B8C\u5168\u4E0D\u53D7\u5F71\u54CD\u3002",
+    "scenes.noWorkspaces": "\u5BBF\u4E3B\u8FD8\u6CA1\u6709\u767B\u8BB0\u5DE5\u4F5C\u533A\uFF1A\u5148\u53BB\u5DE6\u4FA7\u680F\u6253\u5F00\u4E00\u4E2A\u9879\u76EE\u3002",
+    "scenes.byWorkspace": "\u5DE5\u4F5C\u533A\u7528\u54EA\u4E2A\u573A\u666F",
+    "scenes.byWorkspaceHint": "\u6BCF\u4E2A\u5DE5\u4F5C\u533A\u5404\u9009\u4E00\u4E2A\uFF08\u6216\u4E0D\u4F7F\u7528\uFF09\u3002\u540C\u4E00\u4E2A\u573A\u666F\u53EF\u4EE5\u7ED9\u591A\u4E2A\u5DE5\u4F5C\u533A\u7528\uFF1B\u6B63\u5728\u8DD1\u7684\u4F1A\u8BDD\u4E0B\u4E00\u8F6E\u751F\u6548\u3002",
+    "scenes.workspaceNone": "\u4E0D\u4F7F\u7528\u573A\u666F",
+    "scenes.workspaceCleared": "\u8FD9\u4E2A\u5DE5\u4F5C\u533A\u5DF2\u4E0D\u4F7F\u7528\u573A\u666F",
+    "scenes.workspaceApplied": "\u8FD9\u4E2A\u5DE5\u4F5C\u533A\u5DF2\u4F7F\u7528\u300C{name}\u300D",
+    "scenes.usedByWorkspaces": "\u5DE5\u4F5C\u533A {n}",
+    "scenes.usedBySessions": "\u4F1A\u8BDD {n}",
+    "scenes.workspacesUsing": "\u5DE5\u4F5C\u533A\u5728\u7528",
+    "scenes.sessionsUsing": "\u4F1A\u8BDD\u81EA\u9009",
+    "scenes.heroLabel": "\u573A\u666F",
+    "scenes.heroFollow": "\u8DDF\u968F\u5DE5\u4F5C\u533A",
+    "scenes.heroNone": "\u4E0D\u4F7F\u7528",
+    "scenes.behaviourTitle": "\u7528\u8FD9\u4E2A\u573A\u666F\u4F1A\u53D1\u751F\u4EC0\u4E48",
     "scenes.exclusive": "\u6574\u5957\u5207\u6362",
-    "scenes.exclusiveOn": "\u672A\u52FE\u9009\u7684\u6280\u80FD\u4E0E MCP \u670D\u52A1\u5668\u4F1A\u88AB\u5173\u6389\uFF08\u6574\u5957\u5207\u6362\uFF09\u3002",
-    "scenes.exclusiveOff": "\u53EA\u542F\u7528\u52FE\u9009\u7684\uFF1B\u5176\u5B83\u4FDD\u6301\u73B0\u72B6\uFF0C\u4E0D\u52A8\u3002",
+    "scenes.exclusiveOn": "\u6240\u9009\u4F5C\u7528\u57DF\u91CC\u672A\u52FE\u9009\u7684\u6280\u80FD\u4F1A\u88AB\u6321\u6389\uFF0CMCP \u5DE5\u5177\u4E5F\u53EA\u4FDD\u7559\u52FE\u9009\u670D\u52A1\u5668\u7684\u90A3\u90E8\u5206\uFF08\u6574\u5957\u5207\u6362\uFF09\u3002",
+    "scenes.exclusiveOff": "\u53EA\u542F\u7528\u52FE\u9009\u7684\uFF1B\u5176\u5B83\u6280\u80FD\u4FDD\u6301\u73B0\u72B6\uFF08MCP \u5DE5\u5177\u6CA1\u6709\u300C\u65B0\u589E\u300D\u52A8\u4F5C\uFF0C\u52FE\u9009\u4E0D\u751F\u6548\uFF09\u3002",
     "scenes.pickTitle": "\u573A\u666F\u542F\u7528\u54EA\u4E9B",
     "scenes.skills": "\u8981\u542F\u7528\u7684\u6280\u80FD",
-    "scenes.mcp": "\u8981\u542F\u7528\u7684 MCP \u670D\u52A1\u5668",
+    "scenes.mcp": "\u8981\u4FDD\u7559\u7684 MCP \u670D\u52A1\u5668",
+    "scenes.mcpGlobal": "\u6574\u5957\u5207\u6362\u65F6\u53EA\u4FDD\u7559\u52FE\u9009\u670D\u52A1\u5668\u7684 MCP \u5DE5\u5177\uFF1A\u5176\u5B83\u670D\u52A1\u5668\u7684\u5DE5\u5177\u5728\u8BE5\u4F5C\u7528\u57DF\u91CC\u4E0D\u53EF\u89C1\uFF1B\u670D\u52A1\u5668\u672C\u8EAB\u4ECD\u5168\u5C40\u88C5\u8F7D\uFF0C\u4E0D\u4F1A\u88AB\u91CD\u542F\u3002\u5BBF\u4E3B\u91CC\u6CA1\u542F\u7528\u7684\u670D\u52A1\u5668\u65E0\u6CD5\u53EA\u5728\u67D0\u4E2A\u5DE5\u4F5C\u533A\u542F\u7528\u3002",
     "scenes.prompt": "\u5E94\u7528\u8FD9\u4EFD\u63D0\u793A\u8BCD",
     "scenes.promptNone": "\u4E0D\u6539\u53D8\u63D0\u793A\u8BCD",
     "scenes.promptScopeFromPreset": "\u4F5C\u7528\u8303\u56F4\u7531\u8FD9\u4EFD\u9884\u8BBE\u81EA\u5DF1\u51B3\u5B9A\uFF08\u5168\u5C40\u6216\u67D0\u4E2A\u5DE5\u4F5C\u533A\uFF09\u3002",
+    "scenes.promptScopeMismatch": "\u8FD9\u4EFD\u9884\u8BBE\u7684\u4F5C\u7528\u8303\u56F4\u4E0D\u662F\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1A\u8FDB\u5165\u573A\u666F\u65F6\u4F1A\u8DF3\u8FC7\u5B83\u3002\u628A\u9884\u8BBE\u7684\u4F5C\u7528\u8303\u56F4\u6539\u6210\u540C\u4E00\u4E2A\u5DE5\u4F5C\u533A\u624D\u4F1A\u751F\u6548\u3002",
+    "scenes.promptScopeNotWorkspace": "\u8FD9\u4EFD\u9884\u8BBE\u4E0D\u662F\u300C\u5DE5\u4F5C\u533A\u300D\u8303\u56F4\uFF1A\u7528\u5230\u5DE5\u4F5C\u533A\u573A\u666F\u91CC\u4F1A\u88AB\u8DF3\u8FC7\u3002",
     "scenes.noSkills": "\u6CA1\u6709\u53EF\u9009\u7684\u6280\u80FD",
     "scenes.noMcp": "\u6CA1\u6709\u53EF\u9009\u7684\u670D\u52A1\u5668",
     "scenes.count.skills": "\u6280\u80FD {n}",
@@ -536,8 +679,8 @@
   };
   var EN_SCENES = {
     "scenes.title": "Scenes",
-    "scenes.subtitle": "A scene = a set of MCP servers to enable + skills to enable + one prompt preset. Switching scenes first rolls back what the previous scene changed.",
-    "scenes.empty": "No scenes yet. Create one to tie the three together.",
+    "scenes.subtitle": "A scene is a reusable definition: each workspace chooses whether to use it, and a session can choose again when it starts. Everything applies only inside that workspace.",
+    "scenes.empty": "No scenes yet. Create one, then pick it for a workspace.",
     "scenes.active": "active",
     "scenes.apply": "Enter scene",
     "scenes.exit": "Leave scene",
@@ -545,17 +688,40 @@
     "scenes.edit": "Edit",
     "scenes.delete": "Delete",
     "scenes.name": "Scene name",
+    "scenes.nameRequired": "A scene needs a name",
     "scenes.description": "Note (optional)",
-    "scenes.behaviourTitle": "What entering this scene does",
+    "scenes.workspace": "Workspace",
+    "scenes.workspacePick": "Pick a workspace\u2026",
+    "scenes.workspaceRequired": "Pick a workspace for this scene first",
+    "scenes.workspaceUnbound": "no workspace",
+    "scenes.workspaceUnboundHint": "Edit this scene and pick a workspace before entering it.",
+    "scenes.workspaceHint": "The scene applies only to sessions opened in this workspace; other workspaces are untouched.",
+    "scenes.noWorkspaces": "The host has no registered workspace yet: open a project from the sidebar first.",
+    "scenes.byWorkspace": "Which scene each workspace uses",
+    "scenes.byWorkspaceHint": "Pick one per workspace (or none). The same scene can serve several workspaces; running sessions pick it up on their next turn.",
+    "scenes.workspaceNone": "No scene",
+    "scenes.workspaceCleared": "This workspace no longer uses a scene",
+    "scenes.workspaceApplied": 'This workspace now uses "{name}"',
+    "scenes.usedByWorkspaces": "workspaces {n}",
+    "scenes.usedBySessions": "sessions {n}",
+    "scenes.workspacesUsing": "workspaces using",
+    "scenes.sessionsUsing": "session picks",
+    "scenes.heroLabel": "Scene",
+    "scenes.heroFollow": "Follow workspace",
+    "scenes.heroNone": "None",
+    "scenes.behaviourTitle": "What using this scene does",
     "scenes.exclusive": "Full switch",
-    "scenes.exclusiveOn": "Skills and MCP servers that are not ticked get switched off (full switch).",
-    "scenes.exclusiveOff": "Only enable what is ticked; leave everything else as it is.",
+    "scenes.exclusiveOn": "Skills that are not ticked get blocked in the chosen scope, and only the ticked servers' MCP tools stay available (full switch).",
+    "scenes.exclusiveOff": "Only enable what is ticked; other skills stay as they are (MCP tools cannot be added, so ticks do not apply).",
     "scenes.pickTitle": "What this scene enables",
     "scenes.skills": "Skills to enable",
-    "scenes.mcp": "MCP servers to enable",
+    "scenes.mcp": "MCP servers to keep",
+    "scenes.mcpGlobal": "With the full switch on, only the ticked servers' MCP tools stay visible in that scope; the servers themselves stay loaded globally. A server disabled in the host cannot be enabled for one workspace only.",
     "scenes.prompt": "Apply this prompt",
     "scenes.promptNone": "Leave prompts alone",
     "scenes.promptScopeFromPreset": "The scope comes from that preset itself (global or a workspace).",
+    "scenes.promptScopeMismatch": "This preset is not scoped to the current workspace and will be skipped. Change the preset scope to the same workspace to make it apply.",
+    "scenes.promptScopeNotWorkspace": "This preset is not workspace-scoped, so a workspace scene will skip it.",
     "scenes.noSkills": "No skills to pick",
     "scenes.noMcp": "No servers to pick",
     "scenes.count.skills": "skills {n}",
@@ -596,60 +762,12 @@
   function dictionaries() {
     return { zh: ZH, en: EN };
   }
-
-  // src/client/core/api.ts
-  var PLUGIN_ID = "tool-center";
-  function endpoint() {
-    return new URL("tool-center/api", document.baseURI).toString();
+  var activeDict = EN;
+  function setActiveDictionary(dict) {
+    activeDict = dict;
   }
-  async function callOp(op, args = {}) {
-    let response;
-    try {
-      response = await fetch(endpoint(), {
-        method: "POST",
-        headers: { "content-type": "application/json", "x-dsh-plugin": PLUGIN_ID },
-        body: JSON.stringify({ op, args }),
-        credentials: "same-origin"
-      });
-    } catch (cause) {
-      throw opError(`\u8BF7\u6C42\u6CA1\u6709\u53D1\u51FA\u53BB\uFF1A${describeCause(cause)}`, "error.network");
-    }
-    const text = await response.text();
-    let payload;
-    try {
-      payload = text === "" ? {} : JSON.parse(text);
-    } catch {
-      throw opError(`\u5BBF\u4E3B\u8FD4\u56DE\u4E86\u975E JSON \u5185\u5BB9\uFF08HTTP ${response.status}\uFF09`, "error.protocol");
-    }
-    if (payload.ok === false) {
-      const message = typeof payload.error === "string" ? payload.error : `HTTP ${response.status}`;
-      throw opError(message, typeof payload.code === "string" ? payload.code : void 0, payload.params);
-    }
-    if (!response.ok) throw opError(`HTTP ${response.status}`, "error.http");
-    return payload.data;
-  }
-  function describeCause(cause) {
-    return String(cause?.message ?? cause);
-  }
-  function opError(message, code, params) {
-    const error = new Error(message);
-    error.code = code;
-    if (params !== void 0) error.params = params;
-    return error;
-  }
-  function downloadBase64(filename, base64) {
-    const binary = atob(base64);
-    const bytes = new Uint8Array(binary.length);
-    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
-    const blob = new Blob([bytes], { type: "application/zip" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = filename;
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 2e3);
+  function tNow(key, values) {
+    return translateWith(activeDict, key, values);
   }
 
   // src/client/core/zip.ts
@@ -2002,6 +2120,13 @@
 
   // src/client/scenes/view.ts
   var refKeyOf = (root, name) => root + "\0" + name;
+  function samePath(left, right) {
+    const norm = (value) => {
+      const slashed = value.trim().replace(/[\\/]+/g, "/").replace(/\/+$/, "");
+      return /^[A-Za-z]:/.test(slashed) ? slashed.toLowerCase() : slashed;
+    };
+    return left !== "" && right !== "" && norm(left) === norm(right);
+  }
   function ScenesView(props) {
     const t = props.t;
     const domain = useDomain("scene-state", props.notify);
@@ -2009,8 +2134,13 @@
     const [skills, setSkills] = useStateOf(null);
     const [mcp, setMcp] = useStateOf(null);
     const [prompts, setPrompts] = useStateOf(null);
+    const [targets, setTargets] = useStateOf([]);
     const [draft, setDraft] = useStateOf(null);
     const [search, setSearch] = useStateOf("");
+    useClientEffect(() => {
+      void callOp("prompt-targets", {}).then((data) => setTargets(data.options ?? [])).catch(() => setTargets([]));
+    }, []);
+    const workspaces = targets.filter((option) => option.kind === "workspace");
     const loadSources = async () => {
       const [skillState, mcpState, promptState] = await Promise.all([
         callOp("state", {}).catch(() => null),
@@ -2030,18 +2160,43 @@
         on: row.policy.skillOn
       }))) ?? [],
       servers: mcp?.servers.map((server) => ({ id: server.id, name: server.name, on: server.enabled })) ?? [],
-      presets: prompts?.presets.map((preset) => preset.name) ?? []
+      presets: prompts?.presets ?? []
     };
     const scenes = state?.scenes ?? [];
-    const active = state?.active ?? null;
+    const active = state?.active ?? {};
+    const sessions = state?.sessions ?? {};
     const warnings = state?.warnings ?? [];
+    const usageOf = (scene) => ({
+      workspaces: Object.values(active).filter((name) => name === scene.name).length,
+      sessions: Object.values(sessions).filter((choice) => choice.scene === scene.name).length
+    });
+    const sessionOverrides = Object.keys(sessions).length;
     const badges = [];
     if (scenes.length > 0) badges.push(badgeOf(String(scenes.length)));
-    if (active !== null) badges.push(badgeOf(`${t("scenes.active")}: ${active}`, "ok"));
+    if (Object.keys(active).length > 0) badges.push(badgeOf(`${t("scenes.workspacesUsing")} ${Object.keys(active).length}`, "ok"));
+    if (sessionOverrides > 0) badges.push(badgeOf(`${t("scenes.sessionsUsing")} ${sessionOverrides}`, "off"));
     const openDraft = (next) => {
       setDraft(next);
       void loadSources();
     };
+    const openNew = () => openDraft({
+      name: "",
+      description: "",
+      isNew: true,
+      skills: [],
+      mcp: [],
+      prompt: "",
+      exclusive: true
+    });
+    const openEdit = (scene) => openDraft({
+      name: scene.name,
+      description: scene.description,
+      isNew: false,
+      skills: scene.skills.slice(),
+      mcp: scene.mcp.slice(),
+      prompt: scene.prompt ?? "",
+      exclusive: scene.exclusive !== false
+    });
     return h(
       "div",
       { className: "dsk-root" },
@@ -2056,57 +2211,73 @@
       }),
       toolbarOf([
         actionsOf([
-          buttonOf({
-            label: t("scenes.new"),
-            variant: "primary",
-            disabled: domain.busy !== "",
-            onClick: () => openDraft({
-              name: "",
-              description: "",
-              isNew: true,
-              skills: [],
-              mcp: [],
-              prompt: "",
-              promptScope: "global",
-              promptWorkspace: "",
-              exclusive: true
-            })
-          }),
-          active === null ? null : buttonOf({
-            label: t("scenes.exit"),
-            disabled: domain.busy !== "",
-            onClick: () => {
-              void domain.act("scene-exit", {}, (result) => noticeWithWarnings(t("scenes.exited"), result));
-            }
-          })
+          buttonOf({ label: t("scenes.new"), variant: "primary", disabled: domain.busy !== "", onClick: openNew })
         ])
       ]),
-      scenes.length === 0 ? emptyOf(t("scenes.empty")) : listOf(scenes.map((scene) => renderScene(t, scene, {
-        busy: domain.busy,
-        active,
-        onApply: () => {
-          void domain.act(
-            "scene-apply",
-            { name: scene.name },
-            (result) => noticeWithWarnings(t("scenes.applied", { name: scene.name }), result)
+      scenes.length === 0 ? emptyOf(t("scenes.empty")) : listOf(scenes.map((scene) => {
+        const usage = usageOf(scene);
+        return groupOf(scene.name, [
+          h("span", { className: "dsk-group-name" }, scene.name),
+          usage.workspaces > 0 ? badgeOf(t("scenes.usedByWorkspaces", { n: usage.workspaces }), "ok") : null,
+          usage.sessions > 0 ? badgeOf(t("scenes.usedBySessions", { n: usage.sessions }), "off") : null,
+          scene.skills.length > 0 ? badgeOf(t("scenes.count.skills", { n: scene.skills.length }), "off") : null,
+          scene.mcp.length > 0 ? badgeOf(t("scenes.count.mcp", { n: scene.mcp.length }), "off") : null,
+          scene.prompt === null ? null : badgeOf(`${t("scenes.prompt")}: ${scene.prompt}`, "off"),
+          groupActionsOf([
+            buttonOf({ label: t("scenes.edit"), small: true, disabled: domain.busy !== "", onClick: () => openEdit(scene) }),
+            buttonOf({
+              label: t("scenes.delete"),
+              small: true,
+              variant: "danger",
+              disabled: domain.busy !== "" || usage.workspaces > 0 || usage.sessions > 0,
+              onClick: () => {
+                if (!window.confirm(t("scenes.confirmDelete", { name: scene.name }))) return;
+                void domain.act("scene-delete", { name: scene.name });
+              }
+            })
+          ])
+        ], [
+          scene.description === "" ? null : mutedOf(scene.description)
+        ]);
+      })),
+      /* ── 工作区各自选择用哪个场景 ── */
+      h(
+        "div",
+        { className: "dsk-section" },
+        h("p", { className: "dsk-section-title" }, t("scenes.byWorkspace")),
+        mutedOf(t("scenes.byWorkspaceHint")),
+        workspaces.length === 0 ? mutedOf(t("scenes.noWorkspaces")) : h("div", null, workspaces.map((workspace) => {
+          const key = Object.keys(active).find((candidate) => samePath(candidate, workspace.path));
+          const value = key === void 0 ? "" : active[key];
+          return h(
+            "div",
+            { className: "dsk-row", key: workspace.path },
+            h(
+              "div",
+              { className: "dsk-row-main" },
+              h("div", { className: "dsk-row-name" }, workspace.label),
+              mutedOf(workspace.path)
+            ),
+            selectOf({
+              value,
+              options: [
+                { value: "", label: t("scenes.workspaceNone") },
+                ...scenes.map((scene) => ({ value: scene.name, label: scene.name }))
+              ],
+              onChange: (next) => {
+                void domain.act(
+                  "scene-workspace",
+                  { workspace: workspace.path, scene: next === "" ? null : next },
+                  (result) => noticeWithWarnings(
+                    next === "" ? t("scenes.workspaceCleared") : t("scenes.workspaceApplied", { name: next }),
+                    result
+                  )
+                );
+              }
+            })
           );
-        },
-        onEdit: () => openDraft({
-          name: scene.name,
-          description: scene.description,
-          isNew: false,
-          skills: scene.skills.slice(),
-          mcp: scene.mcp.slice(),
-          prompt: scene.prompt ?? "",
-          promptScope: scene.promptTarget?.scope === "workspace" ? "workspace" : "global",
-          promptWorkspace: scene.promptTarget?.workspace ?? "",
-          exclusive: scene.exclusive !== false
-        }),
-        onDelete: () => {
-          if (!window.confirm(t("scenes.confirmDelete", { name: scene.name }))) return;
-          void domain.act("scene-delete", { name: scene.name });
-        }
-      }))),
+        }))
+      ),
       draft === null ? null : renderDraft(t, {
         draft,
         busy: domain.busy,
@@ -2116,14 +2287,16 @@
         onSearch: setSearch,
         onCancel: () => setDraft(null),
         onSave: () => {
-          if (draft.name.trim() === "") return;
+          if (draft.name.trim() === "") {
+            domain.fail(t("scenes.nameRequired"));
+            return;
+          }
           void domain.act("scene-save", {
             name: draft.name.trim(),
             description: draft.description,
             skills: draft.skills,
             mcp: draft.mcp,
             prompt: draft.prompt === "" ? null : draft.prompt,
-            promptTarget: draft.promptScope === "workspace" && draft.promptWorkspace.trim() !== "" ? { scope: "workspace", workspace: draft.promptWorkspace.trim() } : { scope: "global" },
             exclusive: draft.exclusive
           }, t("common.save")).then((done) => {
             if (done.ok) setDraft(null);
@@ -2132,29 +2305,13 @@
       })
     );
   }
-  function renderScene(t, scene, handlers) {
-    const isActive = handlers.active === scene.name;
-    const disabled = handlers.busy !== "";
-    return groupOf(scene.name, [
-      h("span", { className: "dsk-group-name" }, scene.name),
-      isActive ? badgeOf(t("scenes.active"), "ok") : null,
-      scene.skills.length > 0 ? badgeOf(t("scenes.count.skills", { n: scene.skills.length }), "off") : null,
-      scene.mcp.length > 0 ? badgeOf(t("scenes.count.mcp", { n: scene.mcp.length }), "off") : null,
-      scene.prompt === null ? null : badgeOf(`${t("scenes.prompt")}: ${scene.prompt}`, "off"),
-      groupActionsOf([
-        buttonOf({ label: t("scenes.apply"), small: true, disabled: disabled || isActive, onClick: handlers.onApply }),
-        buttonOf({ label: t("scenes.edit"), small: true, disabled, onClick: handlers.onEdit }),
-        buttonOf({ label: t("scenes.delete"), small: true, variant: "danger", disabled: disabled || isActive, onClick: handlers.onDelete })
-      ])
-    ], [
-      scene.description === "" ? null : mutedOf(scene.description)
-    ]);
-  }
   function renderDraft(t, props) {
     const draft = props.draft;
     const needle = props.search.trim().toLowerCase();
     const visibleSkills = (needle === "" ? props.sources.skills : props.sources.skills.filter((row) => row.label.toLowerCase().includes(needle) || row.name.toLowerCase().includes(needle))).slice(0, 120);
     const picked = new Set(draft.skills.map((ref) => refKeyOf(ref.root, ref.name)));
+    const preset = props.sources.presets.find((item) => item.name === draft.prompt);
+    const presetNotWorkspace = preset !== void 0 && preset.scope.kind !== "workspace";
     return modalOf(
       draft.isNew ? t("scenes.new") : `${t("scenes.edit")}: ${draft.name}`,
       [
@@ -2167,7 +2324,7 @@
           value: draft.description,
           onChange: (description) => props.onChange({ description })
         })),
-        /* ── 切换行为：先说清楚「进这个场景会做什么」，再列具体勾选 ── */
+        /* ── 切换行为：先说清楚「用这个场景会发生什么」，再列具体勾选 ── */
         h(
           "div",
           { className: "dsk-section" },
@@ -2195,29 +2352,34 @@
               value: draft.prompt,
               options: [
                 { value: "", label: t("scenes.promptNone") },
-                ...props.sources.presets.map((name) => ({ value: name, label: name }))
+                ...props.sources.presets.map((item) => ({ value: item.name, label: item.name }))
               ],
               onChange: (prompt) => props.onChange({ prompt })
             }),
-            /* 作用范围由那份预设自己决定，这里只说明，避免让人再选一次。 */
-            draft.prompt === "" ? null : mutedOf(t("scenes.promptScopeFromPreset"))
+            draft.prompt === "" ? null : mutedOf(preset?.scope.label ?? t("scenes.promptScopeFromPreset")),
+            presetNotWorkspace ? alertOf(t("scenes.promptScopeNotWorkspace")) : null
           )),
-          fieldOf(t("scenes.mcp"), props.sources.servers.length === 0 ? mutedOf(t("scenes.noMcp")) : h("div", { className: "dsk-files" }, props.sources.servers.map((server) => {
-            const checked = draft.mcp.includes(server.id);
-            return h(
-              "label",
-              { className: "dsk-file", key: server.id, style: { cursor: "pointer" } },
-              h("input", {
-                type: "checkbox",
-                checked,
-                onChange: () => props.onChange({
-                  mcp: checked ? draft.mcp.filter((id) => id !== server.id) : [...draft.mcp, server.id]
-                })
-              }),
-              server.name,
-              server.on ? null : mutedOf(` (${t("mcp.disabled")})`)
-            );
-          }))),
+          fieldOf(t("scenes.mcp"), h(
+            "div",
+            null,
+            mutedOf(t("scenes.mcpGlobal")),
+            props.sources.servers.length === 0 ? mutedOf(t("scenes.noMcp")) : h("div", { className: "dsk-files" }, props.sources.servers.map((server) => {
+              const checked = draft.mcp.includes(server.id);
+              return h(
+                "label",
+                { className: "dsk-file", key: server.id, style: { cursor: "pointer" } },
+                h("input", {
+                  type: "checkbox",
+                  checked,
+                  onChange: () => props.onChange({
+                    mcp: checked ? draft.mcp.filter((id) => id !== server.id) : [...draft.mcp, server.id]
+                  })
+                }),
+                server.name,
+                server.on ? null : mutedOf(` (${t("mcp.disabled")})`)
+              );
+            }))
+          )),
           fieldOf(`${t("scenes.skills")} (${draft.skills.length})`, h(
             "div",
             null,
@@ -2381,9 +2543,104 @@
     );
   }
 
+  // src/client/scenes/hero.ts
+  var NONE = "__none__";
+  function SceneHeroOption(props) {
+    const sessionId = typeof props.sessionId === "string" ? props.sessionId : "";
+    const [state, setState] = useStateOf(null);
+    const [saving, setSaving] = useStateOf(false);
+    const [open, setOpen] = useStateOf(false);
+    useClientEffect(() => {
+      let alive = true;
+      void callOp("scene-state", {}).then((next) => {
+        if (alive) setState(next);
+      }).catch(() => {
+        if (alive) setState(null);
+      });
+      return () => {
+        alive = false;
+      };
+    }, [sessionId]);
+    useClientEffect(() => {
+      if (!open) return () => void 0;
+      const onPointerDown = (event) => {
+        const target = event?.target;
+        if (typeof target?.closest !== "function") return;
+        if (target.closest(".dsk-scene-pick") === null) setOpen(false);
+      };
+      const onKeyDown = (event) => {
+        if (event?.key === "Escape") setOpen(false);
+      };
+      document.addEventListener("mousedown", onPointerDown);
+      document.addEventListener("keydown", onKeyDown);
+      return () => {
+        document.removeEventListener("mousedown", onPointerDown);
+        document.removeEventListener("keydown", onKeyDown);
+      };
+    }, [open]);
+    const scenes = state?.scenes ?? [];
+    if (sessionId === "" || scenes.length === 0) return null;
+    const choice = state?.sessions?.[sessionId];
+    const value = choice === void 0 ? "" : choice.scene === null ? NONE : choice.scene;
+    const labelOf = (next) => {
+      if (next === "") return tNow("scenes.heroFollow");
+      if (next === NONE) return tNow("scenes.heroNone");
+      return next;
+    };
+    const options = [
+      { value: "", label: tNow("scenes.heroFollow") },
+      { value: NONE, label: tNow("scenes.heroNone") },
+      ...scenes.map((scene) => ({ value: scene.name, label: scene.name }))
+    ];
+    const apply = (next) => {
+      setOpen(false);
+      if (next === value) return;
+      setSaving(true);
+      const args = { sessionId };
+      if (next === "") delete args.scene;
+      else if (next === NONE) args.scene = null;
+      else args.scene = next;
+      void callOp("scene-session", args).then(() => callOp("scene-state", {})).then((fresh) => setState(fresh)).catch(() => void 0).finally(() => setSaving(false));
+    };
+    return h(
+      "div",
+      { className: "dsk-scene-pick" },
+      h(
+        "button",
+        {
+          type: "button",
+          className: "dsk-scene-pick-btn",
+          disabled: saving,
+          title: tNow("scenes.heroLabel"),
+          "aria-haspopup": "listbox",
+          "aria-expanded": open ? "true" : "false",
+          onClick: () => setOpen(!open)
+        },
+        h("span", { className: "dsk-scene-pick-label" }, tNow("scenes.heroLabel")),
+        h("span", { className: "dsk-scene-pick-value" }, labelOf(value)),
+        h("span", { className: "dsk-scene-pick-caret", "aria-hidden": "true" }, "\u25BC")
+      ),
+      open ? h(
+        "div",
+        { className: "dsk-scene-pick-list", role: "listbox" },
+        options.map((option) => h("button", {
+          type: "button",
+          key: option.value === "" ? "__follow__" : option.value,
+          className: "dsk-scene-pick-item",
+          role: "option",
+          "aria-selected": option.value === value ? "true" : "false",
+          "data-current": option.value === value ? "true" : "false",
+          onClick: () => apply(option.value)
+        }, option.label))
+      ) : null
+    );
+  }
+
   // src/client/plugin.ts
   var PANEL_ID = "tool-center";
   var PANEL_ORDER = 31;
+  var HERO_OPTION_ID = "tool-center-scene";
+  var HERO_OPTION_ORDER = 60;
   function activeLocaleOf(ctx) {
     try {
       const locale = ctx.get("locale");
@@ -2397,29 +2654,54 @@
     return {
       inject: ["slots"],
       apply(ctx) {
+        const registrations = [];
+        const once = (fn) => {
+          let done = false;
+          return () => {
+            if (done) return;
+            done = true;
+            try {
+              fn();
+            } catch {
+            }
+          };
+        };
+        const track = (dispose) => {
+          if (typeof dispose === "function") registrations.push(once(dispose));
+        };
+        const disposeAll = () => {
+          for (const dispose of registrations.splice(0)) dispose();
+        };
         const style = document.createElement("style");
         style.setAttribute("data-dsh-tool-center", "");
         style.textContent = CSS;
-        document.head.appendChild(style);
-        ctx.effect(() => () => {
-          style.remove();
-        }, "tool-center: styles");
+        let localeScoped = null;
+        let dictionaryOn = false;
         const mountDictionary = (scoped) => {
-          setDictionary(dictionaryFor(activeLocaleOf(scoped)));
+          localeScoped = scoped;
+          const dict = dictionaryFor(activeLocaleOf(scoped));
+          setDictionary(dict);
+          setActiveDictionary(dict);
+          if (dictionaryOn) return;
           const locale = scoped.get("locale");
           if (locale === void 0 || locale === null || typeof locale.register !== "function") {
             console.warn("[tool-center] locale service unavailable; UI copy falls back to the bundled dictionaries");
             return;
           }
-          scoped.effect(() => {
-            try {
-              return locale.register(NS, dictionaries());
-            } catch (error) {
-              console.warn("[tool-center] locale dictionaries already registered (stale reload)", error);
-              return () => void 0;
-            }
-          }, "tool-center: dictionaries");
+          try {
+            const dispose = locale.register(NS, dictionaries());
+            dictionaryOn = true;
+            track(() => {
+              dictionaryOn = false;
+              dispose?.();
+            });
+          } catch (error) {
+            console.warn("[tool-center] locale dictionaries already registered (stale reload)", error);
+          }
         };
+        ctx.effect(() => () => {
+          disposeAll();
+        }, "tool-center: registrations");
         if (typeof ctx.inject === "function") ctx.inject(["locale"], mountDictionary);
         else mountDictionary(ctx);
         const slots = ctx.get("slots");
@@ -2427,22 +2709,92 @@
           console.warn("[tool-center] slots service unavailable; the panel cannot mount");
           return;
         }
+        let slotsMounted = false;
         const mount = (name, options, component) => {
-          ctx.effect(() => slots.inject(name, () => slots.register(
+          track(slots.inject(name, () => slots.register(
             { name, ...options },
             (props) => h(component, props)
-          )), `tool-center: ${name}`);
+          )));
         };
-        mount("sidebar.panellist", {
-          id: PANEL_ID,
-          order: PANEL_ORDER,
-          locale: NS,
-          label: () => translateWith(dictionaryFor(activeLocaleOf(ctx)), "nav.title")
-        }, ToolCenterIcon);
-        mount("main", {
-          key: PANEL_ID,
-          locale: NS
-        }, ToolCenterPanel);
+        const mountAll = () => {
+          if (slotsMounted) return;
+          slotsMounted = true;
+          try {
+            if (typeof document !== "undefined" && !document.head.contains(style)) document.head.appendChild(style);
+          } catch {
+          }
+          track(() => style.remove());
+          if (localeScoped !== null) mountDictionary(localeScoped);
+          mount("sidebar.panellist", {
+            id: PANEL_ID,
+            order: PANEL_ORDER,
+            locale: NS,
+            label: () => translateWith(dictionaryFor(activeLocaleOf(ctx)), "nav.title")
+          }, ToolCenterIcon);
+          mount("main", {
+            key: PANEL_ID,
+            locale: NS
+          }, ToolCenterPanel);
+          mount("conversation.hero.options", {
+            id: HERO_OPTION_ID,
+            order: HERO_OPTION_ORDER,
+            locale: NS
+          }, SceneHeroOption);
+        };
+        const teardown = () => {
+          slotsMounted = false;
+          disposeAll();
+        };
+        mountAll();
+        ctx.effect(() => onPluginGone(() => setTimeout(teardown, 0)), "tool-center: unload guard");
+        ctx.effect(() => onPluginRevived(() => setTimeout(mountAll, 0)), "tool-center: revive guard");
+        ctx.effect(() => {
+          if (typeof document === "undefined" || typeof document.addEventListener !== "function") {
+            return () => void 0;
+          }
+          let checking = false;
+          let retry = null;
+          let attempts = 0;
+          const probe = () => {
+            if (checking) return;
+            checking = true;
+            void callOp("health", {}).catch(() => void 0).finally(() => {
+              checking = false;
+            });
+          };
+          const onVisibility = () => {
+            if (document.visibilityState !== void 0 && document.visibilityState !== "visible") return;
+            probe();
+          };
+          const startRetry = () => {
+            if (retry !== null) return;
+            attempts = 0;
+            retry = setInterval(() => {
+              attempts += 1;
+              if (!isPluginGone() || attempts > 60) {
+                if (retry !== null) clearInterval(retry);
+                retry = null;
+                return;
+              }
+              probe();
+            }, 5e3);
+          };
+          const stopRetry = () => {
+            if (retry === null) return;
+            clearInterval(retry);
+            retry = null;
+          };
+          document.addEventListener("visibilitychange", onVisibility);
+          const offGone = onPluginGone(startRetry);
+          const offRevived = onPluginRevived(stopRetry);
+          if (isPluginGone()) startRetry();
+          return () => {
+            stopRetry();
+            offGone();
+            offRevived();
+            document.removeEventListener("visibilitychange", onVisibility);
+          };
+        }, "tool-center: liveness");
       }
     };
   }

@@ -40,7 +40,24 @@ if (toolchain === null) {
   process.exit(1)
 }
 
-if (existsSync(dist)) rmSync(dist, { recursive: true, force: true })
+/**
+ * 清掉上一次的产物。
+ *
+ * 桌面应用正在运行时会占住已加载的 `dist/host/*.js`，Windows 就拒绝删目录（EPERM）。
+ * 那种情况下**不能**让构建失败：tsc / esbuild 都是整文件覆盖，原地重建照样得到正确产物。
+ * 代价是「源码里删掉的文件」会留下旧产物，所以这里明确告警，建议重启应用后再全量构建。
+ */
+let cleaned = true
+if (existsSync(dist)) {
+  try {
+    rmSync(dist, { recursive: true, force: true })
+  } catch (cause) {
+    cleaned = false
+    console.warn('[build] dist is locked (the desktop app is probably running); building in place.')
+    console.warn('[build] stale files from deleted sources may remain until the next clean build.')
+    console.warn('[build] reason: ' + (cause?.code ?? String(cause)))
+  }
+}
 
 /** esbuild 也从同一套工具链解析，因此不需要额外安装。 */
 async function loadEsbuild() {
@@ -88,3 +105,4 @@ for (const artifact of ['dist/host/index.js', 'dist/client.js']) {
 const clientBytes = Object.values(result.metafile.outputs).reduce((sum, output) => sum + output.bytes, 0)
 console.log('[build] ok -> dist/host/index.js, dist/client.js (' + (clientBytes / 1024).toFixed(1) + ' KiB)')
 console.log('[build] toolchain: ' + toolchain.base)
+if (!cleaned) console.log('[build] note: in-place rebuild, dist was not emptied')

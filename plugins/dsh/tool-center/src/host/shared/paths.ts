@@ -62,6 +62,22 @@ export function isInside(root: string, candidate: string): boolean {
   return rel !== '' && !rel.startsWith('..') && !isAbsolute(rel)
 }
 
+/**
+ * 两个路径是否指同一个位置。
+ *
+ * 全仓唯一的「路径相等」口径（`resolve` 归一 + Windows 转小写）。空串**不**等于任何东西：
+ * 「没绑工作区」不是一个路径，反复被这条规则绊住过。
+ */
+export function samePath(left: string, right: string): boolean {
+  if (left.trim() === '' || right.trim() === '') return false
+  return pathIdSync(left) === pathIdSync(right)
+}
+
+/** 路径的排序 / 长短比较键（已归一，可直接比长度选「最深的那层」）。 */
+export function pathKey(path: string): string {
+  return pathIdSync(path)
+}
+
 /** 两个根是否有重叠（任一方向，较紧的那个胜出）。 */
 export function pathsOverlap(left: string, right: string): boolean {
   return isInside(left, right) || isInside(right, left)

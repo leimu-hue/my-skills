@@ -43,8 +43,7 @@ async function loadBundle() {
   return { bundle: captured.bundle, sandbox }
 }
 
-function fakeReact() {
-  const calls = { elements: 0 }
+function fakeReact() {  const calls = { elements: 0 }
   return {
     calls,
     createElement(type, props, ...children) {
@@ -130,7 +129,8 @@ test('the client plugin mounts a sidebar icon and its main panel under one id', 
   assert.equal(injections.includes('settings.section'), false, 'the panel must not live in the settings page')
   assert.equal(injections.includes('sidebar.panellist'), true)
   assert.equal(injections.includes('main'), true)
-  assert.equal(registrations.length, 2)
+  assert.equal(injections.includes('conversation.hero.options'), true, 'the new-session row gets the scene picker')
+  assert.equal(registrations.length, 3)
 
   const sidebar = registrations.find((entry) => entry.options.name === 'sidebar.panellist').options
   assert.equal(sidebar.id, 'tool-center')
@@ -193,4 +193,49 @@ test('the page renders one pass without throwing', async () => {
   const tree = component({})
   assert.ok(tree !== null && typeof tree === 'object', 'the page must return an element')
   assert.ok(React.calls.elements > 0)
+})
+
+test('the error alert never paints red text on a solid red fill', async () => {
+  const code = await readFile(join(root, 'dist', 'client.js'), 'utf8')
+  // 浅色主题里 state-error-secondary 是实心红（red-400），拿它当底色 + primary 当文字
+  // 就是红底红字（用户看到的「被红色框框遮住」）。错误条必须用 primary 的 12% 混底色。
+  const alertRule = code.slice(code.indexOf('.dsk-alert-err{'), code.indexOf('.dsk-alert-err{') + 400)
+  assert.ok(alertRule.includes('color-mix'), 'the error surface is a tint of the error color')
+  assert.equal(
+    /\.dsk-alert-err\{[^}]*background:var\(--dsw-alias-state-error-secondary/.test(code),
+    false,
+    'state-error-secondary is a solid fill in the light theme and must not be used as an alert background',
+  )
+  assert.ok(alertRule.includes('var(--dsw-alias-state-error-primary'), 'the text uses the paired error color')
+})
+
+test('a 404/405 means the plugin is gone, not a data error', async () => {
+  const code = await readFile(join(root, 'dist', 'client.js'), 'utf8')
+  // 停用插件后宿主没有这条路由：识别成「已停用」并广播，界面据此自我卸载，
+  // 而不是在面板里刷一片读不懂的错误。
+  assert.ok(code.includes('error.pluginUnavailable'), 'the gone case has its own code')
+  assert.ok(code.includes('onPluginGone'), 'the bundle exposes the teardown subscription')
+  assert.ok(code.includes('response.status === 404 || response.status === 405'), 'both statuses are recognized')
+})
+
+test('disable and re-enable are symmetric: the panel tears itself down AND mounts itself back', async () => {
+  const code = await readFile(join(root, 'dist', 'client.js'), 'utf8')
+  assert.ok(code.includes('onPluginGone'), 'the bundle subscribes to the gone signal')
+  assert.ok(code.includes('onPluginRevived'), 'and to the revived signal — otherwise re-enabling never brings the icon back')
+  assert.ok(code.includes('isPluginGone'), 'the probe knows whether it is in the gone state')
+  assert.ok(code.includes('tool-center: unload guard') && code.includes('tool-center: revive guard'), 'both guards are installed')
+  assert.ok(/setInterval\(\(\) => \{[\s\S]{0,400}?\}, 5(e3|000)\)/.test(code), 'a bounded retry keeps probing while gone')
+})
+
+test('the new-session scene picker is drawn by us, not by a native select', async () => {
+  const code = await readFile(join(root, 'dist', 'client.js'), 'utf8')
+  // 原生 <select> 的弹出层由系统绘制，深色主题下会变成「白底浅灰字」——
+  // 所以这里必须是自己画的列表，并且颜色走宿主 token。
+  assert.ok(code.includes('dsk-scene-pick-btn'), 'the closed control has its own class')
+  assert.ok(code.includes('dsk-scene-pick-list'), 'the open list has its own class')
+  assert.ok(code.includes('"aria-haspopup": "listbox"'), 'the control advertises a listbox popup')
+  // 只看这个组件附近：面板里的 selectOf 是合法的原生 select，不该被这条断言牵连。
+  const around = code.slice(Math.max(0, code.indexOf('dsk-scene-pick-btn') - 400), code.indexOf('dsk-scene-pick-btn') + 4000)
+  assert.equal(around.includes('"select"'), false, 'the picker itself renders no native select')
+  assert.ok(code.includes('--dsw-alias-bg-layer-1'), 'the list background follows the host theme token')
 })

@@ -51,3 +51,20 @@ export function dictionaryFor(active: string | undefined): Record<string, string
 export function dictionaries(): { zh: Record<string, string>; en: Record<string, string> } {
   return { zh: ZH, en: EN }
 }
+
+/**
+ * 最近一次确定的词典（模块级）。
+ *
+ * 给拿不到 `props.t` 的组件用 —— 例如注入到宿主其它槽位的小控件（新会话页的场景选择器）：
+ * 它们由宿主渲染，不经过本插件的页签外壳。
+ */
+let activeDict: Record<string, string> = EN
+
+export function setActiveDictionary(dict: Record<string, string>): void {
+  activeDict = dict
+}
+
+/** 用模块级词典取一句文案（槽位里的小控件用）。 */
+export function tNow(key: string, values?: Record<string, unknown>): string {
+  return translateWith(activeDict, key, values)
+}

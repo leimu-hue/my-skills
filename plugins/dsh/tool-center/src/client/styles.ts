@@ -119,14 +119,33 @@ export const CSS = `
 .dsk-label{font-size:12px;color:var(--dsw-alias-label-secondary,#5c6068)}
 .dsk-input,.dsk-textarea,.dsk-select{width:100%;box-sizing:border-box;padding:6px 8px;border:1px solid var(--dsw-alias-border-l2,#d9dbe0);border-radius:6px;background:var(--dsw-alias-bg-layer-1,#fff);color:inherit;font-size:12px;font-family:inherit}
 .dsk-textarea{min-height:180px;font-family:var(--ds-font-family-code,ui-monospace,Consolas,monospace);line-height:18px;resize:vertical}
-.dsk-alert{padding:6px 10px;border-radius:6px;background:var(--dsw-alias-state-warn-tertiary,rgba(212,146,69,.12));color:var(--dsw-alias-state-warn-label,#8a5a1e);font-size:12px}
-.dsk-alert-err{background:var(--dsw-alias-state-error-secondary,rgba(201,65,74,.1));color:var(--dsw-alias-state-error-primary,#b03a42)}
+.dsk-alert{padding:6px 10px;border-radius:6px;background:var(--dsw-alias-state-warn-tertiary,rgba(212,146,69,.12));color:var(--dsw-alias-state-warn-label,#8a5a1e);font-size:12px;line-height:18px;white-space:pre-wrap;overflow-wrap:anywhere}
+/* 错误条：底色与文字也必须成对。
+   早先底色用 state-error-secondary（浅色主题里它是**实心红** red-400）、文字用
+   state-error-primary（red-600）—— 红底红字，整条只剩一块红。宿主自己在 diff 里用的是
+   「primary 按 12% 混底色」，这里跟它；前面一行 rgba 兜底老浏览器（没有 color-mix）。 */
+.dsk-alert-err{background:rgba(201,65,74,.12);background:color-mix(in srgb,var(--dsw-alias-state-error-primary,#c9414a) 12%,var(--dsw-alias-bg-layer-1,#fff));color:var(--dsw-alias-state-error-primary,#c9414a)}
 .dsk-empty{padding:14px;text-align:center;color:var(--dsw-alias-label-tertiary,#8a8f99);font-size:12px}
+/* 新会话页的场景选择器（conversation.hero.options）。
+   这里刻意**不用原生 <select>**：它展开的候选项列表由系统/浏览器绘制，渲染在页面之外的
+   弹出层里，我们的样式与宿主的深色主题都管不到 —— 深色界面下就是「白底浅灰字」，正好是
+   用户截图里那块看不清的列表。整块自绘之后，颜色全部走宿主成对的 token。 */
+.dsk-scene-pick{position:relative;display:inline-flex;align-items:center;font-size:12px;line-height:16px}
+.dsk-scene-pick-btn{display:inline-flex;align-items:center;gap:6px;max-width:220px;padding:3px 8px;border:1px solid var(--dsw-alias-border-l2,rgba(127,127,127,.35));border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary,#5c6068);font:inherit;font-size:12px;line-height:16px;cursor:pointer}
+.dsk-scene-pick-btn:hover:not(:disabled){background:var(--dsw-alias-bg-layer-2,rgba(127,127,127,.12))}
+.dsk-scene-pick-btn:disabled{opacity:.6;cursor:default}
+.dsk-scene-pick-label{color:var(--dsw-alias-label-tertiary,#8a8f99);flex:none}
+.dsk-scene-pick-value{max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-primary,#1b1d21)}
+.dsk-scene-pick-caret{flex:none;font-size:9px;color:var(--dsw-alias-label-tertiary,#8a8f99)}
+.dsk-scene-pick-list{position:absolute;bottom:calc(100% + 4px);left:0;z-index:60;min-width:150px;max-width:260px;padding:4px;display:flex;flex-direction:column;gap:2px;border:1px solid var(--dsw-alias-border-l2,rgba(127,127,127,.35));border-radius:8px;background:var(--dsw-alias-bg-layer-1,#fff);box-shadow:0 6px 20px rgba(0,0,0,.28)}
+.dsk-scene-pick-item{padding:5px 8px;border:0;border-radius:6px;background:transparent;color:var(--dsw-alias-label-primary,#1b1d21);font:inherit;font-size:12px;line-height:16px;text-align:left;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dsk-scene-pick-item:hover{background:var(--dsw-alias-bg-layer-2,rgba(127,127,127,.12))}
+.dsk-scene-pick-item[data-current="true"]{color:var(--dsw-alias-brand-primary-new-colorprimary-new-color,#4d6bfe);font-weight:600}
 /* 提示条：底色与文字必须用宿主**成对**的那两个 token。
    早先文字用的是 label-primary-inverted —— 它在深色主题里是 neutral-bluish-800（深灰），
    配 toast-bg（深色主题 neutral-bluish-750）就是灰底灰字，几乎看不见。宿主自己的 toast
    用的是 toast-bg + toast-label，这里跟随它。 */
-.dsk-toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);padding:7px 14px;border-radius:16px;background:var(--dsw-alias-toast-bg,rgba(28,32,38,.92));color:var(--dsw-alias-toast-label,#f7f8fa);font-size:12px;z-index:40;max-width:70%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;box-shadow:var(--dsw-shadow-lv3,0 6px 20px rgba(0,0,0,.28))}
+.dsk-toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);padding:7px 14px;border-radius:16px;background:var(--dsw-alias-toast-bg,rgba(28,32,38,.92));color:var(--dsw-alias-toast-label,#f7f8fa);font-size:12px;z-index:40;max-width:70%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;box-shadow:0 6px 20px rgba(0,0,0,.28)}
 .dsk-trash-item{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;padding:8px 10px;border:1px solid var(--dsw-alias-border-l2,#e5e6eb);border-radius:8px}
 .dsk-trash-meta{font-size:11px;color:var(--dsw-alias-label-tertiary,#8a8f99);word-break:break-all}
 .dsk-trash-actions{display:flex;gap:6px}
