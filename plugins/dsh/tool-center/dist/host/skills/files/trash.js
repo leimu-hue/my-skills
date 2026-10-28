@@ -6,11 +6,11 @@
  */
 import { mkdir, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import { DomainError } from '../../shared/result.js';
-import { exists, readTextOrNull } from '../../shared/fs.js';
-import { writeFileAtomic } from '../../shared/paths.js';
-import { isRecord } from '../../shared/json.js';
-import { assertOneSkill, assertRowWritable, copyTree } from './guard.js';
+import { DomainError } from "../../shared/result.js";
+import { exists, readTextOrNull } from "../../shared/fs.js";
+import { writeFileAtomic } from "../../shared/paths.js";
+import { isRecord } from "../../shared/json.js";
+import { assertOneSkill, assertRowWritable, copyTree } from "./guard.js";
 function trashRootOf(dshHome) {
     return join(dshHome, 'tool-center', 'trash');
 }

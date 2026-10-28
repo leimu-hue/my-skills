@@ -4,7 +4,7 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
 
 /**
- * 浏览器半侧不能 import Host 的类型（模块系统不同），所以 `client/core/types.ts` 是
+ * 浏览器半侧不能 import Host 的类型（模块系统不同），所以 `client/lib/core/types.ts` 是
  * **手写的镜像**。这份镜像最容易悄悄漂移：Host 加字段没人管，面板就一直读不到。
  *
  * 这里只做一件便宜但有效的事：同名的镜像结构里，客户端声明的每个顶层字段都必须在
@@ -12,7 +12,7 @@ import { join, relative } from 'node:path'
  * 嵌套形状（`scope` 之类）由各自的 typecheck 负责，这里比到顶层。
  */
 const HOST_ROOT = join(import.meta.dirname, '..', 'src', 'host')
-const CLIENT_TYPES = join(import.meta.dirname, '..', 'src', 'client', 'core', 'types.ts')
+const CLIENT_TYPES = join(import.meta.dirname, '..', 'src', 'client', 'lib', 'core', 'types.ts')
 
 function walk(dir) {
   const out = []

@@ -6,11 +6,11 @@
  * `locale.ts` + `locale-domains.ts` + 三段 `Object.assign` 叠加，同一个键被定义两三遍，
  * 想知道最终文案得从头读到尾。
  */
-import { EN_COMMON, ZH_COMMON } from './common.js'
-import { EN_SKILLS, ZH_SKILLS } from './skills.js'
-import { EN_PROMPTS, ZH_PROMPTS } from './prompts.js'
-import { EN_MCP, ZH_MCP } from './mcp.js'
-import { EN_SCENES, ZH_SCENES } from './scenes.js'
+import { EN_COMMON, ZH_COMMON } from './common.ts'
+import { EN_SKILLS, ZH_SKILLS } from './skills.ts'
+import { EN_PROMPTS, ZH_PROMPTS } from './prompts.ts'
+import { EN_MCP, ZH_MCP } from './mcp.ts'
+import { EN_SCENES, ZH_SCENES } from './scenes.ts'
 
 export const NS = 'tool-center'
 

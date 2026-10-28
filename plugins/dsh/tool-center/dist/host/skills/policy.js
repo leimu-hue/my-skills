@@ -1,5 +1,5 @@
-import { preferredRootOf, skillSwitchOf, sourceSwitchOf } from './state.js';
-import { isRecord } from '../shared/json.js';
+import { preferredRootOf, skillSwitchOf, sourceSwitchOf } from "./state.js";
+import { isRecord } from "../shared/json.js";
 /**
  * 所有覆盖候选的固定 rank。
  *

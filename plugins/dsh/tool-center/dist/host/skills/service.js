@@ -11,18 +11,18 @@
 import { stat } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join } from 'node:path';
-import { DomainError, errorResult } from '../shared/result.js';
-import { isFile } from '../shared/fs.js';
-import { createLock, isInside, pathIdSync, realOrResolved } from '../shared/paths.js';
-import { createScanner } from './scan.js';
-import { DEFAULT_RANKS, dedupeRoots, hostRoots, overlapsExisting, projectRootsFor, staticRoots } from './roots.js';
-import { customRootKey, customRootOf, defaultStatePath, forgetSkillEverywhere, loadState, pruneState, saveState, uniqueStrings, workspaceScopeOf, } from './state.js';
-import { allRows, buildStateView, liveNameIndex } from './view.js';
-import { rowMatchesRef } from './policy.js';
-import { createSkill, readSkillDetail, updateSkill } from './files/authoring.js';
-import { deleteSkillToTrash, emptyTrash, listTrash, purgeTrashItem, restoreTrashItem } from './files/trash.js';
-import { exportRowAsZip, exportRowsAsZip, importZip, scanZip } from './files/transfer.js';
-import { PROVIDER_NAME, createProvider } from './provider.js';
+import { DomainError, errorResult } from "../shared/result.js";
+import { isFile } from "../shared/fs.js";
+import { createLock, isInside, pathIdSync, realOrResolved } from "../shared/paths.js";
+import { createScanner } from "./scan.js";
+import { DEFAULT_RANKS, dedupeRoots, hostRoots, overlapsExisting, projectRootsFor, staticRoots } from "./roots.js";
+import { customRootKey, customRootOf, defaultStatePath, forgetSkillEverywhere, loadState, pruneState, saveState, uniqueStrings, workspaceScopeOf, } from "./state.js";
+import { allRows, buildStateView, liveNameIndex } from "./view.js";
+import { rowMatchesRef } from "./policy.js";
+import { createSkill, readSkillDetail, updateSkill } from "./files/authoring.js";
+import { deleteSkillToTrash, emptyTrash, listTrash, purgeTrashItem, restoreTrashItem } from "./files/trash.js";
+import { exportRowAsZip, exportRowsAsZip, importZip, scanZip } from "./files/transfer.js";
+import { PROVIDER_NAME, createProvider } from "./provider.js";
 /**
  * 宿主目录缓存的兜底时效。
  *
@@ -566,7 +566,7 @@ export function createService(options) {
             });
             return { ok: true, data: { generation: scanner.generation(), pruned: pruned.data, stats: scanner.stats() } };
         },
-        makeProvider(scopeKey) {
+        makeProvider(scopeKey, beforeView) {
             // 这条路径是宿主 `skills.list()` 回调进来的：再问注册表就是无限递归（面板会一直
             // 停在加载中），所以只读宿主目录的缓存，绝不探测。
             const read = { probeHost: false };
@@ -574,6 +574,7 @@ export function createService(options) {
                 viewFor: (cwd, scope) => view(cwd, scope, read),
                 rootsFor: (cwd) => rootsFor(cwd, read),
                 ...(scopeKey === undefined ? {} : { scopeKey }),
+                ...(beforeView === undefined ? {} : { beforeView }),
             });
         },
         stateInfo() {

@@ -1,6 +1,6 @@
-import { readTextOrNull, statOrNull } from '../shared/fs.js';
-import { modelVisible, needsOverlay, userVisible } from './policy.js';
-import { isHostSkillName, parseSkillFile } from './frontmatter.js';
+import { readTextOrNull, statOrNull } from "../shared/fs.js";
+import { modelVisible, needsOverlay, userVisible } from "./policy.js";
+import { isHostSkillName, parseSkillFile } from "./frontmatter.js";
 /**
  * 宿主要求的候选形状：名字必须 kebab-case、描述非空。
  *
@@ -97,6 +97,9 @@ export function createProvider(deps) {
         name: PROVIDER_NAME,
         async list(options = {}) {
             const signal = options.signal;
+            if (isAborted(signal))
+                return [];
+            await deps.beforeView?.(options.cwd);
             if (isAborted(signal))
                 return [];
             const view = await deps.viewFor(options.cwd, deps.scopeKey);

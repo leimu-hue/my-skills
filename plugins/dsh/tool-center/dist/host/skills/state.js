@@ -16,8 +16,8 @@
  */
 import { readFile, rename } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
-import { isInside, pathId, pathKey, writeFileAtomic } from '../shared/paths.js';
-import { isRecord } from '../shared/json.js';
+import { isInside, pathId, pathKey, writeFileAtomic } from "../shared/paths.js";
+import { isRecord } from "../shared/json.js";
 const STATE_VERSION = 1;
 export function defaultState() {
     return {

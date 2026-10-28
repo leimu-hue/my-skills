@@ -10,6 +10,8 @@ DeepSeek Harness 的一个左侧栏面板：**场景 / MCP / 技能 / 提示词*
 它和 `dsh-plugin-tool-management` 管的是同一类事，但实现上刻意避开了那个插件的坑：
 **读路径绝不写盘、写操作幂等短路、状态只有一个文件、客户端只有一个页面**。
 
+当前版本 `0.5.1`：客户端按「逻辑 / 界面」分成 `lib/` 与 `components/` 两层（见「开发」）。
+
 ## 四个域
 
 ### 场景
@@ -23,10 +25,18 @@ DeepSeek Harness 的一个左侧栏面板：**场景 / MCP / 技能 / 提示词*
 | 场景定义 | 你（面板新建 / 编辑） | `scenes.json` 的 `scenes[]` | 什么都没生效，只是一个档案 |
 | 工作区默认 | 面板里每个工作区各选一次 | `active[<工作区>]` | 该工作区所有会话的默认场景 |
 | 会话选择 | 新会话页的下拉 / `/scene` | `sessions[<根会话>]` | 只影响这个对话，压过工作区默认 |
+| 待认领 | 新会话页的下拉额外记一条 | `pending[<工作区>]` | 交给「本工作区接下来真正开始的那场对话」 |
 
 - 同一个场景可以同时被多个工作区使用；一个工作区同时只用一个。
 - 会话可以「跟随工作区 / 指定某个场景 / 不使用」三选一 —— 这是「会话开始时选择」的落点：
   新会话页那一行（工作区与预设控件右侧）有一个场景下拉；已有会话用 `/scene`。
+- **新会话页上的选择会被「认领」**：那个页面的会话 id 只是草稿（宿主在真正发送时才建对话），
+  所以下拉除了写 `sessions[草稿 id]`，还写一条 `pending[工作区]`。等某个真实会话在同一个
+  工作区里**第一次读技能**时（provider 的 `beforeView`），把它认领过来、写进那个会话、
+  再把草稿 id 上的残留记录清掉。三条克制：会话自己选过（含 `/scene`）就不动；超过 30 分钟
+  的意图作废；工作区默认一改，这条意图也随之作废。没有这一步，在开始页选好的场景会
+  静静地不生效 —— 这正是会话日志里被复现过的情形（选了场景的会话只有一行 header，
+  真正跑对话的是另一个 id）。
 - **隔离方式**：技能写进作用域层（`state.layers.workspaces['<工作区>']` /
   `state.layers.sessions['<根会话>']`），全局策略一个字节都不改；会话选择是**整层替代**，
   不是叠加。清掉选择 = 删掉那一层，没有「回滚」要算。
@@ -38,7 +48,10 @@ DeepSeek Harness 的一个左侧栏面板：**场景 / MCP / 技能 / 提示词*
 - **子会话算在它所属的那次对话里**：子代理 / 侧聊有自己的 session id，工作区与会话选择都沿
   `header.parentSession` 上溯到根会话 —— 否则父会话里藏起来的服务器与技能，派一个子代理就能
   重新看见。取不到会话身份时按「不做隔离」处理（宁可少隔离，不串到别的项目）。
-- **「进了，但没全进」要说出来**：档案里的技能已被删除 / 改名时，报告给出「只生效了 N 条」与差额。
+- **「进了，但没全进」要说出来**：档案里的技能已被删除 / 改名时，报告给出「只生效了 N 条」与差额；
+  会话级选择与工作区默认走同一句提醒（早先只有工作区那条会说，会话那条默默少几条）。
+- **技能留空的场景只动 MCP**：只勾了服务器的场景不会写一张空白名单 —— 那会把整个会话的
+  技能一次全关掉。一条没命中时写 `null`（跟随下层）；只有「整套切换 + 勾了技能」才会遮人。
 - 提示词**只有作用范围就是这个工作区的预设**才会进场景；全局预设会被跳过并警告。
   **提示词没有会话级**：`AGENTS.md` 是文件、宿主按目录读，按会话开关不了 —— 所以会话选择只覆盖
   技能与 MCP 工具，命令与界面都会说明这一点。
@@ -136,9 +149,9 @@ DeepSeek Harness 的一个左侧栏面板：**场景 / MCP / 技能 / 提示词*
 
 ```powershell
 cd D:\custom_project\ai-project\my-skills\plugins\dsh\tool-center
-npm install        # 只装 esbuild / typescript / @types/node
+npm install        # 只装 esbuild / typescript / @types/node / react / @types/react
 npm run build      # 必须先构建：dist/ 不存在时宿主加载会失败
-npm test           # 173 个用例
+npm test           # 185 个用例
 
 cd $env:USERPROFILE\.dsh\profiles\desktop
 npm install --no-audit --no-fund
@@ -271,6 +284,37 @@ npm run typecheck:host
 npm run typecheck:client
 ```
 
+客户端是一份普通的 ES 模块 + JSX：React 与 `react/jsx-runtime` 由宿主的模块表提供，
+`__ModuleLoader__.load({ id, factory })` 那层外壳改由 `scripts/build.mjs` 的 banner/footer 补
+—— 和同仓库的 `related-projects` 同一套做法。所以 `src/client/main.ts` 只剩一句
+`export { apply, inject }`，`src/client/tsconfig.json` 也能开 `strict` 与 `react-jsx` 做类型检查。
+
+> 客户端配置刻意放在 `src/client/tsconfig.json`（而不是根目录的 `tsconfig.client.json`）：
+> 编辑器只会按「最近的 `tsconfig.json`」给文件归类，而根目录那个是 Host 的（`include: src/host/**`）。
+> 放在根目录时，客户端文件不属于任何工程，编辑器会回退到默认的 `node10` 解析，
+> 连带把 `import './zip.js'` 报成 `ts(2307)` —— 命令行 `tsc` 却一切正常。
+
+`src/client/` 下只分两层：
+
+- **`lib/` 是逻辑**（没有 JSX）：`lib/core/` 放与业务无关的通用件（传输、域 hook、类型镜像、
+  路径、本机存储、ZIP），其余按域分到 `lib/skills|prompts|mcp|scenes/`，每个域一个 `use-*.ts`；
+- **`components/` 是界面**（只有版面）：状态一律从 `lib/` 的 hook 取，自己不做判断。
+
+### 两个工程共用同一套类型纪律
+
+| | Host（`tsconfig.json`） | Client（`src/client/tsconfig.json`） |
+|---|---|---|
+| 严格度 | `strict` / `noImplicitOverride` / `noUnusedLocals` / `noUnusedParameters` / `isolatedModules` / `verbatimModuleSyntax` | 同左 + `jsx: react-jsx` |
+| 产物 | tsc 输出 `dist/host/`（ESM） | esbuild 打包成 `dist/client.js` |
+| 相对导入 | 写 `.ts`，由 `rewriteRelativeImportExtensions` 在输出时改回 `.js` | 写 `.ts` / `.tsx`（`allowImportingTsExtensions`，不产物） |
+
+导入一律写**磁盘上的真实扩展名**（`.ts`、`.tsx`），不再写 `.js`：源码里看到的就是真的文件，
+编辑器不用在两个后缀之间做推断，`.js` 后缀也再没有理由被误报成 `ts(2307)`。
+
+> 刻意没开的两项：`noUncheckedIndexedAccess`（patch / frontmatter / policy 等解析器里有 44 处数组下标）
+> 与 `exactOptionalPropertyTypes`（16 处可选属性契约，涉及 `ServiceOptions` / `RouteMeta` 等对外形状）。
+> 它们需要逐个确认语义后再改，不该和结构调整揉在一次改动里。
+
 ```
 src/host/
   index.ts              接线：provider（全局 + 每个 agent 作用域）、工具、路由、watcher、迁移
@@ -282,7 +326,7 @@ src/host/
     json.ts             isRecord：非 null、非数组的「普通对象」判断（原先各处手写）
     backups.ts          带时间戳的备份 + 保留最近 N 份（提示词 / MCP 共用）
     http.ts             请求管道：POST、门禁头、JSON 体与大小上限、回环兜底
-    zip.ts              零依赖 ZIP 读写（CRC 表与浏览器侧 core/zip.ts 各一份，改动时两处一起改）
+    zip.ts              零依赖 ZIP 读写（CRC 表与浏览器侧 lib/core/zip.ts 各一份，改动时两处一起改）
     log.ts              插件日志（512 KiB 滚动）
   skills/               技能域（本插件的核心）
     frontmatter.ts      SKILL.md 解析；编辑只改目标键，其余字节原样保留
@@ -309,18 +353,43 @@ src/host/
     tools.ts            skill_list（只读）+ 可选 skill_switch（allowAgentSwitch）
     server.ts           那条具名路由的请求处理与状态码映射
 src/client/
-  main.ts               ModuleLoader 入口
+  main.ts               模块体：具名导出 apply / inject（ModuleLoader 外壳由构建脚本提供）
   plugin.ts             slots 装配：sidebar.panellist（图标）+ main（面板）+ conversation.hero.options（新会话页的场景下拉）；样式 / 词典 / 槽位登记在同一份生命周期里，停用与重新启用各走一次
-  page.ts               页签外壳（场景 / MCP / 技能 / 提示词）
-  shell/                panel.ts（主栏容器）+ icon.ts（侧栏单色图标）
   styles.ts             全部 `.dsk-*` 样式（成对使用宿主 --dsw-* token）
-  core/
-    runtime.ts          React 访问器与 hooks
-    api.ts              同源 POST /tool-center/api
-    types.ts            Host 视图形状在浏览器半侧的镜像
-    domain.ts           useDomain：读一次 / 写一次 / busy / error / 提示语
-    ui.ts               共用渲染原子（页头、分组、模态框、字段、按钮、开关）
-    zip.ts              浏览器侧 store-only ZIP 写入（选文件夹后打包用）
+  lib/                  逻辑层：数据、请求与 hook，一律不含 JSX
+    core/               与业务无关的通用件
+      api.ts            同源 POST /tool-center/api；插件「在 / 不在」的广播与 404/405 判定
+      domain.ts         useDomain：读一次 / 写一次 / busy / error / 提示语
+      types.ts          Host 视图形状在浏览器半侧的镜像 + 面板自己的表单 / 导入形状
+      paths.ts          工作区路径比较（宿主 samePath 的镜像）
+      storage.ts        本机界面偏好：页签、来源折叠、工作区小节折叠
+      format.ts         时间显示（Intl，跟着运行环境的语言走）
+      zip.ts            浏览器侧 store-only ZIP 写入（选文件夹后打包用）
+    skills/
+      selectors.ts      新建 / 导入落点、搜索过滤（纯选择器）
+      files.ts          选文件夹（打成 store-only ZIP）/ 选 ZIP；FileList 是活引用这件事只写一遍
+      use-skills.ts     技能域：列表 / 开关 / 详情 / 表单 / 导入 / 回收站的 state + 动作
+    prompts/use-prompts.ts      提示词域：预设列表、作用范围选项、编辑器草稿
+    mcp/use-mcp.ts              MCP 域：服务器列表、启停、删除
+    scenes/use-scenes.ts        场景域：场景定义、工作区默认、编辑器三份清单
+    scenes/use-scene-picker.ts  新会话页那个小下拉的逻辑（含“点别处收起”）
+  components/           界面层：只摆版面，状态全部来自 lib/
+    page.tsx            页签外壳（场景 / MCP / 技能 / 提示词）+ 统一 toast
+    shell/              panel.tsx（主栏容器）+ icon.tsx（侧栏单色图标）
+    ui/
+      atoms.tsx         徽章、告警条、空状态、弱化说明、单行截断的行内说明
+      controls.tsx      按钮、开关、输入、下拉、折叠三角、模态框
+      layout.tsx        页头、工具栏、动作条、列表、分组
+    skills/
+      view.tsx          技能域外壳（列表 / 详情 / 表单 / 导入 / 回收站串起来）
+      root.tsx          来源分组与技能行
+      detail.tsx        详情抽屉
+      form.tsx          新建 / 编辑表单
+      import.tsx        导入面板
+      trash.tsx         回收站面板
+    prompts/            view.tsx + preset.tsx（预设卡片）+ editor.tsx（编辑器）
+    mcp/view.tsx        MCP 域视图
+    scenes/             view.tsx + draft.tsx（编辑器）+ hero.tsx（新会话页的场景下拉）
   i18n/
     index.ts            词典合并、translateWith、按语言挑词典
     common.ts           页签名与通用动作
@@ -328,22 +397,11 @@ src/client/
     prompts.ts          提示词域词条
     mcp.ts              MCP 域词条
     scenes.ts           场景域词条
-  skills/
-    view.ts             技能域外壳（列表 / 详情 / 表单 / 导入 / 回收站串起来）
-    list.ts             来源分组与技能行
-    detail.ts           详情面板
-    form.ts             新建 / 编辑表单
-    import.ts           导入面板
-    trash.ts            回收站面板
-  prompts/view.ts       提示词域视图
-  mcp/view.ts           MCP 域视图
-  scenes/view.ts        场景域视图（场景列表 + 工作区各自选择）
-  scenes/hero.ts        新会话页的场景下拉（conversation.hero.options 槽位）
 ```
 
 ## 测试
 
-`npm test` → **173 个用例 / 全部通过**：
+`npm test` → **185 个用例 / 全部通过**：
 
 | 文件 | 盯的是什么 |
 |---|---|
@@ -355,13 +413,13 @@ src/client/
 | `service.test.mjs` | **读不写盘**、重复开关不写盘、来源/首选/增删改/回收站/导入导出、候选最小化、按组 rank |
 | `prompts.test.mjs` | 预设 CRUD、应用/链起点/取消应用、外部改动的 drift、备份上限 |
 | `mcp.test.mjs` | patch 解析、显式 `disabled:false` 覆盖、幂等、删除连覆盖行、拒绝只读覆盖 |
-| `scenes.test.mjs` | 场景可被多个工作区选用、别的工作区与全局不动、会话自选 / 明确不用 / 跟随、换工作区场景后重新物化、v3 迁移、提示词只认工作区预设、MCP 引用校验 |
+| `scenes.test.mjs` | 场景可被多个工作区选用、别的工作区与全局不动、会话自选 / 明确不用 / 跟随、换工作区场景后重新物化、v3 迁移、提示词只认工作区预设、MCP 引用校验；**新会话页的选择被真正开始的会话认领 / 过期 / 不覆盖会话自己的选择 / 技能留空的场景不动技能** |
 | `gate.test.mjs` | 工具名 → 服务器归属（最长前缀）、整套切换只留勾选服务器、非整套不遮、退出解除、幂等、工具集合变化后重算、restrict 失败只记日志 |
 | `scope.test.mjs` | 会话 id 的两种来源、子会话沿 `parentSession` 上溯、环/断链不卡死、工作区继承与回退 |
 | `commands.test.mjs` | `/scene` 的工作区与会话来源（含子代理上溯）、列表、本会话选用、`off` / `follow`、未知场景 |
-| `wiring.test.mjs` | 真实 `apply()` 接线、门禁头、op 分发、`/scene` 注册与 `ctx.inject` 时序、无命令服务时降级、卸载清理 |
+| `wiring.test.mjs` | 真实 `apply()` 接线、门禁头、op 分发、`/scene` 注册与 `ctx.inject` 时序、无命令服务时降级、卸载清理；**开始页选好的场景经 provider 的 `beforeView` 进入真正开始的会话**；版本号与 `package.json` 一致 |
 | `client-bundle.test.mjs` | 浏览器半在 vm 里加载、侧栏图标 + 主栏面板配对、词典覆盖、渲染一次不抛错 |
-| `client-views.test.mjs` | 四个域视图各自单独打包后各渲染一次（空状态不抛错） |
+| `client-views.test.mjs` | 四个域视图各自单独打包后各渲染一次（空状态不抛错）；行内说明的字数上限与省略号 |
 
 ## 已知边界
 

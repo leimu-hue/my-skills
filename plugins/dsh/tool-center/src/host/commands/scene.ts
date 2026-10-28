@@ -11,11 +11,11 @@
  * 会话身份用共享解析（`scope/agent-scope.ts`）：子代理 / 侧聊沿 `parentSession` 上溯到
  * 根会话，作用域跟着那次对话走，**不接受**调用方另传路径或 id。
  */
-import type { SkillService } from '../skills/service.js'
-import { effectiveSceneOf, loadScenes, setSessionScene } from '../scenes/service.js'
-import type { ScenesState } from '../scenes/service.js'
-import { rootSessionIdOf, workspaceOfAgent } from '../scope/agent-scope.js'
-import { DomainError, describe } from '../shared/result.js'
+import type { SkillService } from '../skills/service.ts'
+import { effectiveSceneOf, loadScenes, setSessionScene } from '../scenes/service.ts'
+import type { ScenesState } from '../scenes/service.ts'
+import { rootSessionIdOf, workspaceOfAgent } from '../scope/agent-scope.ts'
+import { DomainError, describe } from '../shared/result.ts'
 
 /** 命令执行回执：宿主只认 success / error 两种。 */
 export interface SceneCommandResult {

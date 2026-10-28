@@ -1,6 +1,6 @@
-import { effectiveSceneOf, loadScenes, setSessionScene } from '../scenes/service.js';
-import { rootSessionIdOf, workspaceOfAgent } from '../scope/agent-scope.js';
-import { DomainError, describe } from '../shared/result.js';
+import { effectiveSceneOf, loadScenes, setSessionScene } from "../scenes/service.js";
+import { rootSessionIdOf, workspaceOfAgent } from "../scope/agent-scope.js";
+import { DomainError, describe } from "../shared/result.js";
 const USAGE = '用法：/scene（查看当前场景）· /scene <名字>（本会话用它）· /scene off（本会话不用）· /scene follow（跟随工作区）';
 /** 会话所在的工作区（子会话上溯到根会话）。 */
 export function workspaceOf(invocation) {

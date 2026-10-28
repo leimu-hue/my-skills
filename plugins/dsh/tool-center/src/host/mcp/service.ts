@@ -20,10 +20,10 @@
  */
 import { readdir } from 'node:fs/promises'
 import { join } from 'node:path'
-import { DomainError } from '../shared/result.js'
-import { readTextOrNull } from '../shared/fs.js'
-import { writeBackup } from '../shared/backups.js'
-import { writeFileAtomic } from '../shared/paths.js'
+import { DomainError } from '../shared/result.ts'
+import { readTextOrNull } from '../shared/fs.ts'
+import { writeBackup } from '../shared/backups.ts'
+import { writeFileAtomic } from '../shared/paths.ts'
 
 export interface McpServer {
   /** patch 行的 id（启停就是按它覆盖）。 */

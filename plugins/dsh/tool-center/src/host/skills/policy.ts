@@ -7,9 +7,9 @@
  * 胜负顺序：显式钉住（`preferredSkills`）> rank > 注册顺序；来源键是最后的平手判据，
  * 所以答案始终稳定。
  */
-import type { EntryPolicy, SkillEntry, SkillManagerState, SkillRef, SkillRoot, SkillRow } from '../shared/types.js'
-import { preferredRootOf, skillSwitchOf, sourceSwitchOf } from './state.js'
-import { isRecord } from '../shared/json.js'
+import type { EntryPolicy, SkillEntry, SkillManagerState, SkillRef, SkillRoot, SkillRow } from '../shared/types.ts'
+import { preferredRootOf, skillSwitchOf, sourceSwitchOf } from './state.ts'
+import { isRecord } from '../shared/json.ts'
 
 /**
  * 所有覆盖候选的固定 rank。

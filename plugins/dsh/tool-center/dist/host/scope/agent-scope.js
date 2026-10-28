@@ -16,7 +16,7 @@
  * 父会话的 cwd 手里不一定有（`parentSession` 只给 id），所以见过就记一份，记不到就退回
  * 子会话自己的 cwd —— 仍然是「宁可少共享一层，不串到别的工作区」。
  */
-import { normaliseWorkspace } from '../scenes/service.js';
+import { normaliseWorkspace } from "../scenes/service.js";
 /** 会话 id → 见过的 cwd（只记内存；上限到了丢最早的）。 */
 const SESSION_CWDS = new Map();
 const SESSION_CWDS_MAX = 4096;

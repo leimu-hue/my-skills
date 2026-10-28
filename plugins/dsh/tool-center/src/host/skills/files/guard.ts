@@ -9,10 +9,10 @@
  */
 import { copyFile, lstat, mkdir, readdir } from 'node:fs/promises'
 import { basename, dirname, join, resolve } from 'node:path'
-import type { SkillRoot, SkillRow } from '../../shared/types.js'
-import { DomainError } from '../../shared/result.js'
-import { isInside } from '../../shared/paths.js'
-import { isHostSkillName } from '../frontmatter.js'
+import type { SkillRoot, SkillRow } from '../../shared/types.ts'
+import { DomainError } from '../../shared/result.ts'
+import { isInside } from '../../shared/paths.ts'
+import { isHostSkillName } from '../frontmatter.ts'
 
 /** 与宿主一致的命名规则；定义在 `frontmatter.ts`，扫描与写入共用同一份。 */
 export function isValidSkillName(name: string): boolean {

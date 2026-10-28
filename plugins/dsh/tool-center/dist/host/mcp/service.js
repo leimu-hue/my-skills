@@ -20,10 +20,10 @@
  */
 import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { DomainError } from '../shared/result.js';
-import { readTextOrNull } from '../shared/fs.js';
-import { writeBackup } from '../shared/backups.js';
-import { writeFileAtomic } from '../shared/paths.js';
+import { DomainError } from "../shared/result.js";
+import { readTextOrNull } from "../shared/fs.js";
+import { writeBackup } from "../shared/backups.js";
+import { writeFileAtomic } from "../shared/paths.js";
 const MCP_CLIENT_PACKAGE = '@deepseek-ai/dsh-mcp-client';
 const SECTION_START = '# >>> tool-center:mcp >>>';
 const SECTION_END = '# <<< tool-center:mcp <<<';

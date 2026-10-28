@@ -18,11 +18,11 @@
  * 经 `fs/observed` 与 watcher 自动发现并广播 `skills/change`；我们只在改策略之后调
  * provider 的 `control.invalidate()`。
  */
-import type { SkillService } from '../skills/service.js'
-import { allRows } from '../skills/view.js'
-import { modelVisible, rowMatchesRef } from '../skills/policy.js'
-import type { OpResult } from '../shared/result.js'
-import type { SkillRow } from '../shared/types.js'
+import type { SkillService } from '../skills/service.ts'
+import { allRows } from '../skills/view.ts'
+import { modelVisible, rowMatchesRef } from '../skills/policy.ts'
+import type { OpResult } from '../shared/result.ts'
+import type { SkillRow } from '../shared/types.ts'
 
 interface ToolRunContext {
   agent?: { session?: { header?: { cwd?: string } } }

@@ -43,8 +43,15 @@ export const CSS = `
 .dsk-btn-danger{color:var(--dsw-alias-state-error-primary,#c9414a);border-color:var(--dsw-alias-border-l3,rgba(201,65,74,.4))}
 .dsk-btn-danger:hover{background:var(--dsw-alias-interactive-bg-hover-danger,rgba(201,65,74,.08))}
 .dsk-btn-sm{height:24px;padding:0 8px;font-size:11px}
-/* 让 <label> 冒充按钮：真正的控件（file input）藏在里面且不可见。 */
-.dsk-pick{display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+/* 键盘焦点：宿主未必给每个自绘控件画焦点环，这里统一补一条。focus-visible 保证
+   只有键盘操作才看得见，鼠标点击不会留下一圈蓝边。 */
+.dsk-btn:focus-visible,.dsk-tab:focus-visible,.dsk-switch:focus-visible,.dsk-disclosure:focus-visible,.dsk-pick:focus-visible,.dsk-scene-pick-btn:focus-visible,.dsk-scene-pick-item:focus-visible,.dsk-section-toggle:focus-visible,.dsk-hint>summary:focus-visible,.dsk-input:focus-visible,.dsk-textarea:focus-visible,.dsk-select:focus-visible,.dsk-search:focus-visible{outline:2px solid var(--dsw-alias-brand-primary,#2f6bff);outline-offset:2px}
+/* 让 <label> 冒充按钮：真正的控件（file input）藏在里面。input 不用 display:none ——
+   那样它会连 Tab 都收不到，键盘用户就永远选不了文件；改成“看得见但隐形”，
+   焦点环画在 label 上（:focus-within）。 */
+.dsk-pick{position:relative;display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+.dsk-file-input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.dsk-pick:focus-within{outline:2px solid var(--dsw-alias-brand-primary,#2f6bff);outline-offset:2px}
 /* 导入候选：一个可滚动的勾选列表，条目多时不把模态框撑破。 */
 .dsk-candidates{display:flex;flex-direction:column;gap:2px;max-height:240px;overflow:auto;padding:4px;border:1px solid var(--dsw-alias-border-l2,#e5e6eb);border-radius:8px;background:var(--dsw-alias-bg-layer-2,#f7f8fa)}
 .dsk-candidate{display:flex;align-items:center;gap:8px;width:100%;padding:3px 4px;border-radius:6px;box-sizing:border-box}
@@ -69,7 +76,11 @@ export const CSS = `
 .dsk-disclosure{flex:none;width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;padding:0;border:0;border-radius:4px;background:transparent;color:var(--dsw-alias-label-tertiary,#8a8f99);font-size:10px;line-height:1;cursor:pointer}
 .dsk-disclosure:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(38,49,72,.06));color:var(--dsw-alias-label-primary,#1f2329)}
 .dsk-group-head{display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--dsw-alias-bg-layer-2,#f7f8fa);border-bottom:1px solid var(--dsw-alias-border-l2,#e5e6eb);flex-wrap:wrap}
+/* 只有一条头、没有内容的分组（场景卡片就是）：下面那道分隔线不和卡片底边叠在一起。 */
+.dsk-group-head:last-child{border-bottom:0}
 .dsk-group-name{font-weight:600;font-size:12px;white-space:nowrap}
+/* 行内说明（场景说明那类）：单行、超长省略，全文靠 title。flex 收缩要配 min-width:0，否则省略号永远不会出现。 */
+.dsk-note{flex:0 1 auto;min-width:0;max-width:34ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;font-weight:400;color:var(--dsw-alias-label-tertiary,#8a8f99)}
 .dsk-group-path{width:100%;color:var(--dsw-alias-label-tertiary,#8a8f99);font-size:11px;font-family:var(--ds-font-family-code,ui-monospace,Consolas,monospace);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:44ch;flex:1 1 180px;min-width:0}
 .dsk-group-actions{margin-left:auto;display:flex;align-items:center;gap:6px;flex:none}
 .dsk-rows{display:flex;flex-direction:column}
@@ -81,6 +92,10 @@ export const CSS = `
 .dsk-row-desc{color:var(--dsw-alias-label-secondary,#5c6068);font-size:11.5px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
 .dsk-row-off .dsk-row-name,.dsk-row-off .dsk-row-desc{opacity:.5}
 .dsk-row-actions{display:flex;align-items:center;gap:6px}
+/* 只读行（工作区清单、生效目标）：整行不可点，就不要手型光标。 */
+.dsk-row-static{cursor:default}
+.dsk-row-sub{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--dsw-alias-label-tertiary,#8a8f99)}
+.dsk-row-when{font-size:11px;color:var(--dsw-alias-label-tertiary,#8a8f99);white-space:nowrap;font-variant-numeric:tabular-nums}
 
 .dsk-switch{position:relative;width:32px;height:18px;border-radius:9px;border:1px solid var(--dsw-alias-border-l3,rgba(0,0,0,.14));background:var(--dsw-alias-bg-layer-3,#dfe1e6);cursor:pointer;flex:none;padding:0;transition:background .12s ease}
 .dsk-switch::after{content:'';position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:var(--dsw-alias-label-tertiary,#8a8f99);transition:transform .12s ease,background .12s ease}
@@ -108,6 +123,28 @@ export const CSS = `
 .dsk-files{display:flex;flex-wrap:wrap;gap:4px}
 .dsk-file{font-family:var(--ds-font-family-code,ui-monospace,Consolas,monospace);font-size:11px;padding:1px 6px;border-radius:4px;background:var(--dsw-alias-bg-layer-2,#f2f3f5)}
 .dsk-section-title{font-size:12px;font-weight:600;color:var(--dsw-alias-label-secondary,#5c6068);margin:0}
+/* 可折叠的小节头：标题本身就是按钮（三角 + 标题 + 计数徽章同一行）。 */
+.dsk-section-head{display:flex;align-items:center;gap:8px;min-width:0;flex-wrap:wrap}
+.dsk-section-toggle{display:inline-flex;align-items:center;gap:6px;min-width:0;padding:2px 4px 2px 2px;margin-left:-2px;border:0;border-radius:6px;background:transparent;color:inherit;font:inherit;cursor:pointer}
+.dsk-section-toggle:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(38,49,72,.06))}
+.dsk-section-caret{flex:none;width:10px;font-size:10px;line-height:1;color:var(--dsw-alias-label-tertiary,#8a8f99)}
+
+/* 说明性折叠块（提示词的「生效时机」）：默认收起，展开后是一段小字。 */
+.dsk-hint{font-size:11px;color:var(--dsw-alias-label-tertiary,#8a8f99)}
+.dsk-hint>summary{cursor:pointer;padding:2px 0;width:fit-content}
+.dsk-hint>p{margin:4px 0 0;line-height:17px}
+
+/* 卡片（预设 / 生效目标）：标题行 / 正文摘要 / 脚注三段。 */
+.dsk-card{display:flex;flex-direction:column;gap:6px;min-width:0;padding:10px;border:1px solid var(--dsw-alias-border-l2,#e5e6eb);border-radius:8px;background:var(--dsw-alias-bg-layer-1,#fff)}
+/* 生效中的那份给一条品牌色左边条：扫一眼就知道哪几张是活的（徽章仍然保留，不只靠颜色） */
+.dsk-card[data-on='true']{box-shadow:inset 2px 0 0 var(--dsw-alias-button-primary-fill,#2f6bff)}
+.dsk-card-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
+.dsk-card-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:600}
+.dsk-card-actions{margin-left:auto;display:flex;align-items:center;gap:6px;flex:none}
+.dsk-card-body{margin:0;font-size:11.5px;line-height:18px;color:var(--dsw-alias-label-secondary,#5c6068);word-break:break-word;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.dsk-card-meta{display:flex;align-items:center;gap:10px;min-width:0;font-size:11px;color:var(--dsw-alias-label-tertiary,#8a8f99)}
+.dsk-card-path{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--ds-font-family-code,ui-monospace,Consolas,monospace)}
+.dsk-card-when{margin-left:auto;flex:none;font-variant-numeric:tabular-nums}
 
 .dsk-modal-mask{position:fixed;inset:0;background:var(--dsw-alias-bg-mask-1,rgba(15,17,20,.35));display:flex;align-items:center;justify-content:center;z-index:30;padding:24px}
 .dsk-modal{width:min(680px,96%);max-height:88%;background:var(--dsw-alias-bg-layer-1,#fff);border-radius:10px;display:flex;flex-direction:column;overflow:hidden;box-shadow:var(--dsw-elevation-prominent,0 12px 40px rgba(0,0,0,.2))}

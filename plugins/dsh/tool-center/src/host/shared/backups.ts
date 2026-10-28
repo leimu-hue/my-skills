@@ -6,7 +6,7 @@
  */
 import { mkdir, readdir, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { writeFileAtomic } from './paths.js'
+import { writeFileAtomic } from './paths.ts'
 
 export interface BackupOptions {
   /** 备份目录（不存在就建）。 */

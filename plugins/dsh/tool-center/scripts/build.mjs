@@ -5,6 +5,11 @@
  *   Client src/client/main.ts -> dist/client.js   （esbuild 打包：Web 外壳每个插件
  *                                                  只加载一个文件）
  *
+ * Client 产物与随附插件同形：一个 `__ModuleLoader__.load({ id, factory })` 调用，factory
+ * 内是 CJS 模块体。**外壳由这里的 banner/footer 提供**，所以 `src/client/main.ts` 只是
+ * 普通模块（具名导出 `apply` / `inject`），可以照常 `import React`、写 JSX —— react 与
+ * react/jsx-runtime 由平台模块表提供，绝不打进 bundle。
+ *
  * 工具链解析顺序：
  *   1. 本包自己的 node_modules（正常 `npm install`）；
  *   2. `DSH_PLUGIN_TOOLCHAIN`（其 node_modules 里有 esbuild + typescript 的目录）；
@@ -20,6 +25,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
 const dist = join(root, 'dist')
+const PLUGIN_ID = '@local/dsh-tool-center'
 
 function resolveToolchain() {
   const candidates = [
@@ -86,13 +92,33 @@ const result = await build({
   entryPoints: [join(root, 'src', 'client', 'main.ts')],
   outfile: join(dist, 'client.js'),
   bundle: true,
-  format: 'iife',
+  format: 'cjs',
   platform: 'browser',
   target: 'es2020',
+  jsx: 'automatic',
+  /* 平台模块由加载器提供，绝不打进 bundle。 */
+  external: ['react', 'react-dom', 'react/jsx-runtime', 'react-dom/client'],
   legalComments: 'none',
   metafile: true,
   logLevel: 'warning',
   nodePaths: [join(toolchain.base, 'node_modules')],
+  banner: {
+    js: [
+      'window.__ModuleLoader__.load({',
+      '  id: ' + JSON.stringify(PLUGIN_ID) + ',',
+      '  factory: (require) => {',
+      '    var module = { exports: {} };',
+      '    var exports = module.exports;',
+      '    Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });',
+    ].join('\n'),
+  },
+  footer: {
+    js: [
+      '    return module.exports;',
+      '  },',
+      '});',
+    ].join('\n'),
+  },
 })
 
 for (const artifact of ['dist/host/index.js', 'dist/client.js']) {

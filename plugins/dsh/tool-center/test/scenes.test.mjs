@@ -8,6 +8,7 @@ import { loadState } from '../dist/host/skills/state.js'
 import { loadMcp, patchPathOf } from '../dist/host/mcp/service.js'
 import { savePreset } from '../dist/host/prompts/service.js'
 import {
+  adoptPendingScene,
   deleteScene,
   effectiveSceneOf,
   loadScenes,
@@ -199,6 +200,80 @@ test('changing the workspace scene re-materializes following sessions and leaves
   await reconcileSessionLayers(dshHome, service)
   assert.equal((await onOf(service, workspace, 'ss:off')).get('alpha'), false)
   assert.equal((await onOf(service, workspace, 'ss:off')).get('beta'), false)
+})
+
+test('a scene picked on the new-session page is adopted by the conversation that really starts', async () => {
+  const { dshHome, service, workspace } = await fixture()
+  await saveScene(dshHome, { name: 'only-alpha', skills: [{ root: 'local', name: 'alpha' }], exclusive: true })
+
+  // 新会话页的 id 只是草稿：宿主在发送时才建真正的会话，这个 id 往往永远不会成为对话。
+  const draft = 'session-draft-0001'
+  const real = 'session-real-0002'
+  await setSessionScene(dshHome, service, draft, workspace, 'only-alpha', { carryOver: true })
+  assert.equal((await loadScenes(dshHome)).pending[workspace]?.scene, 'only-alpha')
+  assert.equal((await onOf(service, workspace, `ss:${real}`)).get('beta'), true, '认领之前，这个会话还是常态')
+
+  const report = await adoptPendingScene(dshHome, service, real, workspace)
+  assert.equal(report.adopted, 'only-alpha')
+  assert.equal((await onOf(service, workspace, `ss:${real}`)).get('alpha'), true)
+  assert.equal((await onOf(service, workspace, `ss:${real}`)).get('beta'), false, '整套切换在这个会话里生效了')
+
+  const state = await loadScenes(dshHome)
+  assert.equal(state.sessions[real]?.scene, 'only-alpha')
+  assert.equal(state.pending[workspace], undefined, '这条意图被消费掉（不会再去管下一场）')
+  assert.equal(state.sessions[draft], undefined, '草稿 id 上的残留记录也被清掉')
+  const layers = (await loadState(join(dshHome, 'tool-center', 'state.json'))).state.layers.sessions
+  assert.equal(layers[draft], undefined, '草稿 id 的技能层也一起清掉，状态文件不会越攒越大')
+})
+
+test('adoption never overrides a choice the session made itself', async () => {
+  const { dshHome, service, workspace } = await fixture()
+  await saveScene(dshHome, { name: 'a', skills: [{ root: 'local', name: 'alpha' }], exclusive: true })
+  await setSessionScene(dshHome, service, 'draft', workspace, 'a', { carryOver: true })
+  await setSessionScene(dshHome, service, 'real', workspace, null)
+
+  const report = await adoptPendingScene(dshHome, service, 'real', workspace)
+  assert.equal(report.changed, false, '/scene off 之后，开始会话时的那次选择不该反过来盖掉它')
+  assert.equal((await onOf(service, workspace, 'ss:real')).get('alpha'), false)
+})
+
+test('an old pick expires instead of ruling later conversations', async () => {
+  const { dshHome, service, workspace } = await fixture()
+  await saveScene(dshHome, { name: 'a', skills: [{ root: 'local', name: 'alpha' }], exclusive: true })
+  await setSessionScene(dshHome, service, 'draft', workspace, 'a', { carryOver: true })
+
+  const file = join(dshHome, 'tool-center', 'scenes.json')
+  const document = JSON.parse(await readFile(file, 'utf8'))
+  document.pending[workspace].at = Date.now() - 31 * 60 * 1000
+  await writeFile(file, JSON.stringify(document, null, 2))
+
+  const report = await adoptPendingScene(dshHome, service, 'late', workspace)
+  assert.equal(report.changed, false, '半小时前随手点的那一下不该管住今天的会话')
+  assert.equal((await loadScenes(dshHome)).pending[workspace], undefined)
+  assert.equal((await onOf(service, workspace, 'ss:late')).get('beta'), true)
+})
+
+test('a scene that only carries MCP servers leaves skills alone', async () => {
+  const { dshHome, service, workspace } = await fixture()
+  await saveScene(dshHome, { name: 'mcp-only', skills: [], mcp: ['rea-mcp'], exclusive: false })
+  await setSessionScene(dshHome, service, 'session-mcp', workspace, 'mcp-only')
+
+  const on = await onOf(service, workspace, 'ss:session-mcp')
+  assert.equal(on.get('alpha'), true, '技能留空的场景不该把整个会话的技能关掉')
+  assert.equal(on.get('beta'), true)
+  assert.equal((await effectiveSceneOf(await loadScenes(dshHome), workspace, 'session-mcp')).name, 'mcp-only')
+})
+
+test('a scene whose skills all vanished is reported instead of silently blocking', async () => {
+  const { dshHome, service, workspace } = await fixture()
+  await saveScene(dshHome, { name: 'gone', skills: [{ root: 'local', name: 'no-such-skill' }], exclusive: false })
+  const report = await setSessionScene(dshHome, service, 'session-gone', workspace, 'gone')
+  assert.ok(report.warnings.some((line) => line.includes('找不到')), '要把「一条都没命中」说出来')
+  assert.equal((await onOf(service, workspace, 'ss:session-gone')).get('beta'), true, '非整套切换：没命中就是没生效')
+
+  await saveScene(dshHome, { name: 'gone-exclusive', skills: [{ root: 'local', name: 'no-such-skill' }], exclusive: true })
+  const strict = await setSessionScene(dshHome, service, 'session-gone-2', workspace, 'gone-exclusive')
+  assert.ok(strict.warnings.some((line) => line.includes('整套切换')), '整套切换 + 一条没命中 = 技能全被挡，必须警告')
 })
 
 test('a scene in use cannot be deleted', async () => {

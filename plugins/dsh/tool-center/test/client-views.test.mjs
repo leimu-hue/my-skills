@@ -8,27 +8,54 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
 
 /**
- * 四个域视图现在各自是一个模块，各有自己的 import 图。这个测试把它们单独打成一个 ESM
- * bundle，然后用一个假 React 各渲染一次：空状态下的渲染错误（坏 import、hook 顺序、
- * 对 undefined 取字段）在这里就暴露，而不是等用户点开那个页签。
- *
- * 为什么在测试里现打一次而不是复用 `dist/client.js`：那个 bundle 只暴露 ModuleLoader
- * 入口，拿不到单个视图；而「每个视图能独立渲染」正是模块化的意义。
+ * 四个域视图现在都是真正的 React 组件（JSX + `import { useEffect } from 'react'`），
+ * 所以这里在打包时把 `react` / `react/jsx-runtime` 换成本测试的快照实现：组件被直接调用
+ * 一次，就能看清它在空数据下渲染出的元素树 ——「坏 import、hook 顺序、对 undefined 取字段」
+ * 在这里就暴露，而不是等用户点开那个页签。
  */
+const REACT_SHIM = `
+const fake = () => globalThis.__fakeReact
+export const useState = (initial) => fake().useState(initial)
+export const useEffect = (fn, deps) => fake().useEffect(fn, deps)
+export const useMemo = (fn, deps) => fake().useMemo(fn, deps)
+export const useCallback = (fn, deps) => fake().useCallback(fn, deps)
+export const useRef = (initial) => fake().useRef(initial)
+export const createElement = (type, props, ...children) => fake().createElement(type, props, ...children)
+export const Fragment = 'Fragment'
+`
+
+const JSX_SHIM = `
+const fake = () => globalThis.__fakeReact
+export const Fragment = 'Fragment'
+export const jsx = (type, props) => fake().createElement(type, props)
+export const jsxs = (type, props) => fake().createElement(type, props)
+`
+
+const fakeReactPlugin = {
+  name: 'fake-react',
+  setup(build) {
+    build.onResolve({ filter: /^react(\/jsx-runtime)?$/ }, (args) => ({ path: args.path, namespace: 'fake-react' }))
+    build.onLoad({ filter: /.*/, namespace: 'fake-react' }, (args) => ({
+      contents: args.path === 'react/jsx-runtime' ? JSX_SHIM : REACT_SHIM,
+      loader: 'js',
+    }))
+  },
+}
+
 async function loadViews() {
   const esbuild = await import('esbuild')
   const work = await mkdtemp(join(tmpdir(), 'tc-views-'))
   const entry = join(root, 'test', '.views-entry.ts')
   await writeFile(entry, [
-    "export { setReact } from '../src/client/core/runtime.js'",
-    "export { SkillsView } from '../src/client/skills/view.js'",
-    "export { PromptsView } from '../src/client/prompts/view.js'",
-    "export { McpView } from '../src/client/mcp/view.js'",
-    "export { ScenesView } from '../src/client/scenes/view.js'",
-    "export { renderDetail } from '../src/client/skills/detail.js'",
-    "export { renderRoot } from '../src/client/skills/list.js'",
-    "export { renderImport } from '../src/client/skills/import.js'",
-    "export { renderForm } from '../src/client/skills/form.js'",
+    "export { SkillsView } from '../src/client/components/skills/view.tsx'",
+    "export { PromptsView } from '../src/client/components/prompts/view.tsx'",
+    "export { McpView } from '../src/client/components/mcp/view.tsx'",
+    "export { ScenesView } from '../src/client/components/scenes/view.tsx'",
+    "export { renderDetail } from '../src/client/components/skills/detail.tsx'",
+    "export { renderRoot } from '../src/client/components/skills/root.tsx'",
+    "export { renderImport } from '../src/client/components/skills/import.tsx'",
+    "export { renderForm } from '../src/client/components/skills/form.tsx'",
+    "export { noteOf } from '../src/client/components/ui/atoms.tsx'",
     '',
   ].join('\n'))
   const outfile = join(work, 'views.mjs')
@@ -40,7 +67,9 @@ async function loadViews() {
       format: 'esm',
       platform: 'browser',
       target: 'es2020',
+      jsx: 'automatic',
       logLevel: 'silent',
+      plugins: [fakeReactPlugin],
     })
     return await import(pathToFileURL(outfile).href)
   } finally {
@@ -52,13 +81,19 @@ async function loadViews() {
 /** 一次渲染够用：state 保持初值，effect 不跑，setState 是空操作。 */
 function fakeReact() {
   let created = 0
-  return {
+  const react = {
     get created() {
       return created
     },
     createElement(type, props, ...children) {
       created += 1
-      return { type, props: props ?? {}, children }
+      const shape = props ?? {}
+      // JSX 的自动运行时把子节点放在 props.children 里；直接调用 createElement 的测试则
+      // 走可变参数。两种形状在这里归一成带 `children` 数组的节点。
+      const kids = children.length > 0
+        ? children
+        : (shape.children === undefined ? [] : Array.isArray(shape.children) ? shape.children : [shape.children])
+      return { type, props: shape, children: kids }
     },
     useState(initial) {
       return [typeof initial === 'function' ? initial() : initial, () => {}]
@@ -75,12 +110,13 @@ function fakeReact() {
     },
     Fragment: 'Fragment',
   }
+  globalThis.__fakeReact = react
+  return react
 }
 
 test('every domain view renders once on an empty payload', async () => {
   const views = await loadViews()
   const React = fakeReact()
-  views.setReact(React)
   const t = (key) => key
 
   const cases = [
@@ -96,9 +132,29 @@ test('every domain view renders once on an empty payload', async () => {
   assert.ok(React.created > 0, 'the views must actually create elements')
 })
 
+test('a long note is clipped to one line and keeps the full text in title', async () => {
+  const views = await loadViews()
+  fakeReact()
+
+  assert.equal(views.noteOf(''), null, 'an empty note renders nothing')
+  assert.equal(views.noteOf('   '), null, 'a whitespace-only note renders nothing')
+
+  const short = views.noteOf('创建 DIC 任务')
+  assert.equal(short.props.className, 'dsk-note')
+  assert.equal(short.children[0], '创建 DIC 任务')
+  assert.equal(short.props.title, undefined, 'no tooltip while nothing is clipped')
+
+  const source = `第一段\n第二段  ${'x'.repeat(120)}`
+  const long = views.noteOf(source)
+  assert.equal(long.children[0].length, 61, 'default cap is 60 characters plus the ellipsis')
+  assert.ok(long.children[0].endsWith('…'), 'the clip uses an ellipsis, not three dots')
+  assert.ok(!long.children[0].includes('\n'), 'newlines are folded before clipping')
+  assert.ok(long.props.title.includes('x'.repeat(120)), 'the full text is still available on hover')
+})
+
 test('the detail drawer sits in a mask, and only the mask closes it', async () => {
   const views = await loadViews()
-  views.setReact(fakeReact())
+  fakeReact()
   const t = (key) => key
   let closed = 0
   const row = {
@@ -155,7 +211,7 @@ test('the detail drawer sits in a mask, and only the mask closes it', async () =
 
 test('a source group collapses to its head, and remembers nothing about rows', async () => {
   const views = await loadViews()
-  views.setReact(fakeReact())
+  fakeReact()
   const t = (key) => key
 
   const root = {
@@ -199,7 +255,7 @@ test('a source group collapses to its head, and remembers nothing about rows', a
 
 test('neither the create form nor the import panel asks for a root key', async () => {
   const views = await loadViews()
-  views.setReact(fakeReact())
+  fakeReact()
   const t = (key, values) => (values === undefined ? key : key + JSON.stringify(values))
 
   // 新建表单：不再有「落到哪个来源」的下拉（import / local 这两个键名对用户没有意义）。
@@ -279,7 +335,7 @@ function findByProp(node, name) {
 
 test('picking a folder survives clearing the input value', async () => {
   const views = await loadViews()
-  views.setReact(fakeReact())
+  fakeReact()
   const t = (key) => key
 
   const target = { key: 'import', label: '导入技能', path: 'C:/h/tool-center/skills', writable: true, removed: false }
@@ -327,7 +383,7 @@ test('picking a folder survives clearing the input value', async () => {
 
 test('the import panel only imports what is ticked', async () => {
   const views = await loadViews()
-  views.setReact(fakeReact())
+  fakeReact()
   const t = (key, values) => (values === undefined ? key : key + JSON.stringify(values))
   const target = { key: 'import', label: '导入技能', path: 'C:/h/x', writable: true, removed: false }
 
@@ -369,7 +425,7 @@ test('the import panel only imports what is ticked', async () => {
 
 test('the import panel lists one row per stray file and folds away the ignored ones', async () => {
   const views = await loadViews()
-  views.setReact(fakeReact())
+  fakeReact()
   // 只放这两条词条：它证明原因确实按 code 走了词典（词典里没有的才用宿主那句话）。
   const dict = {
     'import.reason.noDoc': '所在目录没有 SKILL.md',

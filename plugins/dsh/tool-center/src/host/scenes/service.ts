@@ -18,16 +18,16 @@
  * （`reconcileSessionLayers`），否则会话会停在旧场景上。
  */
 import { isAbsolute, join, resolve, sep } from 'node:path'
-import type { SkillService } from '../skills/service.js'
-import type { SkillLayer, SkillRef, SkillRow } from '../shared/types.js'
-import { allRows } from '../skills/view.js'
-import { rowMatchesRef, skillRefsOf } from '../skills/policy.js'
-import { loadMcp } from '../mcp/service.js'
-import { DomainError, describe } from '../shared/result.js'
-import { isRecord } from '../shared/json.js'
-import { loadPrompts, promptTargetOf, readPreset, setPresetEnabled } from '../prompts/service.js'
-import { readTextOrNull } from '../shared/fs.js'
-import { samePath, writeFileAtomic } from '../shared/paths.js'
+import type { SkillService } from '../skills/service.ts'
+import type { SkillLayer, SkillRef, SkillRow } from '../shared/types.ts'
+import { allRows } from '../skills/view.ts'
+import { rowMatchesRef, skillRefsOf } from '../skills/policy.ts'
+import { loadMcp } from '../mcp/service.ts'
+import { DomainError, describe } from '../shared/result.ts'
+import { isRecord } from '../shared/json.ts'
+import { loadPrompts, promptTargetOf, readPreset, setPresetEnabled } from '../prompts/service.ts'
+import { readTextOrNull } from '../shared/fs.ts'
+import { samePath, writeFileAtomic } from '../shared/paths.ts'
 
 export interface Scene {
   name: string
@@ -52,6 +52,21 @@ export interface SessionChoice {
   at: number
 }
 
+/**
+ * 「下一场会话该用哪个场景」的意图。
+ *
+ * 为什么需要它：新会话页上的那个选择器拿到的是**草稿会话 id** —— 宿主在真正发送时才会
+ * 建立对话，草稿页的 id 往往就废了（日志里能直接看到：选了场景的那条会话只有一行 header，
+ * 真正跑对话的是另一个 id）。只写会话层的话，这次选择会静静地失效。所以选择器那一侧多写
+ * 一条「本工作区的下一场会话」，等真有会话在同一个工作区里开始读技能时再认领（adopt）。
+ */
+export interface PendingChoice {
+  scene: string | null
+  /** 当初写这条意图的会话 id（可能永远不会成为真正的对话）。 */
+  from: string
+  at: number
+}
+
 /** 进入场景时提示词那一步改了什么，用于退出 / 换场景时恢复。 */
 interface PromptSnapshot {
   targetKey: string
@@ -71,6 +86,8 @@ interface ScenesDocument {
   active: Record<string, string>
   /** 根会话 id → 这个会话自己的选择。 */
   sessions: Record<string, SessionChoice>
+  /** 工作区 → 「下一场会话」的意图（新会话页上的选择）。 */
+  pending: Record<string, PendingChoice>
   /** 工作区 → 提示词快照（只有提示词需要回滚；技能层整层替换 / 删除）。 */
   applied: Record<string, AppliedSnapshot>
 }
@@ -79,6 +96,7 @@ export interface ScenesState {
   scenes: Scene[]
   active: Record<string, string>
   sessions: Record<string, SessionChoice>
+  pending: Record<string, PendingChoice>
   warnings: string[]
   path: string
 }
@@ -98,10 +116,18 @@ const SCENES_NAME = 'scenes.json'
 const WS_PREFIX = 'ws:'
 const SS_PREFIX = 'ss:'
 
+/**
+ * 「下一场会话」意图的有效期。
+ *
+ * 没有它，一小时前在新会话页上随手点的那一下会一直管着今天所有的会话；有它，就只影响
+ * 「刚选完就开始的那场」。半小时足够覆盖「选完→打字→发送」。
+ */
+const PENDING_TTL_MS = 30 * 60 * 1000
+
 const scenesPathOf = (dshHome: string): string => join(dshHome, 'tool-center', SCENES_NAME)
 
 function emptyDocument(): ScenesDocument {
-  return { version: 4, scenes: [], active: {}, sessions: {}, applied: {} }
+  return { version: 4, scenes: [], active: {}, sessions: {}, pending: {}, applied: {} }
 }
 
 /**
@@ -180,6 +206,21 @@ function normaliseDocument(value: unknown): ScenesDocument {
     }
   }
 
+  if (isRecord(record.pending)) {
+    for (const [workspace, choice] of Object.entries(record.pending)) {
+      const key = normaliseWorkspace(workspace)
+      if (key === '' || !isRecord(choice)) continue
+      const entry = choice as Record<string, unknown>
+      const scene = typeof entry.scene === 'string' && entry.scene !== '' ? entry.scene : null
+      if (scene !== null && !byName.has(scene)) continue
+      document.pending[key] = {
+        scene,
+        from: typeof entry.from === 'string' ? entry.from : '',
+        at: typeof entry.at === 'number' ? entry.at : Date.now(),
+      }
+    }
+  }
+
   // v3：场景自己带 workspace（一个场景锁死一个项目）。迁移成「那个工作区的默认场景」。
   if (record.version === 3 && Array.isArray(record.scenes)) {
     for (const item of record.scenes) {
@@ -235,6 +276,7 @@ export async function loadScenes(dshHome: string): Promise<ScenesState> {
     scenes: document.scenes,
     active: document.active,
     sessions: document.sessions,
+    pending: document.pending,
     warnings,
     path: scenesPathOf(dshHome),
   }
@@ -362,7 +404,9 @@ async function layerFor(
 ): Promise<SkillLayer | null> {
   const { document } = await readDocument(dshHome)
   const scene = document.scenes.find((item) => item.name === sceneName)
-  if (scene === undefined) return NOTHING_LAYER
+  // 场景已经不在了（手改了文件 / 迁移失败）：按「跟随工作区」处理。拿一张空白名单
+  // 把这个会话的技能一次全关掉，比「场景没生效」糟得多。
+  if (scene === undefined) return null
   return layerOf(scene, await rowsOf(service, workspace)).layer
 }
 
@@ -495,6 +539,10 @@ export async function setWorkspaceScene(
   // ③ 记账。
   if (sceneName === null) delete document.active[target]
   else document.active[target] = sceneName
+  // 工作区默认都换了，之前「下一场会话用 X」那条意图就作废了：否则它会在下一场会话里
+  // 盖掉用户刚设的默认。
+  delete document.pending[activeKey]
+  delete document.pending[target]
   if (prompt.before === null) delete document.applied[target]
   else document.applied[target] = { scene: sceneName ?? '', at: Date.now(), promptBefore: prompt.before }
   await writeDocument(dshHome, document)
@@ -525,6 +573,7 @@ export async function setSessionScene(
   sessionId: string,
   workspace: string,
   sceneName: string | null | undefined,
+  options: { carryOver?: boolean } = {},
 ): Promise<SceneApplyReport> {
   const id = sessionId.trim()
   if (id === '') throw new DomainError('error.scene.session', '缺少会话标识，无法设置会话级场景')
@@ -538,24 +587,43 @@ export async function setSessionScene(
   }
 
   const rows = await rowsOf(service, target)
-  // 「跟随工作区」= 删掉会话层；「明确不用」= 白名单但一条不留；否则就是那个场景的层。
+  const matched = scene === undefined
+    ? []
+    : rows.filter((row) => !row.shadowed && scene.skills.some((ref) => rowMatchesRef(row, ref)))
+
+  // 「跟随工作区」= 删掉会话层；「明确不用」= 白名单但一条不留；否则就是该场景的层。
+  // 一条都没命中时写 null（跟随下层），**不写**空白名单：只含 MCP 的场景（技能留空是
+  // 常态）本来就不该动技能，而空白名单会把整个会话的技能全关掉。
   const layer = sceneName === undefined
     ? null
     : (sceneName === null
       ? NOTHING_LAYER
-      : (scene === undefined ? NOTHING_LAYER : (layerOf(scene, rows).layer ?? NOTHING_LAYER)))
+      : (scene === undefined ? null : (layerOf(scene, rows).layer ?? null)))
   const written = await service.setLayer(`${SS_PREFIX}${id}`, layer)
   if (written.ok !== true) throw new DomainError('error.scene.layer', String(written.error ?? '写入会话技能层失败'))
   const layerChanged = (written.data as { changed?: boolean } | undefined)?.changed === true
 
   if (sceneName === undefined) delete document.sessions[id]
   else document.sessions[id] = { scene: sceneName, workspace: target, at: Date.now() }
+
+  // 开始会话时选的那一次，额外记一条「本工作区的下一场会话」：新会话页的 id 未必会
+  // 变成真正的对话（宿主在发送时才建会话），只写会话层会让这次选择静静失效。
+  if (options.carryOver === true) {
+    if (sceneName === undefined) delete document.pending[target]
+    else document.pending[target] = { scene: sceneName, from: id, at: Date.now() }
+  }
+
   await writeDocument(dshHome, document)
 
-  const appliedSkills = scene === undefined
-    ? 0
-    : rows.filter((row) => !row.shadowed && scene.skills.some((ref) => rowMatchesRef(row, ref))).length
-
+  if (scene !== undefined && matched.length < scene.skills.length) {
+    warnings.push(
+      `场景里有 ${scene.skills.length - matched.length} 条技能在这个工作区里找不到（可能改名 / 移动 / 被同名技能遮蔽），`
+      + `本会话只能生效 ${matched.length} 条`,
+    )
+  }
+  if (scene !== undefined && scene.exclusive === true && scene.skills.length > 0 && matched.length === 0) {
+    warnings.push('这个场景一条技能都没匹配上，而它是「整套切换」：本会话里其它技能也会被挡掉')
+  }
   if (scene !== undefined && scene.prompt !== null) {
     warnings.push('会话级场景不改变提示词：AGENTS.md 按工作区读取，提示词仍由工作区的场景决定')
   }
@@ -567,9 +635,59 @@ export async function setSessionScene(
     session: id,
     changed: layerChanged,
     replaced: null,
-    applied: { skills: appliedSkills, mcp: scene?.mcp.length ?? 0, prompt: null },
+    applied: { skills: matched.length, mcp: scene?.mcp.length ?? 0, prompt: null },
     warnings,
   }
+}
+
+/**
+ * 把「下一场会话」的意图认领到这个会话上。
+ *
+ * 时机：一个**真正的** agent 第一次读技能时（provider 的 `beforeView`）。那时才确知
+ * 「这个 id 是活的对话」；新会话页上的草稿 id 永远不会走到这一步。
+ *
+ * 三条克制：会话已经自己选过（包括 `/scene`）就不动；意图超过 30 分钟就不算数；
+ * 认领后把草稿 id 那条残留记录一起清掉（否则状态文件里会攒一堆永远不会再有会话的层）。
+ */
+export async function adoptPendingScene(
+  dshHome: string,
+  service: SkillService,
+  sessionId: string,
+  workspace: string,
+): Promise<{ adopted: string | null; changed: boolean }> {
+  const id = sessionId.trim()
+  const target = normaliseWorkspace(workspace)
+  if (id === '' || target === '') return { adopted: null, changed: false }
+
+  const { document } = await readDocument(dshHome)
+  if (document.sessions[id] !== undefined) return { adopted: null, changed: false }
+  const key = keyOfWorkspace(document.pending, target)
+  const pending = key === undefined ? undefined : document.pending[key]
+  if (key === undefined || pending === undefined) return { adopted: null, changed: false }
+
+  if (Date.now() - pending.at > PENDING_TTL_MS) {
+    delete document.pending[key]
+    await writeDocument(dshHome, document)
+    return { adopted: null, changed: false }
+  }
+
+  const sceneName = pending.scene
+  const scene = sceneName === null ? undefined : document.scenes.find((item) => item.name === sceneName)
+  const rows = await rowsOf(service, target)
+  const layer = sceneName === null
+    ? NOTHING_LAYER
+    : (scene === undefined ? null : (layerOf(scene, rows).layer ?? null))
+  const written = await service.setLayer(`${SS_PREFIX}${id}`, layer)
+  if (written.ok !== true) return { adopted: null, changed: false }
+
+  document.sessions[id] = { scene: sceneName, workspace: target, at: Date.now() }
+  delete document.pending[key]
+  if (pending.from !== '' && pending.from !== id) {
+    delete document.sessions[pending.from]
+    await service.setLayer(`${SS_PREFIX}${pending.from}`, null)
+  }
+  await writeDocument(dshHome, document)
+  return { adopted: sceneName, changed: true }
 }
 
 

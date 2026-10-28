@@ -1,8 +1,8 @@
-import { skillRefsOf } from '../skills/policy.js';
-import { errorResult } from '../shared/result.js';
-import { deletePreset, loadPrompts, readPreset, savePreset, setPresetEnabled } from '../prompts/service.js';
-import { deleteMcpServer, loadMcp, setMcpEnabled } from '../mcp/service.js';
-import { deleteScene, loadScenes, saveScene, setSessionScene, setWorkspaceScene } from '../scenes/service.js';
+import { skillRefsOf } from "../skills/policy.js";
+import { errorResult } from "../shared/result.js";
+import { deletePreset, loadPrompts, readPreset, savePreset, setPresetEnabled } from "../prompts/service.js";
+import { deleteMcpServer, loadMcp, setMcpEnabled } from "../mcp/service.js";
+import { deleteScene, loadScenes, saveScene, setSessionScene, setWorkspaceScene } from "../scenes/service.js";
 const str = (value, fallback = '') => (typeof value === 'string' ? value : fallback);
 const optional = (value) => str(value) || undefined;
 /** 必填布尔参数：缺失或类型不对时报 `error.args.required`。 */
@@ -118,6 +118,9 @@ export function createHandlers(service, meta) {
          * 某个会话用哪个场景。
          *
          * `scene` 缺省 = 跟随工作区（删掉会话选择）；`null` = 这个会话明确不用；名字 = 用这个场景。
+         *
+         * `carryOver: true`（新会话页的选择器会带）额外记一条「本工作区的下一场会话」：
+         * 那个页面的会话 id 只是草稿，发送时宿主会另建对话，只写会话层会静默失效。
          */
         'scene-session': async (payload) => domainCall(async () => {
             const scene = payload.scene === undefined
@@ -125,7 +128,9 @@ export function createHandlers(service, meta) {
                 : (typeof payload.scene === 'string' && payload.scene !== '' ? payload.scene : null);
             const sessionId = str(payload.sessionId);
             const workspace = str(payload.workspace) || (meta.sessionCwd?.(sessionId) ?? '');
-            const data = await setSessionScene(meta.dshHome, service, sessionId, workspace, scene);
+            const data = await setSessionScene(meta.dshHome, service, sessionId, workspace, scene, {
+                carryOver: payload.carryOver === true,
+            });
             meta.scenesChanged?.();
             return { ok: true, data };
         }),

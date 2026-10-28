@@ -7,13 +7,20 @@
     "types": ["node"],
     "outDir": "dist/host",
     "rootDir": "src/host",
-    "strict": false,
-    "noImplicitAny": false,
+    "strict": true,
+    "noImplicitOverride": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
     "skipLibCheck": true,
     "declaration": false,
     "sourceMap": false,
     "forceConsistentCasingInFileNames": true,
-    "verbatimModuleSyntax": false
+    /* 源码里相对导入直接写 `.ts`：typecheck 与编辑器按真名解析，tsc 输出时再改写回 `.js`。
+       少了两个后缀之间的翻译，编辑器也不会再把 `./x.js` 报成 TS2307。 */
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true
   },
   "include": ["src/host/**/*.ts"]
 }

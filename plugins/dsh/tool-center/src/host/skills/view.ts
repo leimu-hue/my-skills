@@ -5,9 +5,9 @@
  * 「每条路径各扫一遍」：被替换的插件有四条互相独立的扫描路径（`state`、`list`、`get`、
  * `detail`），它们之间会互相矛盾。
  */
-import type { RootView, SkillManagerState, SkillRoot, SkillRow, SkillStateView } from '../shared/types.js'
-import type { Scanner } from './scan.js'
-import { compareRows, groupRows, rowOf } from './policy.js'
+import type { RootView, SkillManagerState, SkillRoot, SkillRow, SkillStateView } from '../shared/types.ts'
+import type { Scanner } from './scan.ts'
+import { compareRows, groupRows, rowOf } from './policy.ts'
 
 export interface ViewInput {
   state: SkillManagerState

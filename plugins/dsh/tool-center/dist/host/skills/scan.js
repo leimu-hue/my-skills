@@ -12,8 +12,8 @@
  */
 import { lstat, readdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import { readTextOrNull, statOrNull } from '../shared/fs.js';
-import { isHostSkillName, parseSkillFile, strictBoolean } from './frontmatter.js';
+import { readTextOrNull, statOrNull } from "../shared/fs.js";
+import { isHostSkillName, parseSkillFile, strictBoolean } from "./frontmatter.js";
 const DEFAULT_OPTIONS = {
     maxDepth: 3,
     maxEntries: 5_000,

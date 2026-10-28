@@ -1,9 +1,14 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, mkdir, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { apply, name as pluginName, inject } from '../dist/host/index.js'
+import { apply, name as pluginName, inject, VERSION } from '../dist/host/index.js'
+
+test('the version the panel reports is the one in package.json', async () => {
+  const manifest = JSON.parse(await readFile(join(import.meta.dirname, '..', 'package.json'), 'utf8'))
+  assert.equal(VERSION, manifest.version, 'host/index.ts 里写死的版本号已经和 package.json 分叉了')
+})
 
 /** 一个最小宿主上下文：够观察插件注册了什么。 */
 function fakeHost() {
@@ -588,5 +593,53 @@ test('refreshing when the tool set grows only adds the newly visible tools to th
   await new Promise((resolve) => setTimeout(resolve, 300))
   assert.equal(calls.length, 1)
   assert.deepEqual(calls[0].deny, ['mcp__other__deploy'])
+})
+
+test('a scene picked on the new-session page reaches the conversation that really starts', async () => {
+  const host = fakeHost()
+  const f = await fixture()
+  apply(host.ctx, { dshHome: f.dshHome, claudeHome: f.claudeHome, codexHome: f.codexHome, watch: false })
+
+  const save = fakeResponse()
+  await host.routes[0].handler(fakeRequest({
+    op: 'scene-save',
+    args: { name: 'only-alpha', skills: [{ root: 'local', name: 'alpha' }], exclusive: true },
+  }), save)
+  assert.equal(save.payload.ok, true)
+
+  // 和真实情况一样：alpha 平时在全局是关着的（面板里被关），场景里才把它打开。
+  const hide = fakeResponse()
+  await host.routes[0].handler(fakeRequest({
+    op: 'set-skill',
+    args: { root: 'local', name: 'alpha', enabled: false },
+  }), hide)
+  assert.equal(hide.payload.ok, true, JSON.stringify(hide.payload))
+
+  // 新会话页：选择器带 carryOver，会话 id 只是草稿。
+  const pick = fakeResponse()
+  await host.routes[0].handler(fakeRequest({
+    op: 'scene-session',
+    args: { sessionId: 'session-draft', workspace: f.base, scene: 'only-alpha', carryOver: true },
+  }), pick)
+  assert.equal(pick.payload.ok, true, JSON.stringify(pick.payload))
+
+  // 真正开始的那场对话：id 与草稿不同。
+  const agent = {
+    id: 'session-real',
+    session: { id: 'session-real', header: { id: 'session-real', cwd: f.base } },
+    ctx: { get: (name) => (name === 'skills' ? host.agentSkills : undefined) },
+  }
+  host.emit('agent/created', { agent })
+  assert.equal(host.agentProviders.length, 1)
+
+  const candidates = await host.agentProviders[0].list({ cwd: f.base })
+  const byName = new Map(candidates.map((candidate) => [candidate.name, candidate]))
+  assert.equal(byName.get('alpha')?.invocation.modelInvocable, true, '全局关着的技能被场景打开后要在这个会话里可见')
+  assert.equal(byName.get('beta')?.invocation.modelInvocable, false, '整套切换把没勾的挡掉')
+
+  const scenes = JSON.parse(await readFile(join(f.dshHome, 'tool-center', 'scenes.json'), 'utf8'))
+  assert.equal(scenes.sessions['session-real']?.scene, 'only-alpha', '选择被认领到这个会话上')
+  assert.equal(scenes.sessions['session-draft'], undefined, '草稿 id 上的记录被清掉')
+  assert.equal(scenes.pending[f.base], undefined, '意图被消费掉')
 })
 

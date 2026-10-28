@@ -10,11 +10,11 @@
  */
 import { lstat, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, relative } from 'node:path';
-import { DomainError } from '../../shared/result.js';
-import { exists } from '../../shared/fs.js';
-import { isInside } from '../../shared/paths.js';
-import { readZip, writeZip } from '../../shared/zip.js';
-import { assertWritable, isValidSkillName, targetOf } from './guard.js';
+import { DomainError } from "../../shared/result.js";
+import { exists } from "../../shared/fs.js";
+import { isInside } from "../../shared/paths.js";
+import { readZip, writeZip } from "../../shared/zip.js";
+import { assertWritable, isValidSkillName, targetOf } from "./guard.js";
 /* --------------------------------- 过滤规则 -------------------------------- */
 /**
  * 系统 / 编辑器垃圾：整条路径里出现这些目录，或者文件名命中这些模式，就不必再看了。

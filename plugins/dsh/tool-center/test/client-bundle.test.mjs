@@ -43,12 +43,18 @@ async function loadBundle() {
   return { bundle: captured.bundle, sandbox }
 }
 
-function fakeReact() {  const calls = { elements: 0 }
+function fakeReact() {
+  const calls = { elements: 0 }
   return {
     calls,
     createElement(type, props, ...children) {
       calls.elements += 1
-      return { type, props: props ?? {}, children }
+      const shape = props ?? {}
+      // JSX 的自动运行时把子节点放在 props.children 里 —— 归一成带 `children` 数组的节点。
+      const kids = children.length > 0
+        ? children
+        : (shape.children === undefined ? [] : Array.isArray(shape.children) ? shape.children : [shape.children])
+      return { type, props: shape, children: kids }
     },
     // Hooks：够走完一次渲染、暴露坏调用即可。
     useState(initial) {
@@ -68,6 +74,12 @@ function fakeReact() {  const calls = { elements: 0 }
   }
 }
 
+/** JSX 自动运行时的入口：`jsx` / `jsxs` 只负责把 props 交给同一个 createElement。 */
+function fakeJsxRuntime(React) {
+  const make = (type, props) => React.createElement(type, props)
+  return { Fragment: 'Fragment', jsx: make, jsxs: make, jsxDEV: make }
+}
+
 test('the client bundle registers itself with the module loader id', async () => {
   const { bundle } = await loadBundle()
   assert.equal(bundle.id, '@local/dsh-tool-center')
@@ -77,7 +89,9 @@ test('the client bundle registers itself with the module loader id', async () =>
 test('the client plugin mounts a sidebar icon and its main panel under one id', async () => {
   const { bundle } = await loadBundle()
   const React = fakeReact()
+  const jsxRuntime = fakeJsxRuntime(React)
   const plugin = bundle.factory((id) => {
+    if (id === 'react/jsx-runtime') return jsxRuntime
     assert.equal(id, 'react')
     return React
   })
@@ -158,9 +172,11 @@ test('the client plugin mounts a sidebar icon and its main panel under one id', 
 test('the page renders one pass without throwing', async () => {
   const { bundle } = await loadBundle()
   const React = fakeReact()
-  const plugin = bundle.factory(() => React)
+  const jsxRuntime = fakeJsxRuntime(React)
+  const plugin = bundle.factory((id) => (id === 'react/jsx-runtime' ? jsxRuntime : React))
 
-  let component = null
+  /** 三个槽位各拿到一个组件；这里要看的是主栏面板（`main`），也就是那个页签外壳。 */
+  const components = new Map()
   const ctx = {
     get(serviceName) {
       if (serviceName === 'slots') {
@@ -168,8 +184,8 @@ test('the page renders one pass without throwing', async () => {
           inject(_key, callback) {
             return callback()
           },
-          register(_options, registered) {
-            component = registered
+          register(options, registered) {
+            components.set(options.name, registered)
             return () => {}
           },
         }
@@ -188,9 +204,10 @@ test('the page renders one pass without throwing', async () => {
     },
   }
   plugin.apply(ctx)
-  assert.equal(typeof component, 'function')
+  const page = components.get('main')
+  assert.equal(typeof page, 'function')
 
-  const tree = component({})
+  const tree = page({})
   assert.ok(tree !== null && typeof tree === 'object', 'the page must return an element')
   assert.ok(React.calls.elements > 0)
 })

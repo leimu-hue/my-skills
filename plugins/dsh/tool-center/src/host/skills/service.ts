@@ -11,13 +11,13 @@
 import { stat } from 'node:fs/promises'
 import { homedir, tmpdir } from 'node:os'
 import { basename, dirname, isAbsolute, join } from 'node:path'
-import type { SkillLayer, SkillManagerState, SkillRoot, SkillRow, SkillStateView, StateLoad } from '../shared/types.js'
-import { DomainError, errorResult, type OpResult } from '../shared/result.js'
-import { isFile } from '../shared/fs.js'
-import { createLock, isInside, pathIdSync, realOrResolved } from '../shared/paths.js'
-import type { Scanner } from './scan.js'
-import { createScanner } from './scan.js'
-import { DEFAULT_RANKS, dedupeRoots, hostRoots, overlapsExisting, projectRootsFor, staticRoots } from './roots.js'
+import type { SkillLayer, SkillManagerState, SkillRoot, SkillRow, SkillStateView, StateLoad } from '../shared/types.ts'
+import { DomainError, errorResult, type OpResult } from '../shared/result.ts'
+import { isFile } from '../shared/fs.ts'
+import { createLock, isInside, pathIdSync, realOrResolved } from '../shared/paths.ts'
+import type { Scanner } from './scan.ts'
+import { createScanner } from './scan.ts'
+import { DEFAULT_RANKS, dedupeRoots, hostRoots, overlapsExisting, projectRootsFor, staticRoots } from './roots.ts'
 import {
   customRootKey,
   customRootOf,
@@ -28,15 +28,15 @@ import {
   saveState,
   uniqueStrings,
   workspaceScopeOf,
-} from './state.js'
-import { allRows, buildStateView, liveNameIndex } from './view.js'
-import { rowMatchesRef } from './policy.js'
-import { createSkill, readSkillDetail, updateSkill } from './files/authoring.js'
-import { deleteSkillToTrash, emptyTrash, listTrash, purgeTrashItem, restoreTrashItem } from './files/trash.js'
-import { exportRowAsZip, exportRowsAsZip, importZip, scanZip } from './files/transfer.js'
-import { PROVIDER_NAME, createProvider } from './provider.js'
+} from './state.ts'
+import { allRows, buildStateView, liveNameIndex } from './view.ts'
+import { rowMatchesRef } from './policy.ts'
+import { createSkill, readSkillDetail, updateSkill } from './files/authoring.ts'
+import { deleteSkillToTrash, emptyTrash, listTrash, purgeTrashItem, restoreTrashItem } from './files/trash.ts'
+import { exportRowAsZip, exportRowsAsZip, importZip, scanZip } from './files/transfer.ts'
+import { PROVIDER_NAME, createProvider } from './provider.ts'
 
-export type { OpResult } from '../shared/result.js'
+export type { OpResult } from '../shared/result.ts'
 
 /**
  * 宿主注册表里的一条候选（用来反推它所在的来源目录）。
@@ -136,8 +136,14 @@ export interface SkillService {
    * 面板读取**不再**每次去问注册表 —— 那是「进技能页卡一下」的来源。缓存由这里维护。
    */
   refreshHostDirs(): Promise<void>
-  /** 交给 `ctx.skills.registerProvider` 的 provider 对象。`scopeKey` 给会话级注册用。 */
-  makeProvider(scopeKey?: string): ReturnType<typeof createProvider>
+  /**
+   * 交给 `ctx.skills.registerProvider` 的 provider 对象。`scopeKey` 给会话级注册用，
+   * `beforeView` 在每次 list 之前跑（接线层用它在第一次读技能时认领场景）。
+   */
+  makeProvider(
+    scopeKey?: string,
+    beforeView?: (cwd: string | undefined) => Promise<void>,
+  ): ReturnType<typeof createProvider>
   /** 外部改动（watcher）或写操作之后调用：推进扫描代号并让每个 provider 重新 list。 */
   touch(rootKey?: string): void
   /** provider 上线后由宿主登记的失效句柄集合。 */
@@ -658,7 +664,10 @@ export function createService(options: ServiceOptions): SkillService {
       return { ok: true, data: { generation: scanner.generation(), pruned: pruned.data, stats: scanner.stats() } }
     },
 
-    makeProvider(scopeKey?: string) {
+    makeProvider(
+      scopeKey?: string,
+      beforeView?: (cwd: string | undefined) => Promise<void>,
+    ) {
       // 这条路径是宿主 `skills.list()` 回调进来的：再问注册表就是无限递归（面板会一直
       // 停在加载中），所以只读宿主目录的缓存，绝不探测。
       const read: ReadOptions = { probeHost: false }
@@ -666,6 +675,7 @@ export function createService(options: ServiceOptions): SkillService {
         viewFor: (cwd, scope) => view(cwd, scope, read),
         rootsFor: (cwd) => rootsFor(cwd, read),
         ...(scopeKey === undefined ? {} : { scopeKey }),
+        ...(beforeView === undefined ? {} : { beforeView }),
       })
     },
 

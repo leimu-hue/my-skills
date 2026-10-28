@@ -14,9 +14,9 @@
  *     造出来 —— 那是「把 mcp-client 挂进 agent 作用域」另一件事，所以只告警；
  *   * 它不改变 scoped 注册（agent 自己那层），这是宿主刻意保留的豁免，我们不碰。
  */
-import { loadMcp } from '../mcp/service.js'
-import { effectiveSceneOf, loadScenes, normaliseWorkspace, serverMatches } from './service.js'
-import { describe } from '../shared/result.js'
+import { loadMcp } from '../mcp/service.ts'
+import { effectiveSceneOf, loadScenes, normaliseWorkspace, serverMatches } from './service.ts'
+import { describe } from '../shared/result.ts'
 
 /** 只取这个模块用得到的那一个方法，其余形状不关心。 */
 export interface ToolScope {

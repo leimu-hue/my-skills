@@ -6,12 +6,12 @@
  */
 import { mkdir, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import type { SkillRow } from '../../shared/types.js'
-import { DomainError } from '../../shared/result.js'
-import { exists, readTextOrNull } from '../../shared/fs.js'
-import { writeFileAtomic } from '../../shared/paths.js'
-import { isRecord } from '../../shared/json.js'
-import { assertOneSkill, assertRowWritable, copyTree } from './guard.js'
+import type { SkillRow } from '../../shared/types.ts'
+import { DomainError } from '../../shared/result.ts'
+import { exists, readTextOrNull } from '../../shared/fs.ts'
+import { writeFileAtomic } from '../../shared/paths.ts'
+import { isRecord } from '../../shared/json.ts'
+import { assertOneSkill, assertRowWritable, copyTree } from './guard.ts'
 
 export interface TrashItem {
   id: string

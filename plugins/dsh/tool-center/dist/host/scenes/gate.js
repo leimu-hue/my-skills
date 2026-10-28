@@ -14,9 +14,9 @@
  *     造出来 —— 那是「把 mcp-client 挂进 agent 作用域」另一件事，所以只告警；
  *   * 它不改变 scoped 注册（agent 自己那层），这是宿主刻意保留的豁免，我们不碰。
  */
-import { loadMcp } from '../mcp/service.js';
-import { effectiveSceneOf, loadScenes, normaliseWorkspace, serverMatches } from './service.js';
-import { describe } from '../shared/result.js';
+import { loadMcp } from "../mcp/service.js";
+import { effectiveSceneOf, loadScenes, normaliseWorkspace, serverMatches } from "./service.js";
+import { describe } from "../shared/result.js";
 const MCP_TOOL_PREFIX = 'mcp__';
 function agentIdOf(agent) {
     const id = agent?.id;

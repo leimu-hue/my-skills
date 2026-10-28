@@ -18,7 +18,7 @@ async function loadWriter() {
   const work = await mkdtemp(join(tmpdir(), 'tc-zip-'))
   const entry = join(root, 'test', '.zip-entry.ts')
   await writeFile(entry, [
-    "export { buildZip, base64Of, crc32 } from '../src/client/core/zip.js'",
+    "export { buildZip, base64Of, crc32 } from '../src/client/lib/core/zip.ts'",
     '',
   ].join('\n'))
   const outfile = join(work, 'zip.mjs')

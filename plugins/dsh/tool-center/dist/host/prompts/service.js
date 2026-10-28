@@ -23,11 +23,11 @@
 import { createHash } from 'node:crypto';
 import { copyFile, mkdir, readdir, rm, stat, unlink } from 'node:fs/promises';
 import { basename, join, resolve } from 'node:path';
-import { writeFileAtomic } from '../shared/paths.js';
-import { DomainError } from '../shared/result.js';
-import { exists, readTextOrNull } from '../shared/fs.js';
-import { writeBackup } from '../shared/backups.js';
-import { isRecord } from '../shared/json.js';
+import { writeFileAtomic } from "../shared/paths.js";
+import { DomainError } from "../shared/result.js";
+import { exists, readTextOrNull } from "../shared/fs.js";
+import { writeBackup } from "../shared/backups.js";
+import { isRecord } from "../shared/json.js";
 const GLOBAL_TARGET = { kind: 'global' };
 const INDEX_NAME = 'index.json';
 const BACKUP_DIR = '__backup__';

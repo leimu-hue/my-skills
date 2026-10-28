@@ -16,9 +16,9 @@
  */
 import { readFile, rename } from 'node:fs/promises'
 import { isAbsolute, join } from 'node:path'
-import type { CustomRoot, SkillLayer, SkillManagerState, StateLoad } from '../shared/types.js'
-import { isInside, pathId, pathKey, writeFileAtomic } from '../shared/paths.js'
-import { isRecord } from '../shared/json.js'
+import type { CustomRoot, SkillLayer, SkillManagerState, StateLoad } from '../shared/types.ts'
+import { isInside, pathId, pathKey, writeFileAtomic } from '../shared/paths.ts'
+import { isRecord } from '../shared/json.ts'
 
 const STATE_VERSION = 1
 

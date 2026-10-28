@@ -1,6 +1,6 @@
 {
   "name": "@local/dsh-tool-center",
-  "version": "0.4.3",
+  "version": "0.5.1",
   "private": true,
   "type": "module",
   "description": "Tool center for DeepSeek Harness — scenes, MCP servers, skills and prompts in one panel: workspace-bound scenes that only affect their own project, one panel listing every skill root, per-skill enable/disable without touching source files, same-name priority, detail preview, create/edit/delete with trash, single-skill and ZIP import/export. Session-scope layering remains a reserved interface.",
@@ -21,11 +21,13 @@
     "build": "node scripts/build.mjs",
     "test": "node --test \"test/*.test.mjs\"",
     "typecheck:host": "tsc -p tsconfig.json --noEmit",
-    "typecheck:client": "tsc -p tsconfig.client.json"
+    "typecheck:client": "tsc -p src/client/tsconfig.json"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "@types/react": "^18.3.31",
     "esbuild": "^0.25.0",
+    "react": "^18.3.1",
     "typescript": "^5.6.0"
   },
   "dsh": {

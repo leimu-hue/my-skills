@@ -10,12 +10,12 @@
  */
 import { lstat, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { basename, dirname, join, relative } from 'node:path'
-import type { SkillRoot, SkillRow } from '../../shared/types.js'
-import { DomainError } from '../../shared/result.js'
-import { exists } from '../../shared/fs.js'
-import { isInside } from '../../shared/paths.js'
-import { readZip, writeZip, type ZipFile } from '../../shared/zip.js'
-import { assertWritable, isValidSkillName, targetOf } from './guard.js'
+import type { SkillRoot, SkillRow } from '../../shared/types.ts'
+import { DomainError } from '../../shared/result.ts'
+import { exists } from '../../shared/fs.ts'
+import { isInside } from '../../shared/paths.ts'
+import { readZip, writeZip, type ZipFile } from '../../shared/zip.ts'
+import { assertWritable, isValidSkillName, targetOf } from './guard.ts'
 
 export interface ImportOutcome {
   imported: { name: string; files: number }[]

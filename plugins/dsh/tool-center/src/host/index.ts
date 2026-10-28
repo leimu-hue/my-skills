@@ -11,25 +11,26 @@
  */
 import { watch, type FSWatcher } from 'node:fs'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import type { SkillRoot } from './shared/types.js'
-import { migrateLegacyLayout, resolveAgentsHome, resolveDshHome } from './shared/paths.js'
-import { createLogger, type PluginLogger } from './shared/log.js'
-import { describe } from './shared/result.js'
-import { createScanner } from './skills/scan.js'
-import { createService, type HostCandidate, type SkillService } from './skills/service.js'
-import { createHandlers, type RouteMeta } from './api/routes.js'
-import { ROUTE_PATH, createRequestHandler } from './api/server.js'
-import { createTools, type ToolDefinition } from './api/tools.js'
-import { createSceneCommand } from './commands/scene.js'
-import { createSceneGate, type ToolScope } from './scenes/gate.js'
-import { reconcileSessionLayers } from './scenes/service.js'
-import { workspaceOfAgent, rootSessionIdOf } from './scope/agent-scope.js'
+import type { SkillRoot } from './shared/types.ts'
+import { migrateLegacyLayout, resolveAgentsHome, resolveDshHome } from './shared/paths.ts'
+import { createLogger, type PluginLogger } from './shared/log.ts'
+import { describe } from './shared/result.ts'
+import { createScanner } from './skills/scan.ts'
+import { createService, type HostCandidate, type SkillService } from './skills/service.ts'
+import { createHandlers, type RouteMeta } from './api/routes.ts'
+import { ROUTE_PATH, createRequestHandler } from './api/server.ts'
+import { createTools, type ToolDefinition } from './api/tools.ts'
+import { createSceneCommand } from './commands/scene.ts'
+import { createSceneGate, type ToolScope } from './scenes/gate.ts'
+import { adoptPendingScene, reconcileSessionLayers } from './scenes/service.ts'
+import { workspaceOfAgent, rootSessionIdOf } from './scope/agent-scope.ts'
 
 export const name = 'tool-center'
 /** `skills` 与 `tools` 是必需的，其余缺失只降级（见 `apply`）。 */
 export const inject = ['skills', 'tools', 'webServer', 'agents', 'workspaceRegistry']
 
-const VERSION = '0.4.3'
+/** 面板页脚报的版本。必须与 `package.json` 的 `version` 一致（`wiring.test.mjs` 会核对）。 */
+export const VERSION = '0.5.1'
 
 interface WebRoute {
   kind: 'exact' | 'prefix'
@@ -118,19 +119,35 @@ export function apply(ctx: PluginContext, config?: PluginConfig): void {
     log: logger.write,
   })
 
-  registerProviders(ctx, service, logger)
+  // 闸门要先建：provider 的第一次 list 可能就要去认领「开始会话时选好的场景」，
+  // 认领完得让闸门按新状态重算一次。
+  const gate = registerSceneToolGate(ctx, dshHome, logger)
+  registerProviders(ctx, service, logger, {
+    adoptScene: async (sessionId, workspace) => {
+      const report = await adoptPendingScene(dshHome, service, sessionId, workspace)
+      if (!report.changed) return
+      logger.system(`session ${sessionId}: adopted the scene picked on the new-session page (${String(report.adopted)})`)
+      service.touch()
+      void gate.refresh()
+    },
+  })
   registerSkillsEvents(ctx, service)
   registerTools(ctx, service, config, logger)
-  const gate = registerSceneToolGate(ctx, dshHome, logger)
   registerSceneCommand(ctx, service, dshHome, logger, gate.refresh)
   registerRoute(ctx, service, logger, dshHome, gate.refresh)
   registerWatcher(ctx, service, config)
 
   // 启动时按当前文档重新物化会话层：层是快照，场景定义或工作区映射可能在上次退出后变过。
   ctx.effect(() => {
-    void reconcileSessionLayers(dshHome, service).catch((error) => {
-      logger.system(`scene reconcile failed: ${describe(error)}`)
-    })
+    const warnings: string[] = []
+    void reconcileSessionLayers(dshHome, service, warnings)
+      .then(() => {
+        // 物化失败只记警告不抛，但绝不能默默咽下去（否则「场景没生效」查不到原因）。
+        for (const line of warnings) logger.system(`scene reconcile: ${line}`)
+      })
+      .catch((error) => {
+        logger.system(`scene reconcile failed: ${describe(error)}`)
+      })
     return () => undefined
   }, 'tool-center: scene reconcile')
 }
@@ -143,9 +160,14 @@ export function apply(ctx: PluginContext, config?: PluginConfig): void {
  * `invalidate()` 是 provider 告诉注册表「我的目录变了」的方式。每次注册都有自己的
  * control，所以每一个都要留住 —— 拆注册时顺手摘掉，避免句柄集合越攒越大。
  */
-function registerProviderInto(service: SkillService, skills: SkillsLike | undefined, scopeKey?: string): (() => void) | undefined {
+function registerProviderInto(
+  service: SkillService,
+  skills: SkillsLike | undefined,
+  scopeKey?: string,
+  beforeView?: (cwd: string | undefined) => Promise<void>,
+): (() => void) | undefined {
   if (skills === undefined || skills === null || typeof skills.registerProvider !== 'function') return undefined
-  const provider = service.makeProvider(scopeKey)
+  const provider = service.makeProvider(scopeKey, beforeView)
   return skills.registerProvider((control) => {
     service.invalidators.add(control.invalidate)
     control.signal?.addEventListener('abort', () => service.invalidators.delete(control.invalidate), { once: true })
@@ -204,7 +226,17 @@ function scopedSkillsOf(context: unknown): SkillsLike | undefined {
   }
 }
 
-function registerProviders(ctx: PluginContext, service: SkillService, logger: PluginLogger): void {
+export interface ProviderHooks {
+  /** 认领这个会话「开始会话时选好的场景」（没得认领就什么都不做）。 */
+  adoptScene?(sessionId: string, workspace: string): Promise<void>
+}
+
+function registerProviders(
+  ctx: PluginContext,
+  service: SkillService,
+  logger: PluginLogger,
+  hooks: ProviderHooks = {},
+): void {
   const registerGlobal = (): void => {
     try {
       const dispose = registerProviderInto(service, skillsOf(ctx.get('skills')))
@@ -231,6 +263,9 @@ function registerProviders(ctx: PluginContext, service: SkillService, logger: Pl
    */
   const scoped = new Map<string | number, () => void>()
 
+  /** 已经试过认领的会话：一次就够，别在每次 list 都去读一遍场景文档。 */
+  const adopted = new Set<string>()
+
   /**
    * 当前 DSH 的 `Agent.id` 是 `SessionId`（字符串 UUID），不是数字 —— 早先只认数字，
    * 于是每个 agent 都在这一行被跳过，作用域 provider 一个都没注册上：覆盖候选只剩全局
@@ -256,7 +291,28 @@ function registerProviders(ctx: PluginContext, service: SkillService, logger: Pl
     try {
       // 会话级场景：这个 agent 的 provider 按**根会话**的作用域解析，会话层才压得过工作区层。
       const sessionId = rootSessionIdOf(agent)
-      const dispose = registerProviderInto(service, skills, sessionId === null ? undefined : `ss:${sessionId}`)
+      const adopt = hooks.adoptScene
+      let beforeView: ((cwd: string | undefined) => Promise<void>) | undefined
+      if (adopt !== undefined && sessionId !== null) {
+        const rootId = sessionId
+        // 第一次 list = 这个会话真的在跑。这时才把「新会话页上选好的场景」认领过来，
+        // 写完再算候选，所以第一轮就生效（草稿会话 id 永远不会走到这里）。
+        beforeView = async (cwd) => {
+          if (adopted.has(rootId)) return
+          adopted.add(rootId)
+          try {
+            await adopt(rootId, cwd !== undefined && cwd !== '' ? cwd : workspaceOfAgent(agent))
+          } catch (cause) {
+            logger.system(`session ${rootId}: adopting the picked scene failed: ${describe(cause)}`)
+          }
+        }
+      }
+      const dispose = registerProviderInto(
+        service,
+        skills,
+        sessionId === null ? undefined : `ss:${sessionId}`,
+        beforeView,
+      )
       if (dispose !== undefined) scoped.set(id, dispose)
     } catch (error) {
       logger.system(`agent-scoped provider registration failed (agent ${id}): ${describe(error)}`)

@@ -1,5 +1,5 @@
-import { allRows } from '../skills/view.js';
-import { modelVisible, rowMatchesRef } from '../skills/policy.js';
+import { allRows } from "../skills/view.js";
+import { modelVisible, rowMatchesRef } from "../skills/policy.js";
 function cwdOf(exec) {
     const cwd = exec?.agent?.session?.header?.cwd;
     return typeof cwd === 'string' && cwd.trim() !== '' ? cwd.trim() : undefined;

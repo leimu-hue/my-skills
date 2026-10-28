@@ -9,11 +9,11 @@
  *   5. 读 JSON 请求体（有硬上限），再按 op 表分发。
  */
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import type { PluginLogger } from '../shared/log.js'
-import { describe } from '../shared/result.js'
-import { isRecord } from '../shared/json.js'
-import { GATE_HEADER, PLUGIN_ID, isTrusted, readJsonBody, sendJson, wantsJson } from '../shared/http.js'
-import { READ_OPS, type Handler } from './routes.js'
+import type { PluginLogger } from '../shared/log.ts'
+import { describe } from '../shared/result.ts'
+import { isRecord } from '../shared/json.ts'
+import { GATE_HEADER, PLUGIN_ID, isTrusted, readJsonBody, sendJson, wantsJson } from '../shared/http.ts'
+import { READ_OPS, type Handler } from './routes.ts'
 
 export const ROUTE_PATH = '/tool-center/api'
 

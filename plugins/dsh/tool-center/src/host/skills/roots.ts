@@ -7,9 +7,9 @@
  */
 import { readdir } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
-import type { SkillManagerState, SkillRoot } from '../shared/types.js'
-import { pathId, pathIdSync, pathsOverlap, realOrResolved } from '../shared/paths.js'
-import { isDirectory, isFile, statOrNull } from '../shared/fs.js'
+import type { SkillManagerState, SkillRoot } from '../shared/types.ts'
+import { pathId, pathIdSync, pathsOverlap, realOrResolved } from '../shared/paths.ts'
+import { isDirectory, isFile, statOrNull } from '../shared/fs.ts'
 
 /**
  * 默认 rank：越小越优先。
@@ -51,9 +51,12 @@ function homeOf(): string {
   return process.env.USERPROFILE ?? process.env.HOME ?? ''
 }
 
+/** 有默认 rank 的来源键。静态表用它做类型，于是「新增一个来源却忘了给 rank」会直接编译不过。 */
+type DefaultRankKey = keyof typeof DEFAULT_RANKS
+
 /** 静态来源表：一个来源一行，省掉五段只差几个字面量的对象字面量。 */
 const STATIC_ROOTS: ReadonlyArray<{
-  key: string
+  key: DefaultRankKey
   label: string
   kind: SkillRoot['kind']
   hostScans: boolean

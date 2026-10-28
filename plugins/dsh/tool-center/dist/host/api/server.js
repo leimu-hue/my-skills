@@ -1,7 +1,7 @@
-import { describe } from '../shared/result.js';
-import { isRecord } from '../shared/json.js';
-import { GATE_HEADER, PLUGIN_ID, isTrusted, readJsonBody, sendJson, wantsJson } from '../shared/http.js';
-import { READ_OPS } from './routes.js';
+import { describe } from "../shared/result.js";
+import { isRecord } from "../shared/json.js";
+import { GATE_HEADER, PLUGIN_ID, isTrusted, readJsonBody, sendJson, wantsJson } from "../shared/http.js";
+import { READ_OPS } from "./routes.js";
 export const ROUTE_PATH = '/tool-center/api';
 function rejectionOf(connection, req) {
     const service = connection();

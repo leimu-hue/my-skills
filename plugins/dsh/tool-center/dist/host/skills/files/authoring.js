@@ -6,11 +6,11 @@
  */
 import { mkdir, readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { DomainError } from '../../shared/result.js';
-import { exists } from '../../shared/fs.js';
-import { writeFileAtomic } from '../../shared/paths.js';
-import { buildSkillFile, parseSkillFile, patchFrontmatter } from '../frontmatter.js';
-import { assertRowWritable, assertSkillName, assertWritable, targetOf } from './guard.js';
+import { DomainError } from "../../shared/result.js";
+import { exists } from "../../shared/fs.js";
+import { writeFileAtomic } from "../../shared/paths.js";
+import { buildSkillFile, parseSkillFile, patchFrontmatter } from "../frontmatter.js";
+import { assertRowWritable, assertSkillName, assertWritable, targetOf } from "./guard.js";
 /** 详情页最多列多少个文件：目录再大也不该把面板拖死。 */
 const MAX_LISTED_FILES = 200;
 export async function createSkill(root, input) {

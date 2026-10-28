@@ -10,10 +10,10 @@
  * 它认识的那些来源里的顶层、启用态技能，再发一遍会让每条都重复，还会让我们自己的 `get`
  * 去重读宿主本可以供给的正文。
  */
-import type { SkillRoot, SkillRow, SkillStateView } from '../shared/types.js'
-import { readTextOrNull, statOrNull } from '../shared/fs.js'
-import { modelVisible, needsOverlay, userVisible } from './policy.js'
-import { isHostSkillName, parseSkillFile } from './frontmatter.js'
+import type { SkillRoot, SkillRow, SkillStateView } from '../shared/types.ts'
+import { readTextOrNull, statOrNull } from '../shared/fs.ts'
+import { modelVisible, needsOverlay, userVisible } from './policy.ts'
+import { isHostSkillName, parseSkillFile } from './frontmatter.ts'
 
 /**
  * 宿主要求的候选形状：名字必须 kebab-case、描述非空。
@@ -72,6 +72,13 @@ export interface ProviderDeps {
    * 注册表里，只有在这个 agent 层里发一条可见候选才能压过它。
    */
   scopeKey?: string
+  /**
+   * 每次 list 之前跑一次（会话级 provider 用它认领「开始会话时选好的场景」）。
+   *
+   * 放在这里而不是 agent/created 上：宿主要拿到候选才继续拼上下文，`list()` 是**被等待**
+   * 的那一步，也就成了「第一次读技能」的确定时机 —— 认领写完再算候选，第一轮就能生效。
+   */
+  beforeView?(cwd: string | undefined): Promise<void>
 }
 
 /** 判断这条候选的「介入原因」（单独成函数，便于阅读）。 */
@@ -149,6 +156,8 @@ export function createProvider(deps: ProviderDeps) {
     name: PROVIDER_NAME,
     async list(options: { cwd?: string; signal?: AbortSignal } = {}) {
       const signal = options.signal
+      if (isAborted(signal)) return []
+      await deps.beforeView?.(options.cwd)
       if (isAborted(signal)) return []
       const view = await deps.viewFor(options.cwd, deps.scopeKey)
       if (isAborted(signal)) return []

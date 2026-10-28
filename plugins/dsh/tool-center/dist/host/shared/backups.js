@@ -6,7 +6,7 @@
  */
 import { mkdir, readdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { writeFileAtomic } from './paths.js';
+import { writeFileAtomic } from "./paths.js";
 /** 时间戳做文件名：去掉 `:` 与 `.`（Windows 不允许）。 */
 function backupStamp(date = new Date()) {
     return date.toISOString().replace(/[:.]/g, '-');

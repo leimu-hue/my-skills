@@ -12,9 +12,9 @@
  */
 import { lstat, readdir } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import type { SkillEntry, SkillRoot } from '../shared/types.js'
-import { readTextOrNull, statOrNull } from '../shared/fs.js'
-import { isHostSkillName, parseSkillFile, strictBoolean } from './frontmatter.js'
+import type { SkillEntry, SkillRoot } from '../shared/types.ts'
+import { readTextOrNull, statOrNull } from '../shared/fs.ts'
+import { isHostSkillName, parseSkillFile, strictBoolean } from './frontmatter.ts'
 
 export interface ScannerOptions {
   /** 在来源之下找 `SKILL.md` 的深度。1 = 只看顶层。 */

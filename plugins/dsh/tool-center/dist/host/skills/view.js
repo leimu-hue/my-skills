@@ -1,4 +1,4 @@
-import { compareRows, groupRows, rowOf } from './policy.js';
+import { compareRows, groupRows, rowOf } from "./policy.js";
 export async function buildStateView(input) {
     const started = Date.now();
     const removed = new Set(input.state.removedSources);

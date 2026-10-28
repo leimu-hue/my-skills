@@ -7,8 +7,8 @@
  */
 import { readdir } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { pathId, pathIdSync, pathsOverlap, realOrResolved } from '../shared/paths.js';
-import { isDirectory, isFile, statOrNull } from '../shared/fs.js';
+import { pathId, pathIdSync, pathsOverlap, realOrResolved } from "../shared/paths.js";
+import { isDirectory, isFile, statOrNull } from "../shared/fs.js";
 /**
  * 默认 rank：越小越优先。
  *
