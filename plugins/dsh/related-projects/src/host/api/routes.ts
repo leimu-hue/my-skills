@@ -13,9 +13,9 @@ import { RegistryError } from '../shared/errors.js'
 import { normalizePath } from '../shared/paths.js'
 import { directoryTarget, listDirectory, searchProjects } from '../files/service.js'
 import type { ProjectRoot } from '../files/service.js'
-import { describeUpdate, sectionText, boundaryText } from '../prompt/text.js'
-import { canonicalWorkspace, directoryPickerOf, sandboxModeOf, sessionOf, workspaceOfSession, workspaceRows } from '../workspace/service.js'
-import type { HostContext } from '../shared/context.js'
+import { boundaryText, describeUpdate, sectionText } from '../prompt/text.js'
+import { canonicalWorkspace, nativePicker, sandboxModeOf, sessionOf, workspaceOfSession, workspaceRows } from '../workspace/service.js'
+import type { Context } from '@deepseek-ai/cordis'
 import type { Registry } from '../registry/service.js'
 import type { SessionRegistry } from '../prompt/sessions.js'
 import type { StateValue } from '../shared/types.js'
@@ -25,7 +25,7 @@ type Payload = Record<string, unknown>
 export type Handler = (payload: Payload) => Promise<unknown>
 
 export interface HandlerDeps {
-  ctx: HostContext
+  ctx: Context
   registry: Registry
   sessions: SessionRegistry
   openInFileManager(path: string): void
@@ -48,15 +48,12 @@ export function createHandlers(deps: HandlerDeps): Record<string, Handler> {
   const { ctx, registry, sessions } = deps
 
   /**
-   * 目标 workspace：优先用显式路径，否则用发起请求的会话。
-   * 两者都需要——面板知道路径，composer 行只知道自己的会话，而靠猜会为一个
-   * 还没有分组的 workspace 报出 `workspace-missing`。
+   * 目标 workspace：显式路径优先（面板知道路径），否则由会话解析（composer 行
+   * 只知道自己）。两者都需要，因为只靠猜会为一个还没有分组的 workspace 报出
+   * `workspace-missing`。
    */
   const workspaceOf = (payload: Payload): string => {
     const explicit = str(payload.workspace)
-    /* 调用方拿到目录的时间可能早于本 Host 能解析出该会话的时间：冷（旧）会话的
-       `header.cwd` 要等它开始 resume 才可读，而 Client 自己的会话目录早已知道。
-       把这个提示折算到注册时使用的写法上，让两条路径的结论一致。 */
     if (explicit !== '') return canonicalWorkspace(ctx, explicit)
     return workspaceOfSession(ctx, sessionOf(ctx, payload.sessionId))
   }
@@ -76,9 +73,8 @@ export function createHandlers(deps: HandlerDeps): Record<string, Handler> {
 
   return {
     async state(payload): Promise<StateValue> {
-      /* 优先用显式路径，否则用发起请求的会话——与其他每个方法同一规则。composer
-         行需要这一点：打开一个旧会话时，composer 会在该会话存活之前挂载，只凭 id
-         会答 "workspace unknown"，而 Client 早已从自己的会话目录知道了那个目录。 */
+      /* 与其他方法同一规则：显式路径优先，否则由会话解析。composer 行打开旧会话时
+         会在该会话存活之前挂载，这段时间它拿到的就是「工作区未知」。 */
       const groups = registry.groups()
       return {
         ...registry.snapshot(workspaceOf(payload)),
@@ -156,10 +152,12 @@ export function createHandlers(deps: HandlerDeps): Record<string, Handler> {
     },
 
     async pick() {
-      const picker = directoryPickerOf(ctx)
-      if (picker === undefined) throw new RegistryError('pick-unavailable')
-      const picked = await picker.pick(new AbortController().signal)
-      return { path: picked === null || picked === undefined ? '' : picked }
+      /* 只有 native 后端能在宿主显示器上弹出系统目录选择器；browse 后端由界面
+         自己列目录，所以这里按官方默认“隐藏选择能力”。 */
+      const capability = nativePicker(ctx)
+      if (capability === undefined) throw new RegistryError('pick-unavailable')
+      const picked = await capability.pick(new AbortController().signal)
+      return { path: picked === null ? '' : picked }
     },
 
     /**

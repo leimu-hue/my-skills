@@ -2,28 +2,41 @@
  * Host 入口：只做接线。
  *
  * 分层（每层知道的越少越好）：
- *   shared/    我们探测的 Cordis 切片、路径身份、视图类型、JSON 管道
+ *   shared/    路径身份、视图类型、JSON 管道、`connection` 的小补充
  *   registry/  持久化 + 「什么才算关联项目」的规则
  *   prompt/    模型读到的确切文本，以及按会话区分的通道
  *   files/     `@` 菜单背后的文件索引
  *   workspace/ 「我在哪个工作区」和「我能写什么」
- *   api/       那条 JSON 路由、它的处理器，以及面向 agent 的工具
+ *   api/       那些具名路由、它们的处理器，以及面向 agent 的工具
  */
 import { spawn } from 'node:child_process'
+import Schema from '@deepseek-ai/schemastery'
+import type { Context } from '@deepseek-ai/cordis'
+import type { WebServer } from '@deepseek-ai/dsh-host-webserver'
 import { Registry } from './registry/service.js'
 import { SessionRegistry } from './prompt/sessions.js'
 import { createHandlers } from './api/routes.js'
-import { ROUTE_PATH, createRequestHandler } from './api/server.js'
+import { createRouteHandler, routePath } from './api/server.js'
 import { createTool } from './api/tools.js'
-import type { AgentsService, HostContext, ToolsService, WebServerService } from './shared/context.js'
-import type { AgentLike } from './shared/context.js'
 
 export const name = 'related-projects'
-export const inject = ['webServer']
 
-interface PluginConfig {
-  dataFile?: unknown
+/**
+ * 两个都是硬依赖：路由靠 `webServer` 承载，工具靠 `tools` 注册。
+ * 其余服务（`sessions` / `sandboxPolicy` / `workspaceRegistry` /
+ * `directoryPicker` / `systemPrompt` / `agents`）都是可选的，
+ * 一律 `ctx.get(name)` 探测、缺失即降级。
+ */
+export const inject = ['webServer', 'tools']
+
+export interface Config {
+  /** 注册表文件；缺省写到 `$DSH_HOME/related-projects.json`。 */
+  dataFile?: string
 }
+
+export const Config: Schema<Config> = Schema.object({
+  dataFile: Schema.string().description('注册表文件；缺省写到 $DSH_HOME/related-projects.json'),
+})
 
 /** 在操作系统文件管理器里打开目录；失败不是调用方的问题。 */
 function openInFileManager(target: string): void {
@@ -34,45 +47,33 @@ function openInFileManager(target: string): void {
   child.unref()
 }
 
-export function apply(ctx: HostContext, config?: PluginConfig): void {
-  const dataFile = config !== undefined && typeof config.dataFile === 'string' && config.dataFile !== ''
-    ? config.dataFile
-    : undefined
-  const registry = new Registry(dataFile)
+export function apply(ctx: Context, config: Config): void {
+  const registry = new Registry(config?.dataFile)
   const sessions = new SessionRegistry(ctx, registry)
 
-  installRoute(ctx, registry, sessions)
-  installTool(ctx, registry, sessions)
+  installRoutes(ctx, registry, sessions)
+  /* `tools.register()` 自己把 disposer 挂到调用它的上下文上。 */
+  ctx.tools.register(createTool(ctx, registry, sessions))
   trackSessions(ctx, sessions)
 }
 
 /* --------------------------------- 路由 --------------------------------- */
 
-function installRoute(ctx: HostContext, registry: Registry, sessions: SessionRegistry): void {
-  const webServer = ctx.get('webServer') as WebServerService | undefined
-  if (webServer === undefined || webServer === null || typeof webServer.register !== 'function') return
-  const handler = createRequestHandler({
-    ctx,
-    handlers: createHandlers({ ctx, registry, sessions, openInFileManager }),
-  })
-  ctx.effect(() => webServer.register({ kind: 'prefix', path: ROUTE_PATH, handler }), 'related-projects: routes')
-}
-
-/* ---------------------------------- 工具 ---------------------------------- */
-
 /**
- * 工具是可选的 —— Host 可能在没有 `tools` 服务的情况下挂载本插件，所以它不在
- * `inject` 里。`inject()` 仍然要紧：否则在 apply 跑完之后才提供 `tools` 的组合
- * 就永远看不到这个工具。
+ * 一个方法一条 exact 路由。`webServer.register()` 只是把路由塞进表里，
+ * 不接管生命周期，所以必须由 `ctx.effect()` 回收——否则重载插件会撞上
+ * 「duplicate exact route」。
  */
-function installTool(ctx: HostContext, registry: Registry, sessions: SessionRegistry): void {
-  const register = (scoped: HostContext): void => {
-    const tools = scoped.get('tools') as ToolsService | undefined
-    if (tools === undefined || tools === null || typeof tools.register !== 'function') return
-    scoped.effect(() => tools.register(createTool(scoped, registry, sessions)), 'related-projects: tool')
+function installRoutes(ctx: Context, registry: Registry, sessions: SessionRegistry): void {
+  const webServer: WebServer = ctx.webServer
+  const handlers = createHandlers({ ctx, registry, sessions, openInFileManager })
+  for (const [method, handler] of Object.entries(handlers)) {
+    const serve = createRouteHandler({ ctx, method, handler })
+    ctx.effect(
+      () => webServer.register({ kind: 'exact', path: routePath(method), handler: serve }),
+      'related-projects: route ' + method,
+    )
   }
-  if (typeof ctx.inject === 'function') ctx.inject(['tools'], register)
-  else register(ctx)
 }
 
 /* -------------------------------- 会话 -------------------------------- */
@@ -82,15 +83,17 @@ function installTool(ctx: HostContext, registry: Registry, sessions: SessionRegi
  * 正在跑这段代码的那个 —— 通过 agents 注册表接管，因为它们的 `agent/created`
  * 事件早就过去了。
  */
-function trackSessions(ctx: HostContext, sessions: SessionRegistry): void {
-  if (typeof ctx.on === 'function') {
-    ctx.on('agent/created', (data) => sessions.attach((data as { agent?: AgentLike })?.agent))
-    ctx.on('agent/disposed', (data) => sessions.detach((data as { agent?: AgentLike })?.agent))
-  }
+function trackSessions(ctx: Context, sessions: SessionRegistry): void {
+  ctx.on('agent/created', (payload) => {
+    sessions.attach(payload.agent)
+    return undefined
+  })
+  ctx.on('agent/disposed', (payload) => {
+    sessions.detach(payload.agent)
+  })
   try {
-    const agents = ctx.get('agents') as AgentsService | undefined
-    const list = agents !== undefined && typeof agents.list === 'function' ? agents.list() : null
-    if (list !== null) for (const agent of list) sessions.attach(agent as AgentLike)
+    const agents = ctx.get('agents')
+    if (agents !== undefined) for (const agent of agents.list()) sessions.attach(agent)
   } catch { /* 这个 Host 上没有活 agent 注册表 */ }
 
   ctx.effect(() => () => sessions.disposeAll(), 'related-projects: session cleanup')

@@ -1,15 +1,29 @@
 /** 把项目、文件和目录变成菜单行（以及反向解析）。 */
+import type { InputTriggerCandidate } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
 import { referenceOf } from '../core/reference.js'
 import type { FileHit, ProjectView } from '../core/types.js'
-import type { RowValue, TriggerCandidate } from './types.js'
 
-/** 单个面包屑的 drill 载荷：它要导航到的目录。 */
-export function drillValue(label: string, path: string): string {
-  return JSON.stringify({ kind: 'directory', label, mention: referenceOf(path, true) })
+/** 行可以指向的东西。 */
+type RowKind = 'project' | 'file' | 'directory'
+
+/** 行列携带的不透明载荷：一次 pick 必须插入的内容。 */
+interface RowValue {
+  kind: RowKind
+  label: string
+  mention: string
 }
 
 function valueOf(value: RowValue): string {
   return JSON.stringify(value)
+}
+
+function kindOf(value: unknown): RowKind {
+  return value === 'file' || value === 'directory' ? value : 'project'
+}
+
+/** 单个面包屑的 drill 载荷：它要导航到的目录。 */
+export function drillValue(label: string, path: string): string {
+  return valueOf({ kind: 'directory', label, mention: referenceOf(path, true) })
 }
 
 /** 写入 `candidate.value` 的行载荷：一次 pick 必须插入的内容。 */
@@ -19,7 +33,7 @@ export function parseRowValue(value: unknown): RowValue | null {
     const parsed = JSON.parse(value) as Partial<RowValue>
     if (typeof parsed.mention !== 'string' || parsed.mention === '') return null
     return {
-      kind: typeof parsed.kind === 'string' ? parsed.kind : 'project',
+      kind: kindOf(parsed.kind),
       label: typeof parsed.label === 'string' && parsed.label !== '' ? parsed.label : parsed.mention,
       mention: parsed.mention,
     }
@@ -29,7 +43,7 @@ export function parseRowValue(value: unknown): RowValue | null {
 }
 
 /** 每个项目根一行；`drill` 会打开它而不是插入它。 */
-export function projectRows(projects: ProjectView[], section: string): TriggerCandidate[] {
+export function projectRows(projects: ProjectView[], section: string): InputTriggerCandidate[] {
   return projects.map((project) => ({
     name: project.name + '/',
     description: project.note === '' ? project.path : project.path + '  ·  ' + project.note,
@@ -41,7 +55,7 @@ export function projectRows(projects: ProjectView[], section: string): TriggerCa
 }
 
 /** 某一目录层级的行：目录可 drill，文件可插入。 */
-export function levelRows(hits: FileHit[], section: string): TriggerCandidate[] {
+export function levelRows(hits: FileHit[], section: string): InputTriggerCandidate[] {
   return hits.map((entry) => {
     const directory = entry.kind === 'directory'
     return {

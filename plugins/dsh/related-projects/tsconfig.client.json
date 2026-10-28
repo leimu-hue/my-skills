@@ -5,10 +5,14 @@
     "moduleResolution": "Bundler",
     "lib": ["ES2020", "DOM"],
     "noEmit": true,
-    "strict": false,
-    "noImplicitAny": false,
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
     "skipLibCheck": true,
-    "types": []
+    "types": ["react"]
   },
-  "include": ["src/client/**/*.ts"]
+  "include": ["src/client/**/*.ts", "src/client/**/*.tsx"]
 }

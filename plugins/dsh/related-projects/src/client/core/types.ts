@@ -46,14 +46,25 @@ export interface WorkspaceRef {
   path: string
 }
 
-/** 一个工作区给出的答案，外加面板的跨工作区列表。 */
-export interface StateValue {
+/** 一个工作区给出的答案；与 Host 的 `Snapshot` 同形。 */
+export interface Snapshot {
   settings: Settings
   workspace: WorkspaceRef | null
   projects: ProjectView[]
+  limits: Limits
+}
+
+/** 面板拿到的答案：单个工作区，加上跨工作区列表。 */
+export interface StateValue extends Snapshot {
   groups: GroupView[]
   workspaces: WorkspaceRow[]
-  limits: Limits
+}
+
+/** 界面可以提交的变更字段；与 Host 的 `UpdateInput` 同形。 */
+export interface ProjectPatch {
+  name?: string
+  note?: string
+  enabled?: boolean
 }
 
 /** 关联项目里的一个文件或目录，按 Host 搜到的样子。 */
@@ -64,11 +75,8 @@ export interface FileHit {
   kind: 'file' | 'directory'
 }
 
-/** Client 已经知道的会话目录；未知时为 ''。 */
-export type WorkspaceHint = (sessionId: string) => string
-
 /**
- * 在 Host 首次应答之前使用。这些数字镜像 Host 的限制；只有 `noteMax` 和
- * `max` 会被读到，且只在第一份快照到达之前。
+ * 在 Host 首次应答之前使用。这些数字镜像 Host 的限制；第一份快照到达前
+ * 只会读到 `max` / `noteMax` / `nameMax` 三个上限本身。
  */
 export const DEFAULT_LIMITS: Limits = { max: 10, noteMax: 200, nameMax: 60 }

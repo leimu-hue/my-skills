@@ -1,6 +1,6 @@
 /** 管理面板文案（每个工作区一段，每个项目一行）。 */
 
-export const ZH_PANEL: Record<string, string> = {
+export const ZH_PANEL = {
   'panel.title': '关联项目',
   'panel.description': '一次改动会牵动的一组其它项目（前端 / 文档 / 服务）。会话开始时会告诉模型，改后端时不必再手动找路径。',
   'panel.addHere': '+ 关联项目',
@@ -11,7 +11,9 @@ export const ZH_PANEL: Record<string, string> = {
   'panel.rows': '{n} 个项目',
   'panel.expand': '展开',
   'panel.collapse': '收起',
+  'panel.name': '名称',
   'panel.namePlaceholder': '名称',
+  'panel.note': '备注',
   'panel.notePlaceholder': '什么情况下需要改它？（≤200 字）',
   'panel.enabled': '启用',
   'panel.delete': '删除',
@@ -24,7 +26,7 @@ export const ZH_PANEL: Record<string, string> = {
   'panel.showDock': '在输入框下方显示关联项目条',
 }
 
-export const EN_PANEL: Record<string, string> = {
+export const EN_PANEL: Record<keyof typeof ZH_PANEL, string> = {
   'panel.title': 'Related projects',
   'panel.description': 'The sibling projects one change touches (frontend / docs / services). The agent learns them when a session starts, so you never hunt for a path again.',
   'panel.addHere': '+ Add project',
@@ -35,11 +37,13 @@ export const EN_PANEL: Record<string, string> = {
   'panel.rows': '{n} projects',
   'panel.expand': 'Expand',
   'panel.collapse': 'Collapse',
+  'panel.name': 'Name',
   'panel.namePlaceholder': 'Name',
+  'panel.note': 'Note',
   'panel.notePlaceholder': 'When does this project need a change? (<=200 chars)',
   'panel.enabled': 'Enabled',
   'panel.delete': 'Delete',
-  'panel.deleteConfirm': 'Delete "{name}"? Its note goes too, unrecoverable',
+  'panel.deleteConfirm': 'Delete “{name}”? Its note goes too, unrecoverable',
   'panel.deleteYes': 'Delete',
   'panel.open': 'Open in file manager',
   'panel.missing': 'Path missing',

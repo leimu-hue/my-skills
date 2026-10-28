@@ -17,14 +17,15 @@
  * 每次变更的实际代价：通知自身的 token，追加一次。它之前的内容仍留在缓存里。
  */
 import { boundaryText, changeNotice, listText, NOTICE_NAME, NOTICE_ORDER, SECTION_NAME, SECTION_ORDER, sectionText } from './text.js'
-import { promptService } from '../shared/context.js'
 import { sandboxModeOf, workspaceOfAgent } from '../workspace/service.js'
 import { workspaceKey } from '../shared/paths.js'
-import type { AgentLike, HostContext } from '../shared/context.js'
+import type { Context } from '@deepseek-ai/cordis'
+import type { Agent } from '@deepseek-ai/dsh-agent'
+import type { SystemPrompt } from '@deepseek-ai/dsh-system-prompt'
 import type { Registry } from '../registry/service.js'
 
 interface Entry {
-  agent: AgentLike
+  agent: Agent
   workspace: string
   key: string
   disposeSection?: () => void
@@ -37,14 +38,23 @@ interface Entry {
   sectionError?: string
 }
 
+/** 清理函数可能已被上下文提前回收：重复调用不能把其他会话一起中断。 */
+function disposeQuietly(dispose: (() => void) | undefined): void {
+  try {
+    dispose?.()
+  } catch {
+    /* 已经不存在了 */
+  }
+}
+
 export class SessionRegistry {
-  private readonly ctx: HostContext
+  private readonly ctx: Context
   private readonly registry: Registry
   private readonly entries = new Map<string, Entry>()
   /** 每条通知自增一次：让每个 provider 名称在进程内唯一。 */
   private generation = 0
 
-  constructor(ctx: HostContext, registry: Registry) {
+  constructor(ctx: Context, registry: Registry) {
     this.ctx = ctx
     this.registry = registry
   }
@@ -64,14 +74,14 @@ export class SessionRegistry {
     }
   }
 
-  attach(agent: AgentLike | undefined): void {
-    if (agent === undefined || agent === null) return
+  attach(agent: Agent | undefined): void {
+    if (agent === undefined) return
     const id = String(agent.id)
     if (this.entries.has(id)) return
     const workspace = workspaceOfAgent(this.ctx, agent)
     if (workspace === '') return
+    /* agent 自己的作用域：systemPrompt 注册在这里才只影响这一个会话。 */
     const promptCtx = agent.ctx
-    if (promptCtx === undefined) return
 
     const entry: Entry = {
       agent,
@@ -80,7 +90,7 @@ export class SessionRegistry {
       noticeCount: 0,
       sectionOn: 'none',
     }
-    const service = promptService(promptCtx)
+    const service: SystemPrompt | undefined = promptCtx.get('systemPrompt')
     if (service === undefined) {
       entry.sectionOn = 'none'
       entry.sectionError = 'systemPrompt unavailable'
@@ -99,12 +109,13 @@ export class SessionRegistry {
     }
 
     try {
-      entry.disposeSection = promptCtx.effect(() => service.section({
+      /* `section()` 自己把 disposer 挂到调用它的那个上下文上，不需要再包 effect。 */
+      entry.disposeSection = service.section({
         name: SECTION_NAME,
         order: SECTION_ORDER,
         text,
         interpolate: false,
-      }), 'related-projects: session section')
+      })
       entry.sectionOn = 'agent'
     } catch (failure) {
       entry.sectionOn = 'none'
@@ -114,8 +125,8 @@ export class SessionRegistry {
     this.entries.set(id, entry)
   }
 
-  detach(agent: AgentLike | undefined): void {
-    if (agent === undefined || agent === null) return
+  detach(agent: Agent | undefined): void {
+    if (agent === undefined) return
     const id = String(agent.id)
     const entry = this.entries.get(id)
     if (entry === undefined) return
@@ -129,16 +140,13 @@ export class SessionRegistry {
    * 快照在全新的名称下携带静态文本，因此它作为尾节点进入历史一次：不重写头部，
    * 也不重复投递。没有存活的会话就无需处理——它下次启动时，小节会从注册表渲染。
    */
-  notify(workspace: string, summary: string): { delivered: number } {
+  notify(workspace: string, summary: string): void {
     const key = workspaceKey(workspace)
-    let delivered = 0
     for (const entry of this.entries.values()) {
       if (entry.key !== key) continue
-      const promptCtx = entry.agent.ctx
-      if (promptCtx === undefined) continue
-      const service = promptService(promptCtx)
-      const addContext = service?.context
-      if (service === undefined || typeof addContext !== 'function') continue
+      /* 每个会话自己的 systemPrompt：注册进 agent 作用域，才不会泄漏到别的会话。 */
+      const prompt: SystemPrompt | undefined = entry.agent.ctx.get('systemPrompt')
+      if (prompt === undefined) continue
       /* 通知只带当前的行：冻结小节里已经有说明文字和写边界。 */
       const text = changeNotice(summary, listText(this.registry, entry.workspace))
       /* 每次变更用唯一名称，通知才会追加，而不是就地替换早先的快照
@@ -146,28 +154,22 @@ export class SessionRegistry {
       this.generation += 1
       const name = NOTICE_NAME + '-' + String(Date.now()) + '-' + String(this.generation)
       try {
-        const dispose = promptCtx.effect(() => addContext.call(service, {
+        const dispose = prompt.context({
           name,
           order: NOTICE_ORDER,
           text,
           interpolate: false,
-        }) ?? (() => {}), 'related-projects: change notice')
+        })
         /* 先换上再弃用：新快照已给出完整的当前列表，较早的 provider 因此是冗余的——
            留着它会让之后每个快照都重复一遍它的文本。 */
         const previous = entry.disposeNotice
         entry.disposeNotice = dispose
         entry.noticeCount += 1
-        try {
-          previous?.()
-        } catch {
-          /* 已经不存在了 */
-        }
-        delivered += 1
+        disposeQuietly(previous)
       } catch {
         /* 重名（世代过期）不能让其他会话一起中止。 */
       }
     }
-    return { delivered }
   }
 
   disposeAll(): void {
@@ -176,15 +178,7 @@ export class SessionRegistry {
   }
 
   private release(entry: Entry): void {
-    try {
-      entry.disposeSection?.()
-    } catch {
-      /* 已经不存在了 */
-    }
-    try {
-      entry.disposeNotice?.()
-    } catch {
-      /* 已经不存在了 */
-    }
+    disposeQuietly(entry.disposeSection)
+    disposeQuietly(entry.disposeNotice)
   }
 }

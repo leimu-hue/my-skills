@@ -1,12 +1,11 @@
 /**
- * 唯一的 Client→Host 通道：一条相对挂载点的 JSON 路由。
+ * 唯一的 Client→Host 通道：每方法一条 exact 路由（见 host/api/server.ts）。
  *
  * 相对路径是刻意的：外壳以 `<base href="./">` 提供，重写代理因此仍然可用，
  * 而 `fetch` 解析的也是同一个 base。
  */
-import type { WorkspaceHint } from './types.js'
 
-export const API_BASE = 'related-projects/api'
+const API_BASE = 'related-projects'
 
 export class ApiError extends Error {
   readonly code: string
@@ -24,6 +23,15 @@ interface Envelope {
   error?: { code?: string; message?: string }
 }
 
+/** 宿主没回 JSON（代理 502、连接被掐）时返回 null，由调用方按状态码报错。 */
+async function readEnvelope(response: Response): Promise<Envelope | null> {
+  try {
+    return await response.json() as Envelope
+  } catch {
+    return null
+  }
+}
+
 export async function call<T = Record<string, unknown>>(method: string, payload?: unknown): Promise<T> {
   let response: Response
   try {
@@ -35,30 +43,31 @@ export async function call<T = Record<string, unknown>>(method: string, payload?
   } catch (error) {
     throw new ApiError('network', error instanceof Error ? error.message : String(error))
   }
-  let body: Envelope | null = null
-  try {
-    body = await response.json() as Envelope
-  } catch {
-    body = null
-  }
-  if (body !== null && body.ok === true) return body.data as T
-  const code = body !== null && body.error !== undefined ? String(body.error.code ?? '') : ''
-  const message = body !== null && body.error !== undefined ? String(body.error.message ?? '') : ''
-  throw new ApiError(code === '' ? 'http-' + String(response.status) : code, message)
+  const body = await readEnvelope(response)
+  if (body?.ok === true) return body.data as T
+  const error = body?.error
+  throw new ApiError(
+    error?.code !== undefined && error.code !== '' ? error.code : 'http-' + String(response.status),
+    error?.message,
+  )
 }
 
 /**
- * 会话级调用的 payload。Client 已经知道该会话目录时，就把目录提示一并带上：
- * 旧会话的 resume 可能还在途中，而 Host 已经能把该路径归并到它注册的工作区，
- * 少了这个提示，那次调用就会被当作 "workspace-missing" 拒绝。
+ * 系统目录选择器：用户取消时返回 null，宿主没提供选择器时抛 `pick-unavailable`
+ * （由调用方统一走 `describeError`）。两个入口共用这一份。
+ */
+export async function pickDirectoryPath(): Promise<string | null> {
+  const result = await call<{ path?: string }>('pick')
+  return result.path === undefined || result.path === '' ? null : result.path
+}
+
+/**
+ * 会话级调用的 payload：会话 id 是 Host 解析工作区的唯一依据（`header.cwd`），
+ * Client 不替它猜目录。
  */
 export function sessionPayload(
   sessionId: string,
-  hint: WorkspaceHint,
   extra: Record<string, unknown> = {},
 ): Record<string, unknown> {
-  const payload: Record<string, unknown> = { ...extra, sessionId }
-  const workspace = hint(sessionId)
-  if (workspace !== '') payload.workspace = workspace
-  return payload
+  return { ...extra, sessionId }
 }

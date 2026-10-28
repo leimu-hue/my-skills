@@ -6,11 +6,7 @@
  * （那个菜单以会话 cwd 为界），所以词条以纯文本插入，模型读到的就是一条显式
  * 引用。
  */
-
-export interface InputActions {
-  captureInsertion?(): { start: number; end: number; draftRev: number } | null | undefined
-  insertText?(text: string, span: { start: number; end: number; draftRev: number }): boolean
-}
+import type { InputActions } from '@deepseek-ai/dsh-client-ui-conversation/client'
 
 /** 用 `/` 书写的路径，不带尾部斜杠。 */
 export function slashPath(path: unknown): string {
@@ -20,7 +16,8 @@ export function slashPath(path: unknown): string {
 /** 路径的最后一段，两种写法都适用。 */
 export function basename(path: unknown): string {
   const parts = slashPath(path).split('/').filter((part) => part !== '')
-  return parts.length === 0 ? String(path ?? '') : parts[parts.length - 1]
+  const last = parts[parts.length - 1]
+  return last === undefined ? String(path ?? '') : last
 }
 
 /**
@@ -39,26 +36,23 @@ export function atToken(reference: string): string {
 }
 
 /** 目录路径转成 `@` 词条；路径无法表达时返回 null。 */
-export function formatMention(path: string): string | null {
+function formatMention(path: string): string | null {
   const token = atToken(referenceOf(path, true))
   return token === '' ? null : token
 }
 
-export function insertMention(inputActions: InputActions | undefined, path: string): boolean {
-  if (inputActions === undefined || inputActions === null) return false
-  const capture = inputActions.captureInsertion
-  const insert = inputActions.insertText
-  if (typeof capture !== 'function' || typeof insert !== 'function') return false
+export function insertMention(inputActions: InputActions, path: string): boolean {
   const token = formatMention(path)
   if (token === null) return false
 
+  /* 草稿在异步插入前可能已经变了（`insertText` 会拒绝过期的 span），
+     所以重新取一次选择区重试，而不是向用户抛一个失败。 */
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    const span = capture()
-    if (span === undefined || span === null) return false
-    /* 不订阅草稿就无法判断光标前是否已有空白；有空白时前置空格无害，没有时
-       则必需。 */
+    const span = inputActions.captureInsertion()
+    /* 光标在行首时不能前置空格，否则会凭空多出一个空行；在中间时则需要，
+       因为 `@` 只在行首或空白之后才成其为引用。 */
     const prefix = span.start > 0 ? ' ' : ''
-    if (insert(prefix + token + ' ', span) === true) return true
+    if (inputActions.insertText(prefix + token + ' ', span)) return true
   }
   return false
 }

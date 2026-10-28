@@ -1,7 +1,11 @@
 import { isTrusted, readJsonBody, sendError, sendJson } from '../shared/http.js';
 import { RegistryError } from '../shared/errors.js';
-import { connectionService } from '../shared/context.js';
-export const ROUTE_PATH = '/related-projects/api';
+import { connectionOf } from '../shared/context.js';
+const ROUTE_BASE = '/related-projects';
+/** 一个方法的具名路由路径；注册与 Client 拼 URL 共用这一个函数。 */
+export function routePath(method) {
+    return ROUTE_BASE + '/' + method;
+}
 /**
  * 供挂载 `webServer` 却没有 `connection` 的 Host 使用的门禁。`connection`
  * 的查找会反复重试直到成功：组合可能在本插件生效之后才提供该服务。
@@ -10,7 +14,7 @@ function trustFence(ctx) {
     let connection;
     return (req) => {
         if (connection === undefined)
-            connection = connectionService(ctx);
+            connection = connectionOf(ctx);
         const rejection = connection?.requestRejection;
         if (typeof rejection === 'function') {
             try {
@@ -26,15 +30,7 @@ function trustFence(ctx) {
         return isTrusted(req) ? undefined : 403;
     };
 }
-function methodOf(url) {
-    const pathname = new URL(url === undefined || url === '' ? '/' : url, 'http://dsh.internal').pathname;
-    if (!pathname.startsWith(ROUTE_PATH + '/'))
-        return '';
-    const method = pathname.slice(ROUTE_PATH.length + 1);
-    return method.includes('/') ? '' : method;
-}
-export function createRequestHandler(deps) {
-    const { handlers } = deps;
+export function createRouteHandler(deps) {
     const fence = trustFence(deps.ctx);
     return async (req, res) => {
         const rejection = fence(req);
@@ -47,22 +43,17 @@ export function createRequestHandler(deps) {
             sendError(res, 405, 'method', 'POST required');
             return;
         }
-        const method = methodOf(req.url);
-        const handler = method !== '' && Object.prototype.hasOwnProperty.call(handlers, method) ? handlers[method] : undefined;
-        if (handler === undefined) {
-            sendError(res, 404, 'not-found', 'unknown method ' + method);
-            return;
-        }
         try {
             const payload = await readJsonBody(req);
-            sendJson(res, 200, { ok: true, data: await handler(payload) });
+            sendJson(res, 200, { ok: true, data: await deps.handler(payload) });
         }
         catch (error) {
             if (error instanceof RegistryError) {
                 sendError(res, 400, error.code, error.code);
                 return;
             }
-            sendError(res, 500, 'internal', error instanceof Error ? error.message : String(error));
+            const message = error instanceof Error ? error.message : String(error);
+            sendError(res, 500, 'internal', deps.method + ': ' + message);
         }
     };
 }

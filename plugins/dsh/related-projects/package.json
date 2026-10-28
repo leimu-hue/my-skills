@@ -1,6 +1,6 @@
 {
   "name": "@local/dsh-related-projects",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "private": true,
   "type": "module",
   "description": "Per-workspace related projects: the agent knows which sibling projects a change touches, and the composer can insert their paths.",
@@ -23,9 +23,39 @@
     "typecheck:host": "tsc -p tsconfig.json --noEmit",
     "typecheck:client": "tsc -p tsconfig.client.json"
   },
+  "engines": {
+    "dsh": ">=0.2.1-rc.3 <0.3.0"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "~4.0.5",
+    "@deepseek-ai/dsh-tools": "^0.2.1-rc.3",
+    "@deepseek-ai/schemastery": "^3.18.5"
+  },
   "devDependencies": {
+    "@deepseek-ai/cordis": "^4.0.5",
+    "@deepseek-ai/dsh-agent": "^0.2.1-rc.3",
+    "@deepseek-ai/dsh-client-locale": "^0.2.1-rc.3",
+    "@deepseek-ai/dsh-client-ui-conversation": "^0.2.1-rc.3",
+    "@deepseek-ai/dsh-client-ui-input-trigger": "^0.2.1-rc.3",
+    "@deepseek-ai/dsh-client-ui-layout": "^0.2.1-rc.3",
+    "@deepseek-ai/dsh-client-ui-renderer": "^0.2.1-rc.3",
+    "@deepseek-ai/dsh-client-ui-session": "^0.2.1-rc.3",
+    "@deepseek-ai/dsh-client-ui-sidebar": "^0.2.1-rc.3",
+    "@deepseek-ai/dsh-client-ui-slots": "^0.2.1-rc.3",
+    "@deepseek-ai/dsh-host-directory-picker": "^0.2.1-rc.3",
+    "@deepseek-ai/dsh-host-webserver": "^0.2.1-rc.3",
+    "@deepseek-ai/dsh-llm": "^0.2.1-rc.3",
+    "@deepseek-ai/dsh-sandbox": "^0.2.1-rc.3",
+    "@deepseek-ai/dsh-sandbox-policy": "^0.2.1-rc.3",
+    "@deepseek-ai/dsh-session": "^0.2.1-rc.3",
+    "@deepseek-ai/dsh-system-prompt": "^0.2.1-rc.3",
+    "@deepseek-ai/dsh-tools": "^0.2.1-rc.3",
+    "@deepseek-ai/dsh-workspace": "^0.2.1-rc.3",
+    "@deepseek-ai/schemastery": "^3.18.5",
     "@types/node": "^22.0.0",
+    "@types/react": "^18.3.12",
     "esbuild": "^0.25.0",
+    "react": "^18.3.1",
     "typescript": "^5.6.0"
   },
   "dsh": {
@@ -36,7 +66,12 @@
       "platform": "web",
       "immediately": true,
       "inject": [
-        "@deepseek-ai/dsh-client-locale"
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-renderer",
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-input-trigger",
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-sidebar"
       ]
     }
   }

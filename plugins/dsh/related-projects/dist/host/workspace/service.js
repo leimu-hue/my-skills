@@ -1,19 +1,12 @@
-/**
- * 工作区身份与能力：「我在哪个工作区」「我能写什么」，
- * 以及「DSH 会列出哪些工作区」。
- *
- * 每个探测都降级而不是抛错——Host 缺少其中某个服务时，
- * 调用方只会拿到 '' / null，或者只剩分组。
- */
-import { sessionService, sandboxService, workspaceRegistry, directoryPicker } from '../shared/context.js';
 import { normalizePath, workspaceKey } from '../shared/paths.js';
 export function sessionOf(ctx, id) {
     if (typeof id !== 'string' || id === '')
         return undefined;
-    const service = sessionService(ctx);
-    if (service === undefined || typeof service.get !== 'function')
+    const service = ctx.get('sessions');
+    if (service === undefined)
         return undefined;
     try {
+        /* 线上传来的是裸字符串；品牌类型只在 Host 内部保证过。 */
         return service.get(id);
     }
     catch {
@@ -29,13 +22,13 @@ export function canonicalWorkspace(ctx, raw) {
     const normalized = normalizePath(raw);
     if (normalized === '')
         return '';
-    const registry = workspaceRegistry(ctx);
-    if (registry === undefined || typeof registry.list !== 'function')
+    const registry = ctx.get('workspaceRegistry');
+    if (registry === undefined)
         return normalized;
     try {
         const key = workspaceKey(normalized);
         const found = registry.list().find((workspace) => workspaceKey(workspace.path) === key);
-        if (found !== undefined && typeof found.path === 'string')
+        if (found !== undefined)
             return found.path;
     }
     catch {
@@ -45,44 +38,53 @@ export function canonicalWorkspace(ctx, raw) {
 }
 /** 会话已确定下来的目录，而非它当前的 `cwd`。 */
 export function workspaceOfSession(ctx, session) {
-    const cwd = session?.header?.cwd;
+    const cwd = session?.header.cwd;
     if (typeof cwd !== 'string' || cwd === '')
         return '';
     return canonicalWorkspace(ctx, cwd);
 }
 export function workspaceOfAgent(ctx, agent) {
-    if (agent === undefined)
+    if (agent === undefined || agent === null)
         return '';
-    if (agent.session !== undefined)
-        return workspaceOfSession(ctx, agent.session);
-    return workspaceOfSession(ctx, sessionOf(ctx, agent.id));
+    return workspaceOfSession(ctx, agent.session);
 }
 /**
  * 单个会话实时的沙箱模式，也就是提示词里该陈述的那个值。
  *
- * 策略如果没给出 `mode`，必须返回 null（「unknown」），而不能返回
+ * 策略服务不可用或解析失败时必须返回 null（「unknown」），而不能返回
  * 字符串 "undefined"：`boundaryText` 会把所有无法识别的模式都映射成
  * `workspace-write` 那句话，那样就会把一个错误的写边界
  * 冻进会话的 system prompt。
  */
 export function sandboxModeOf(ctx, session) {
-    const service = sandboxService(ctx);
-    if (service === undefined || typeof service.resolve !== 'function')
+    const service = ctx.get('sandboxPolicy');
+    if (service === undefined)
         return null;
     try {
-        const resolved = service.resolve(session === undefined ? {} : { session });
-        if (resolved === null || typeof resolved !== 'object')
-            return null;
-        const mode = resolved.mode;
-        return typeof mode === 'string' && mode !== '' ? mode : null;
+        const resolved = session === undefined ? service.resolve() : service.resolve({ session });
+        return resolved.mode;
     }
     catch {
         return null;
     }
 }
-export function directoryPickerOf(ctx) {
-    const picker = directoryPicker(ctx);
-    return picker !== undefined && typeof picker.pick === 'function' ? picker : undefined;
+/**
+ * `ctx.directoryPicker` 暴露的是「交互形态」而不是一个固定的 pick 方法：
+ * 只有 `native` 后端才会在宿主显示器上弹出系统目录选择器；`browse` 后端
+ * 只提供列目录 / 建目录原语，由界面自己驱动。官方文档给出的默认处理是
+ * 「未知形态就隐藏选择能力」，所以这里只把 native 交出去。
+ */
+export function nativePicker(ctx) {
+    const picker = ctx.get('directoryPicker');
+    if (picker === undefined)
+        return undefined;
+    try {
+        const capability = picker.capability();
+        return capability.kind === 'native' ? capability : undefined;
+    }
+    catch {
+        return undefined;
+    }
 }
 /**
  * 面板列出的是 DSH 自己的工作区，而不只是本插件碰巧有的那些分组：
@@ -93,12 +95,10 @@ export function directoryPickerOf(ctx) {
 export function workspaceRows(ctx, groups) {
     const rows = [];
     const seen = new Set();
-    const registry = workspaceRegistry(ctx);
-    if (registry !== undefined && typeof registry.list === 'function') {
+    const registry = ctx.get('workspaceRegistry');
+    if (registry !== undefined) {
         try {
             for (const workspace of registry.list()) {
-                if (workspace === null || typeof workspace !== 'object' || typeof workspace.path !== 'string')
-                    continue;
                 const key = workspaceKey(workspace.path);
                 if (key === '')
                     continue;
@@ -107,7 +107,7 @@ export function workspaceRows(ctx, groups) {
                 rows.push({
                     key,
                     path: workspace.path,
-                    title: typeof workspace.title === 'string' && workspace.title !== '' ? workspace.title : null,
+                    title: workspace.title === '' ? null : workspace.title,
                     registered: true,
                     projects: group === undefined ? [] : group.projects,
                 });

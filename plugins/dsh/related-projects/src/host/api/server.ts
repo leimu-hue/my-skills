@@ -1,32 +1,41 @@
 /**
- * 具名路由的请求处理：门禁 → 方法分发 → JSON 回执。
+ * 具名路由的请求处理：门禁 → JSON 回执。
  *
- * 这个顺序是刻意的：
+ * 每个方法是一条**独立的 exact 路由**（`/related-projects/<method>`）。WebServer 的
+ * 合约是「具名路由的 (kind, path) 必须互不相同，图案是组合级契约」，一条
+ * `prefix` 路由会把整个 `/related-projects` 命名空间占为己有：既挡住别的手写插件
+ * 复用同一前缀，也让 404 无法区分「没有这个方法」和「路径拼错」。
+ *
+ * 顺序是刻意的：
  *   1. 信任门禁（组合提供了 Host 的 `connection` 就用它，否则退回回环地址）；
  *   2. 只允许 POST；
- *   3. 一个路径段给出方法名，在处理器表中查找；
- *   4. 读取 JSON 请求体（有硬上限）并执行。
+ *   3. 读取 JSON 请求体（有硬上限）并执行。
  *
  * 所有失败都经由 `sendError` 返回，带上一个由 UI 翻译的 `code`。
  */
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import type { Context } from '@deepseek-ai/cordis'
 import { isTrusted, readJsonBody, sendError, sendJson } from '../shared/http.js'
 import { RegistryError } from '../shared/errors.js'
-import { connectionService } from '../shared/context.js'
-import type { HostContext } from '../shared/context.js'
+import { connectionOf } from '../shared/context.js'
 import type { ConnectionService } from '../shared/types.js'
 import type { Handler } from './routes.js'
 
-export const ROUTE_PATH = '/related-projects/api'
+const ROUTE_BASE = '/related-projects'
+
+/** 一个方法的具名路由路径；注册与 Client 拼 URL 共用这一个函数。 */
+export function routePath(method: string): string {
+  return ROUTE_BASE + '/' + method
+}
 
 /**
  * 供挂载 `webServer` 却没有 `connection` 的 Host 使用的门禁。`connection`
  * 的查找会反复重试直到成功：组合可能在本插件生效之后才提供该服务。
  */
-function trustFence(ctx: HostContext): (req: IncomingMessage) => number | undefined {
+function trustFence(ctx: Context): (req: IncomingMessage) => number | undefined {
   let connection: ConnectionService | undefined
   return (req) => {
-    if (connection === undefined) connection = connectionService(ctx)
+    if (connection === undefined) connection = connectionOf(ctx)
     const rejection = connection?.requestRejection
     if (typeof rejection === 'function') {
       try {
@@ -41,21 +50,15 @@ function trustFence(ctx: HostContext): (req: IncomingMessage) => number | undefi
   }
 }
 
-function methodOf(url: string | undefined): string {
-  const pathname = new URL(url === undefined || url === '' ? '/' : url, 'http://dsh.internal').pathname
-  if (!pathname.startsWith(ROUTE_PATH + '/')) return ''
-  const method = pathname.slice(ROUTE_PATH.length + 1)
-  return method.includes('/') ? '' : method
+export interface RouteHandlerDeps {
+  /** Host 上下文，供信任门禁取 `connection`。 */
+  ctx: Context
+  /** 这条路由承载的方法名，仅用于错误文案。 */
+  method: string
+  handler: Handler
 }
 
-export interface RequestHandlerDeps {
-  handlers: Record<string, Handler>
-  /** Host 的 `connection` 服务访问器，供信任门禁使用。 */
-  ctx: HostContext
-}
-
-export function createRequestHandler(deps: RequestHandlerDeps) {
-  const { handlers } = deps
+export function createRouteHandler(deps: RouteHandlerDeps) {
   const fence = trustFence(deps.ctx)
 
   return async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
@@ -69,21 +72,16 @@ export function createRequestHandler(deps: RequestHandlerDeps) {
       sendError(res, 405, 'method', 'POST required')
       return
     }
-    const method = methodOf(req.url)
-    const handler = method !== '' && Object.prototype.hasOwnProperty.call(handlers, method) ? handlers[method] : undefined
-    if (handler === undefined) {
-      sendError(res, 404, 'not-found', 'unknown method ' + method)
-      return
-    }
     try {
       const payload = await readJsonBody(req)
-      sendJson(res, 200, { ok: true, data: await handler(payload) })
+      sendJson(res, 200, { ok: true, data: await deps.handler(payload) })
     } catch (error) {
       if (error instanceof RegistryError) {
         sendError(res, 400, error.code, error.code)
         return
       }
-      sendError(res, 500, 'internal', error instanceof Error ? error.message : String(error))
+      const message = error instanceof Error ? error.message : String(error)
+      sendError(res, 500, 'internal', deps.method + ': ' + message)
     }
   }
 }

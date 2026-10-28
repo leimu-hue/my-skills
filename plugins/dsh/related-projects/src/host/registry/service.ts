@@ -20,13 +20,19 @@ function text(value: unknown, max: number): string {
   return String(value ?? '').replace(/\r\n/g, '\n').slice(0, max)
 }
 
+/** 只接受真正的布尔值；其余（含缺失）一律视为「没提这件事」。 */
+function booleanOf(value: unknown): boolean | undefined {
+  return typeof value === 'boolean' ? value : undefined
+}
+
 function cleanName(value: unknown): string {
   return text(value, NAME_MAX).replace(/[\u0000-\u001f]/g, ' ').trim()
 }
 
 function nameOf(path: string, name: unknown): string {
-  const cleaned = cleanName(name === undefined || name === '' ? basename(path) : name)
-  return cleaned === '' ? basename(path) : cleaned
+  const fallback = basename(path)
+  const cleaned = cleanName(name === undefined || name === '' ? fallback : name)
+  return cleaned === '' ? fallback : cleaned
 }
 
 interface Document {
@@ -143,9 +149,10 @@ export class Registry {
 
   setSettings(patch: unknown): Settings {
     const document = this.load()
-    if (patch !== null && typeof patch === 'object' && typeof (patch as Settings).alwaysShowDock === 'boolean') {
-      document.settings.alwaysShowDock = (patch as Settings).alwaysShowDock
-    }
+    const alwaysShowDock = patch !== null && typeof patch === 'object'
+      ? booleanOf((patch as Settings).alwaysShowDock)
+      : undefined
+    if (alwaysShowDock !== undefined) document.settings.alwaysShowDock = alwaysShowDock
     this.persist()
     return this.getSettings()
   }
@@ -216,7 +223,8 @@ export class Registry {
       if (name !== '') project.name = name
     }
     if (typeof body.note === 'string') project.note = text(body.note, NOTE_MAX)
-    if (typeof body.enabled === 'boolean') project.enabled = body.enabled
+    const enabled = booleanOf(body.enabled)
+    if (enabled !== undefined) project.enabled = enabled
     group.updatedAt = Date.now()
     this.persist()
     return this.presentProject(project)
@@ -228,8 +236,9 @@ export class Registry {
     const group = this.groupFor(workspace)
     if (group === null) throw new RegistryError('no-group')
     const index = group.projects.findIndex((entry) => entry.id === id)
-    if (index < 0) throw new RegistryError('no-project')
-    const [removed] = group.projects.splice(index, 1)
+    const removed = group.projects[index]
+    if (removed === undefined) throw new RegistryError('no-project')
+    group.projects.splice(index, 1)
     group.updatedAt = Date.now()
     if (group.projects.length === 0) delete document.groups[group.key]
     this.persist()
@@ -314,10 +323,13 @@ export class Registry {
    * 而不是悄悄从列表里消失。
    */
   readable(workspace: unknown): Readable {
-    const enabled = this.snapshot(workspace).projects.filter((project) => project.enabled)
-    return {
-      present: enabled.filter((project) => project.exists),
-      missing: enabled.filter((project) => !project.exists),
+    const present: ProjectView[] = []
+    const missing: ProjectView[] = []
+    for (const project of this.snapshot(workspace).projects) {
+      if (!project.enabled) continue
+      if (project.exists) present.push(project)
+      else missing.push(project)
     }
+    return { present, missing }
   }
 }

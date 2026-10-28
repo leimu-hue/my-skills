@@ -7,7 +7,7 @@
  * 的时候，于是 store 按有上限的退避继续追问，而不是把 "no workspace" 缓存
  * 到页面整个生命周期。
  */
-import { useReact } from './runtime.js'
+import { useSyncExternalStore } from 'react'
 import type { StateValue } from './types.js'
 
 export interface Snapshot {
@@ -141,6 +141,5 @@ export async function refreshStores(): Promise<void> {
 }
 
 export function useSnapshot(store: Store): Snapshot {
-  const React = useReact()
-  return React.useSyncExternalStore(store.subscribe, store.get, store.get)
+  return useSyncExternalStore(store.subscribe, store.get, store.get)
 }

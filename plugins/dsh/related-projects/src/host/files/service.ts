@@ -54,6 +54,29 @@ interface Index {
 
 const indexes = new Map<string, Index>()
 
+/** 搜索结果：行本身 + 排序用的分数（分数不会离开本模块）。 */
+interface Ranked extends FileHit {
+  score: number
+}
+
+interface LevelRow extends Ranked {
+  dirFirst: number
+}
+
+/** 拼接项目内的相对路径；两种写法都只到这里。 */
+function joinRel(parent: string, name: string): string {
+  return parent === '' ? name : parent + '/' + name
+}
+
+function byScore(left: Ranked, right: Ranked): number {
+  return right.score - left.score || left.rel.localeCompare(right.rel)
+}
+
+/** 目录先于文件（平铺列出一层就该是这个样子），再按分数、名字排序。 */
+function byLevel(left: LevelRow, right: LevelRow): number {
+  return right.score - left.score || left.dirFirst - right.dirFirst || left.name.localeCompare(right.name)
+}
+
 function build(projectPath: string): Index {
   const entries: IndexEntry[] = []
   const stack: { dir: string; rel: string; depth: number }[] = [{ dir: projectPath, rel: '', depth: 0 }]
@@ -73,7 +96,7 @@ function build(projectPath: string): Index {
         break
       }
       const name = dirent.name
-      const rel = current.rel === '' ? name : current.rel + '/' + name
+      const rel = joinRel(current.rel, name)
       if (dirent.isDirectory()) {
         if (SKIP.has(name)) continue
         entries.push({ rel, name, kind: 'directory' })
@@ -96,7 +119,7 @@ function indexOf(projectPath: string): Index {
   return built
 }
 
-function hit(projectPath: string, entry: IndexEntry, score: number): FileHit & { score: number } {
+function hit(projectPath: string, entry: IndexEntry, score: number): Ranked {
   return {
     path: absoluteOf(projectPath, entry.rel),
     rel: entry.rel,
@@ -116,9 +139,9 @@ export function searchProjects(projects: ProjectRoot[], query: string, limit?: n
   const capped = Math.min(Math.max(limit ?? DEFAULT_LIMIT, 1), MAX_LIMIT)
   const tokens = query.toLowerCase().split(/\s+/).filter((token) => token !== '')
   if (tokens.length === 0) return []
-  const merged: (FileHit & { score: number })[] = []
+  const merged: Ranked[] = []
   for (const project of projects) {
-    const hits: (FileHit & { score: number })[] = []
+    const hits: Ranked[] = []
     const matchedDirs: string[] = []
     for (const entry of indexOf(project.path).entries) {
       const name = entry.name.toLowerCase()
@@ -140,10 +163,10 @@ export function searchProjects(projects: ProjectRoot[], query: string, limit?: n
       if (entry.kind === 'directory') matchedDirs.push(entry.rel)
       hits.push(hit(project.path, entry, score))
     }
-    hits.sort((left, right) => right.score - left.score || left.rel.localeCompare(right.rel))
+    hits.sort(byScore)
     merged.push(...hits.slice(0, capped))
   }
-  merged.sort((left, right) => right.score - left.score || left.rel.localeCompare(right.rel))
+  merged.sort(byScore)
   return merged.slice(0, capped).map(({ score: _score, ...row }) => row)
 }
 
@@ -193,7 +216,7 @@ export function listDirectory(
     return { rows: [], truncated: false }
   }
   const needle = filter.toLowerCase()
-  const ranked: (FileHit & { score: number; dirFirst: number })[] = []
+  const ranked: LevelRow[] = []
   for (const dirent of dirents) {
     const kind = kindOf(dirent)
     if (kind === null) continue
@@ -206,11 +229,11 @@ export function listDirectory(
       if (at < 0) continue
       score = name.toLowerCase() === needle ? 1000 : (at === 0 ? 500 : 300)
     }
-    const entry: IndexEntry = { rel: rel === '' ? name : rel + '/' + name, name, kind }
+    const entry: IndexEntry = { rel: joinRel(rel, name), name, kind }
     ranked.push({ ...hit(root.path, entry, score), dirFirst: kind === 'directory' ? 0 : 1 })
   }
   /* 目录在前（平铺列出一层就该是这个样子），再按名字排序。 */
-  ranked.sort((left, right) => right.score - left.score || left.dirFirst - right.dirFirst || left.name.localeCompare(right.name))
+  ranked.sort(byLevel)
   const rows = ranked.slice(0, capped).map(({ score: _score, dirFirst: _dirFirst, ...row }) => row)
   return { rows, truncated: ranked.length > capped }
 }

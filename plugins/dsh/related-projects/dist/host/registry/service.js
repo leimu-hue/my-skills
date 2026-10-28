@@ -16,12 +16,17 @@ const STORE_VERSION = 1;
 function text(value, max) {
     return String(value ?? '').replace(/\r\n/g, '\n').slice(0, max);
 }
+/** 只接受真正的布尔值；其余（含缺失）一律视为「没提这件事」。 */
+function booleanOf(value) {
+    return typeof value === 'boolean' ? value : undefined;
+}
 function cleanName(value) {
     return text(value, NAME_MAX).replace(/[\u0000-\u001f]/g, ' ').trim();
 }
 function nameOf(path, name) {
-    const cleaned = cleanName(name === undefined || name === '' ? basename(path) : name);
-    return cleaned === '' ? basename(path) : cleaned;
+    const fallback = basename(path);
+    const cleaned = cleanName(name === undefined || name === '' ? fallback : name);
+    return cleaned === '' ? fallback : cleaned;
 }
 /**
  * 本模块创建的每个 `Project` 都经由这一个构造函数——载入已存的行、
@@ -100,9 +105,11 @@ export class Registry {
     }
     setSettings(patch) {
         const document = this.load();
-        if (patch !== null && typeof patch === 'object' && typeof patch.alwaysShowDock === 'boolean') {
-            document.settings.alwaysShowDock = patch.alwaysShowDock;
-        }
+        const alwaysShowDock = patch !== null && typeof patch === 'object'
+            ? booleanOf(patch.alwaysShowDock)
+            : undefined;
+        if (alwaysShowDock !== undefined)
+            document.settings.alwaysShowDock = alwaysShowDock;
         this.persist();
         return this.getSettings();
     }
@@ -175,8 +182,9 @@ export class Registry {
         }
         if (typeof body.note === 'string')
             project.note = text(body.note, NOTE_MAX);
-        if (typeof body.enabled === 'boolean')
-            project.enabled = body.enabled;
+        const enabled = booleanOf(body.enabled);
+        if (enabled !== undefined)
+            project.enabled = enabled;
         group.updatedAt = Date.now();
         this.persist();
         return this.presentProject(project);
@@ -188,9 +196,10 @@ export class Registry {
         if (group === null)
             throw new RegistryError('no-group');
         const index = group.projects.findIndex((entry) => entry.id === id);
-        if (index < 0)
+        const removed = group.projects[index];
+        if (removed === undefined)
             throw new RegistryError('no-project');
-        const [removed] = group.projects.splice(index, 1);
+        group.projects.splice(index, 1);
         group.updatedAt = Date.now();
         if (group.projects.length === 0)
             delete document.groups[group.key];
@@ -271,10 +280,16 @@ export class Registry {
      * 而不是悄悄从列表里消失。
      */
     readable(workspace) {
-        const enabled = this.snapshot(workspace).projects.filter((project) => project.enabled);
-        return {
-            present: enabled.filter((project) => project.exists),
-            missing: enabled.filter((project) => !project.exists),
-        };
+        const present = [];
+        const missing = [];
+        for (const project of this.snapshot(workspace).projects) {
+            if (!project.enabled)
+                continue;
+            if (project.exists)
+                present.push(project);
+            else
+                missing.push(project);
+        }
+        return { present, missing };
     }
 }

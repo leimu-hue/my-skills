@@ -17,9 +17,17 @@
  * 每次变更的实际代价：通知自身的 token，追加一次。它之前的内容仍留在缓存里。
  */
 import { boundaryText, changeNotice, listText, NOTICE_NAME, NOTICE_ORDER, SECTION_NAME, SECTION_ORDER, sectionText } from './text.js';
-import { promptService } from '../shared/context.js';
 import { sandboxModeOf, workspaceOfAgent } from '../workspace/service.js';
 import { workspaceKey } from '../shared/paths.js';
+/** 清理函数可能已被上下文提前回收：重复调用不能把其他会话一起中断。 */
+function disposeQuietly(dispose) {
+    try {
+        dispose?.();
+    }
+    catch {
+        /* 已经不存在了 */
+    }
+}
 export class SessionRegistry {
     ctx;
     registry;
@@ -45,7 +53,7 @@ export class SessionRegistry {
         };
     }
     attach(agent) {
-        if (agent === undefined || agent === null)
+        if (agent === undefined)
             return;
         const id = String(agent.id);
         if (this.entries.has(id))
@@ -53,9 +61,8 @@ export class SessionRegistry {
         const workspace = workspaceOfAgent(this.ctx, agent);
         if (workspace === '')
             return;
+        /* agent 自己的作用域：systemPrompt 注册在这里才只影响这一个会话。 */
         const promptCtx = agent.ctx;
-        if (promptCtx === undefined)
-            return;
         const entry = {
             agent,
             workspace,
@@ -63,7 +70,7 @@ export class SessionRegistry {
             noticeCount: 0,
             sectionOn: 'none',
         };
-        const service = promptService(promptCtx);
+        const service = promptCtx.get('systemPrompt');
         if (service === undefined) {
             entry.sectionOn = 'none';
             entry.sectionError = 'systemPrompt unavailable';
@@ -80,12 +87,13 @@ export class SessionRegistry {
             return rendered;
         };
         try {
-            entry.disposeSection = promptCtx.effect(() => service.section({
+            /* `section()` 自己把 disposer 挂到调用它的那个上下文上，不需要再包 effect。 */
+            entry.disposeSection = service.section({
                 name: SECTION_NAME,
                 order: SECTION_ORDER,
                 text,
                 interpolate: false,
-            }), 'related-projects: session section');
+            });
             entry.sectionOn = 'agent';
         }
         catch (failure) {
@@ -95,7 +103,7 @@ export class SessionRegistry {
         this.entries.set(id, entry);
     }
     detach(agent) {
-        if (agent === undefined || agent === null)
+        if (agent === undefined)
             return;
         const id = String(agent.id);
         const entry = this.entries.get(id);
@@ -112,16 +120,12 @@ export class SessionRegistry {
      */
     notify(workspace, summary) {
         const key = workspaceKey(workspace);
-        let delivered = 0;
         for (const entry of this.entries.values()) {
             if (entry.key !== key)
                 continue;
-            const promptCtx = entry.agent.ctx;
-            if (promptCtx === undefined)
-                continue;
-            const service = promptService(promptCtx);
-            const addContext = service?.context;
-            if (service === undefined || typeof addContext !== 'function')
+            /* 每个会话自己的 systemPrompt：注册进 agent 作用域，才不会泄漏到别的会话。 */
+            const prompt = entry.agent.ctx.get('systemPrompt');
+            if (prompt === undefined)
                 continue;
             /* 通知只带当前的行：冻结小节里已经有说明文字和写边界。 */
             const text = changeNotice(summary, listText(this.registry, entry.workspace));
@@ -130,30 +134,23 @@ export class SessionRegistry {
             this.generation += 1;
             const name = NOTICE_NAME + '-' + String(Date.now()) + '-' + String(this.generation);
             try {
-                const dispose = promptCtx.effect(() => addContext.call(service, {
+                const dispose = prompt.context({
                     name,
                     order: NOTICE_ORDER,
                     text,
                     interpolate: false,
-                }) ?? (() => { }), 'related-projects: change notice');
+                });
                 /* 先换上再弃用：新快照已给出完整的当前列表，较早的 provider 因此是冗余的——
                    留着它会让之后每个快照都重复一遍它的文本。 */
                 const previous = entry.disposeNotice;
                 entry.disposeNotice = dispose;
                 entry.noticeCount += 1;
-                try {
-                    previous?.();
-                }
-                catch {
-                    /* 已经不存在了 */
-                }
-                delivered += 1;
+                disposeQuietly(previous);
             }
             catch {
                 /* 重名（世代过期）不能让其他会话一起中止。 */
             }
         }
-        return { delivered };
     }
     disposeAll() {
         for (const entry of this.entries.values())
@@ -161,17 +158,7 @@ export class SessionRegistry {
         this.entries.clear();
     }
     release(entry) {
-        try {
-            entry.disposeSection?.();
-        }
-        catch {
-            /* 已经不存在了 */
-        }
-        try {
-            entry.disposeNotice?.();
-        }
-        catch {
-            /* 已经不存在了 */
-        }
+        disposeQuietly(entry.disposeSection);
+        disposeQuietly(entry.disposeNotice);
     }
 }

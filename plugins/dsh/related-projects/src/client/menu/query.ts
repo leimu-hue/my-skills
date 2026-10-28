@@ -46,8 +46,9 @@ export function directoryTarget(projects: ProjectView[], query: string): Directo
       return { project, dir: root + head.slice(root.length), filter }
     }
   }
-  /* 项目相对写法：`my-app/src/`——一个前导名称段。 */
-  const first = head.split('/')[0]
+  /* 项目相对写法：`my-app/src/`——一个有名字的目录段。 */
+  const first = head.split('/')[0] ?? ''
+  if (first === '') return null
   const named = projects.find((project) => project.name.toLowerCase() === first.toLowerCase())
   if (named === undefined) return null
   const root = slashPath(named.path)

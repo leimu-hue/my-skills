@@ -1,26 +1,8 @@
 /**
- * 打包入口：Web shell 加载的那一个文件。
+ * 打包入口：Web 外壳加载的那一个文件。
  *
- * Host 的模块加载器提供 `require`；React 来自它的模块表，
- * 不来自这个包。见 scripts/build.mjs——esbuild 把 `src/client/` 的其余
- * 部分打进这一个文件。
+ * `__ModuleLoader__.load({ id, factory })` 这层外壳由 scripts/build.mjs 的
+ * banner/footer 提供（与随附插件同形），所以这里只剩模块体本身：客户端插件
+ * 契约就是具名导出 `inject` 与 `apply`。
  */
-import { createPlugin } from './plugin.js'
-
-interface LoaderWindow {
-  __ModuleLoader__: {
-    load(bundle: {
-      id: string
-      factory(require: (id: string) => unknown): unknown
-    }): void
-  }
-}
-
-const scope = window as unknown as LoaderWindow
-
-scope.__ModuleLoader__.load({
-  id: '@local/dsh-related-projects',
-  factory(require) {
-    return createPlugin(require('react'))
-  },
-})
+export { apply, inject } from './plugin.js'

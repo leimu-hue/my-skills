@@ -1,7 +1,8 @@
 /** 共用文案：通用失败提示、手动输入路径的横条、加载中。 */
 
-export const ZH_COMMON: Record<string, string> = {
+export const ZH_COMMON = {
   'common.cancel': '取消',
+  'common.close': '关闭',
   'common.loading': '加载中…',
   'manual.title': '手动输入路径',
   'manual.placeholder': 'D:\\other\\project',
@@ -28,8 +29,9 @@ export const ZH_COMMON: Record<string, string> = {
   'error.bad-path': '这个路径无法表示为 @ 引用（包含引号或控制字符）。',
 }
 
-export const EN_COMMON: Record<string, string> = {
+export const EN_COMMON: Record<keyof typeof ZH_COMMON, string> = {
   'common.cancel': 'Cancel',
+  'common.close': 'Close',
   'common.loading': 'Loading…',
   'manual.title': 'Type a path',
   'manual.placeholder': 'D:\\other\\project',

@@ -15,7 +15,7 @@ import { Registry } from '../dist/host/registry/service.js'
 import { searchProjects, directoryTarget, listDirectory } from '../dist/host/files/service.js'
 import { SessionRegistry } from '../dist/host/prompt/sessions.js'
 import { createHandlers } from '../dist/host/api/routes.js'
-import { createRequestHandler } from '../dist/host/api/server.js'
+import { createRouteHandler, routePath } from '../dist/host/api/server.js'
 import { sectionText, listText, changeNotice, describeUpdate, boundaryText } from '../dist/host/prompt/text.js'
 import { basename, absoluteOf, isInside, normalizePath, relativeTo, workspaceKey } from '../dist/host/shared/paths.js'
 
@@ -241,16 +241,26 @@ function routeFixture() {
   const sessions = new SessionRegistry(ctx, registry)
   const opened = []
   const handlers = createHandlers({ ctx, registry, sessions, openInFileManager: (path) => opened.push(path) })
-  const handle = createRequestHandler({ ctx, handlers })
+  /* Host 为每个方法注册一条 exact 路由；这里照同一张表复现，未命中的路径
+     交给「WebServer 的 404」，因此拼错的路径与未知方法一样得到 404。 */
+  const routes = new Map(
+    Object.entries(handlers).map(([method, handler]) => [routePath(method), createRouteHandler({ ctx, method, handler })]),
+  )
 
   const request = async (method, path, body, headers = {}) => {
+    const captured = { status: 0, body: null }
+    const serve = routes.get(path)
+    if (serve === undefined) {
+      captured.status = 404
+      captured.body = { ok: false, error: { code: 'not-found', message: 'no such route' } }
+      return captured
+    }
     const payload = body === undefined ? '' : (typeof body === 'string' ? body : JSON.stringify(body))
     const req = Readable.from(payload === '' ? [] : [Buffer.from(payload)])
     req.method = method
     req.url = path
     req.headers = { host: '127.0.0.1:50769', 'content-type': 'application/json', ...headers }
-    const captured = { status: 0, body: null }
-    await handle(req, {
+    await serve(req, {
       writeHead: (status) => {
         captured.status = status
       },
@@ -265,7 +275,7 @@ function routeFixture() {
     box,
     registry,
     opened,
-    post: (method, body, headers) => request('POST', '/related-projects/api/' + method, body, headers),
+    post: (method, body, headers) => request('POST', routePath(method), body, headers),
     request,
     dispose: box.dispose,
   }
@@ -274,7 +284,7 @@ function routeFixture() {
 test('api: the fence, the method table and the error envelope', async () => {
   const fixture = routeFixture()
   try {
-    assert.equal((await fixture.request('GET', '/related-projects/api/state')).status, 405)
+    assert.equal((await fixture.request('GET', routePath('state'))).status, 405)
     assert.equal((await fixture.post('state', {}, { origin: 'http://evil.example' })).status, 403)
     assert.equal((await fixture.post('state', {}, { 'sec-fetch-site': 'cross-site' })).status, 403)
     assert.equal((await fixture.post('state', {}, { host: '192.168.1.9:5000' })).status, 403)
@@ -282,8 +292,8 @@ test('api: the fence, the method table and the error envelope', async () => {
     const forbidden = await fixture.post('state', {}, { origin: 'http://evil.example' })
     assert.equal(forbidden.body.error.code, 'forbidden', 'the UI translates by code')
 
-    assert.equal((await fixture.request('POST', '/related-projects/api/nope', {})).status, 404)
-    assert.equal((await fixture.request('POST', '/related-projects/api/a/b', {})).status, 404)
+    assert.equal((await fixture.request('POST', routePath('nope'), {})).status, 404)
+    assert.equal((await fixture.request('POST', '/related-projects/a/b', {})).status, 404)
     assert.equal((await fixture.request('POST', '/elsewhere/state', {})).status, 404)
 
     const malformed = await fixture.post('state', '{not json')

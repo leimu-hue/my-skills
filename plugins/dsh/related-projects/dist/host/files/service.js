@@ -31,6 +31,17 @@ const INDEX_TTL_MS = 60_000;
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 50;
 const indexes = new Map();
+/** 拼接项目内的相对路径；两种写法都只到这里。 */
+function joinRel(parent, name) {
+    return parent === '' ? name : parent + '/' + name;
+}
+function byScore(left, right) {
+    return right.score - left.score || left.rel.localeCompare(right.rel);
+}
+/** 目录先于文件（平铺列出一层就该是这个样子），再按分数、名字排序。 */
+function byLevel(left, right) {
+    return right.score - left.score || left.dirFirst - right.dirFirst || left.name.localeCompare(right.name);
+}
 function build(projectPath) {
     const entries = [];
     const stack = [{ dir: projectPath, rel: '', depth: 0 }];
@@ -52,7 +63,7 @@ function build(projectPath) {
                 break;
             }
             const name = dirent.name;
-            const rel = current.rel === '' ? name : current.rel + '/' + name;
+            const rel = joinRel(current.rel, name);
             if (dirent.isDirectory()) {
                 if (SKIP.has(name))
                     continue;
@@ -124,10 +135,10 @@ export function searchProjects(projects, query, limit) {
                 matchedDirs.push(entry.rel);
             hits.push(hit(project.path, entry, score));
         }
-        hits.sort((left, right) => right.score - left.score || left.rel.localeCompare(right.rel));
+        hits.sort(byScore);
         merged.push(...hits.slice(0, capped));
     }
-    merged.sort((left, right) => right.score - left.score || left.rel.localeCompare(right.rel));
+    merged.sort(byScore);
     return merged.slice(0, capped).map(({ score: _score, ...row }) => row);
 }
 /**
@@ -185,11 +196,11 @@ export function listDirectory(root, rel, filter, limit) {
                 continue;
             score = name.toLowerCase() === needle ? 1000 : (at === 0 ? 500 : 300);
         }
-        const entry = { rel: rel === '' ? name : rel + '/' + name, name, kind };
+        const entry = { rel: joinRel(rel, name), name, kind };
         ranked.push({ ...hit(root.path, entry, score), dirFirst: kind === 'directory' ? 0 : 1 });
     }
     /* 目录在前（平铺列出一层就该是这个样子），再按名字排序。 */
-    ranked.sort((left, right) => right.score - left.score || left.dirFirst - right.dirFirst || left.name.localeCompare(right.name));
+    ranked.sort(byLevel);
     const rows = ranked.slice(0, capped).map(({ score: _score, dirFirst: _dirFirst, ...row }) => row);
     return { rows, truncated: ranked.length > capped };
 }

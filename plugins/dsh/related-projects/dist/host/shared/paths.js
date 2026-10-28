@@ -51,7 +51,8 @@ function slashPath(input) {
 /** 任一种写法下路径的最后一段。 */
 export function basename(path) {
     const parts = slashPath(path).split('/').filter((part) => part !== '');
-    return parts.length === 0 ? path : parts[parts.length - 1];
+    const last = parts[parts.length - 1];
+    return last === undefined ? path : last;
 }
 export function isDirectory(path) {
     try {
