@@ -117,15 +117,12 @@ export interface AppliedTarget {
   label: string
   preset: string
   at: number
-  agentsPath: string
-  drifted: boolean
 }
 
 export interface PromptState {
   presets: PromptPreset[]
   /** 当前生效的目标一览（一个目标最多一份预设）。 */
   applied: AppliedTarget[]
-  backupCount: number
   warnings: string[]
 }
 

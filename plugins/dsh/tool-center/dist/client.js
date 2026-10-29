@@ -588,12 +588,12 @@ var EN_SKILLS = {
 // src/client/i18n/prompts.ts
 var ZH_PROMPTS = {
   "prompts.title": "\u63D0\u793A\u8BCD",
-  "prompts.subtitle": "\u591A\u5957\u5168\u5C40\u6307\u4EE4\uFF08AGENTS.md\uFF09\u4E00\u952E\u5207\u6362\u3002\u5E94\u7528\u4F1A\u8986\u76D6\u76EE\u6807 AGENTS.md\uFF0C\u5199\u524D\u81EA\u52A8\u5907\u4EFD\u3002",
+  "prompts.subtitle": "\u591A\u5957\u5E38\u9A7B\u6307\u4EE4\uFF0C\u542F\u7528\u540E\u8FFD\u52A0\u8FDB\u7CFB\u7EDF\u63D0\u793A\u8BCD\u3002\u4E0D\u5199 AGENTS.md\uFF0C\u7528\u6237\u624B\u6539 / \u8986\u76D6 AGENTS.md \u90FD\u4E0D\u5F71\u54CD\u5B83\u3002",
   "prompts.effectTitle": "\u751F\u6548\u65F6\u673A",
-  "prompts.effectNote": "\u5BBF\u4E3B\u6BCF\u8F6E\u90FD\u4F1A\u91CD\u65B0\u8BFB\u53D6 AGENTS.md\uFF0C\u6240\u4EE5\u542F\u7528 / \u505C\u7528 / \u6539\u6B63\u6587\u4F1A\u5F71\u54CD\u5DF2\u6709\u4F1A\u8BDD\u7684\u4E0B\u4E00\u8F6E\uFF1B\u7ED1\u5B9A\u5230\u5DE5\u4F5C\u533A\u7684\u9884\u8BBE\u53EA\u5F71\u54CD\u90A3\u4E2A\u9879\u76EE\u3002",
+  "prompts.effectNote": "\u5BBF\u4E3B\u6BCF\u4E00\u6B65\u90FD\u4F1A\u91CD\u65B0\u7EC4\u88C5\u7CFB\u7EDF\u63D0\u793A\u8BCD\uFF0C\u6240\u4EE5\u542F\u7528 / \u505C\u7528 / \u6539\u6B63\u6587\u4F1A\u4ECE\u5DF2\u6709\u4F1A\u8BDD\u7684\u4E0B\u4E00\u8F6E\u5F00\u59CB\u751F\u6548\uFF1B\u7ED1\u5B9A\u5230\u5DE5\u4F5C\u533A\u7684\u9884\u8BBE\u53EA\u8FFD\u52A0\u7ED9\u90A3\u4E2A\u9879\u76EE\u91CC\u7684\u4F1A\u8BDD\u3002",
   "prompts.total": "\u5171 {n} \u4EFD",
   "prompts.updatedAt": "\u66F4\u65B0\u4E8E {when}",
-  "prompts.globalTarget": "\u6BCF\u4E2A\u4F1A\u8BDD\u7684 AGENTS.md",
+  "prompts.globalTarget": "\u6240\u6709\u4F1A\u8BDD",
   "prompts.active": "\u6B63\u5728\u751F\u6548",
   "prompts.inactive": "\u672A\u542F\u7528",
   "prompts.activeCount": "{n} \u4EFD\u751F\u6548\u4E2D",
@@ -606,27 +606,26 @@ var ZH_PROMPTS = {
   "prompts.scope": "\u4F5C\u7528\u8303\u56F4",
   "prompts.scopeGlobal": "\u5168\u5C40",
   "prompts.scopeWorkspace": "\u5DE5\u4F5C\u533A",
-  "prompts.scopeHint": "\u9009\u5DE5\u4F5C\u533A\u65F6\uFF0C\u53EA\u5199\u90A3\u4E2A\u9879\u76EE\u7684 AGENTS.md\uFF1B\u9009\u5168\u5C40\u5219\u6BCF\u4E2A\u4F1A\u8BDD\u90FD\u8BFB\u3002",
+  "prompts.scopeHint": "\u9009\u5DE5\u4F5C\u533A\u65F6\uFF0C\u53EA\u8FFD\u52A0\u7ED9\u90A3\u4E2A\u9879\u76EE\uFF08\u542B\u5B50\u76EE\u5F55\uFF09\u91CC\u7684\u4F1A\u8BDD\uFF1B\u9009\u5168\u5C40\u5219\u6BCF\u4E2A\u4F1A\u8BDD\u90FD\u8FFD\u52A0\u3002",
   "prompts.scopeLockedHint": "\u4F5C\u7528\u8303\u56F4\u5728\u521B\u5EFA\u65F6\u786E\u5B9A\uFF1B\u8981\u6362\u8303\u56F4\u8BF7\u65B0\u5EFA\u4E00\u4EFD\uFF08\u6216\u5148\u505C\u7528\u518D\u6539\uFF09\u3002",
-  "prompts.backups": "\u5907\u4EFD {n} \u4EFD",
   "prompts.confirmDelete": "\u5220\u9664\u9884\u8BBE\u300C{name}\u300D\uFF1F",
   "prompts.saved": "\u9884\u8BBE\u5DF2\u4FDD\u5B58",
   "prompts.enabledMsg": "\u5DF2\u542F\u7528\u300C{name}\u300D",
   "prompts.disabledMsg": "\u5DF2\u505C\u7528\u300C{name}\u300D",
   "prompts.replaced": "\u540C\u4E00\u76EE\u6807\u4E0A\u7684\u300C{name}\u300D\u5DF2\u81EA\u52A8\u505C\u7528",
-  "prompts.driftShort": "\u5DF2\u88AB\u5916\u90E8\u6539\u52A8",
+  "prompts.appendedTo": "\u7CFB\u7EDF\u63D0\u793A\u8BCD",
   "prompts.enable": "\u542F\u7528",
   "prompts.disable": "\u505C\u7528",
   "prompts.appliedTargets": "\u751F\u6548\u4E2D\u7684\u76EE\u6807"
 };
 var EN_PROMPTS = {
   "prompts.title": "Prompts",
-  "prompts.subtitle": "Switch between several instruction sets (AGENTS.md). Applying overwrites the target AGENTS.md after a backup.",
+  "prompts.subtitle": "Several standing instruction sets, appended to the system prompt when enabled. AGENTS.md is never touched, so editing or overwriting it cannot break a preset.",
   "prompts.effectTitle": "When changes apply",
-  "prompts.effectNote": "The host re-reads AGENTS.md every turn, so enabling / disabling / editing affects existing sessions from their next turn. A preset bound to a workspace only affects that project.",
+  "prompts.effectNote": "The host re-assembles the system prompt every step, so enabling / disabling / editing takes effect from the next turn of existing sessions. A preset bound to a workspace is appended only to sessions in that project.",
   "prompts.total": "{n} total",
   "prompts.updatedAt": "Updated {when}",
-  "prompts.globalTarget": "AGENTS.md of every session",
+  "prompts.globalTarget": "every session",
   "prompts.active": "applied",
   "prompts.inactive": "off",
   "prompts.activeCount": "{n} applied",
@@ -639,15 +638,14 @@ var EN_PROMPTS = {
   "prompts.scope": "Scope",
   "prompts.scopeGlobal": "global",
   "prompts.scopeWorkspace": "workspace",
-  "prompts.scopeHint": "A workspace writes only that project AGENTS.md; global is read by every session.",
+  "prompts.scopeHint": "A workspace appends only inside that project (subdirectories included); global appends to every session.",
   "prompts.scopeLockedHint": "The scope is fixed when created; create a new preset to use another scope (or disable this one first).",
-  "prompts.backups": "{n} backups",
   "prompts.confirmDelete": 'Delete preset "{name}"?',
   "prompts.saved": "Preset saved",
   "prompts.enabledMsg": 'Enabled "{name}"',
   "prompts.disabledMsg": 'Disabled "{name}"',
   "prompts.replaced": '"{name}" on the same target was disabled automatically',
-  "prompts.driftShort": "edited outside",
+  "prompts.appendedTo": "system prompt",
   "prompts.enable": "Enable",
   "prompts.disable": "Disable",
   "prompts.appliedTargets": "Applied targets"
@@ -2149,7 +2147,6 @@ function PromptsView(props) {
   const badges = [];
   if (prompts.presets.length > 0) badges.push(badgeOf(t("prompts.total", { n: prompts.presets.length })));
   if (prompts.applied.length > 0) badges.push(badgeOf(t("prompts.activeCount", { n: prompts.applied.length }), "ok"));
-  if (prompts.state !== null) badges.push(badgeOf(t("prompts.backups", { n: prompts.state.backupCount }), "off"));
   return /* @__PURE__ */ (0, import_jsx_runtime11.jsxs)("div", { className: "dsk-root", children: [
     headOf({
       title: t("prompts.title"),
@@ -2185,14 +2182,11 @@ function PromptsView(props) {
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("div", { className: "dsk-rows", children: prompts.applied.map((record) => /* @__PURE__ */ (0, import_jsx_runtime11.jsxs)("div", { className: "dsk-row dsk-row-static", children: [
         /* @__PURE__ */ (0, import_jsx_runtime11.jsxs)("div", { className: "dsk-row-main", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime11.jsxs)("div", { className: "dsk-row-name", children: [
-            record.preset,
-            record.drifted ? badgeOf(t("prompts.driftShort"), "warn") : null
-          ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime11.jsxs)("div", { className: "dsk-row-sub", title: record.agentsPath, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("div", { className: "dsk-row-name", children: record.preset }),
+          /* @__PURE__ */ (0, import_jsx_runtime11.jsxs)("div", { className: "dsk-row-sub", children: [
             record.label,
             " \xB7 ",
-            record.agentsPath
+            t("prompts.appendedTo")
           ] })
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("div", { className: "dsk-row-actions dsk-row-when", children: formatWhen(record.at) })

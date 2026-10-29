@@ -12,7 +12,7 @@
  *     `state.layers.sessions['<根会话>']`），全局策略一个字节都不改；
  *   * MCP 不改配置，只按会话遮工具（见 `scenes/gate.ts`）；
  *   * 提示词按预设自己的作用范围落地 —— 只认绑定该工作区的预设。**提示词没有会话级**：
- *     `AGENTS.md` 是文件、宿主按目录读，按会话开关不了；所以会话选择只覆盖技能与 MCP 工具。
+ *     区段正文按工作区现算，按会话开关不了；所以会话选择只覆盖技能与 MCP 工具。
  *
  * 层是**物化**的（写进状态文件），所以场景定义、工作区映射或会话选择一变就要重新物化
  * （`reconcileSessionLayers`），否则会话会停在旧场景上。
@@ -625,7 +625,7 @@ export async function setSessionScene(
     warnings.push('这个场景一条技能都没匹配上，而它是「整套切换」：本会话里其它技能也会被挡掉')
   }
   if (scene !== undefined && scene.prompt !== null) {
-    warnings.push('会话级场景不改变提示词：AGENTS.md 按工作区读取，提示词仍由工作区的场景决定')
+    warnings.push('会话级场景不改变提示词：提示词按工作区追加，仍然由工作区的场景决定')
   }
   if (scene !== undefined) warnings.push(...await mcpNotes(dshHome, scene))
 

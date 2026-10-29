@@ -4,7 +4,7 @@
  * 分层（每层知道的越少越好）：
  *   shared/   路径身份与原子写、请求管道、ZIP、日志、回执与领域异常
  *   skills/   技能域：扫描 → 策略 → 视图 → provider / 文件操作 / op 服务
- *   prompts/  提示词域：AGENTS.md 预设（每份预设自带作用范围）
+ *   prompts/  提示词域：预设（每份自带作用范围）追加成系统提示词区段
  *   mcp/      MCP 域：cordis.patch.yml 的服务器行
  *   scenes/   场景域：三域组合的应用与回滚
  *   api/      op 表、agent 工具、那条 HTTP 路由
@@ -23,6 +23,12 @@ import { createTools, type ToolDefinition } from './api/tools.ts'
 import { createSceneCommand } from './commands/scene.ts'
 import { createSceneGate, type ToolScope } from './scenes/gate.ts'
 import { adoptPendingScene, reconcileSessionLayers } from './scenes/service.ts'
+import {
+  createPromptSource,
+  migrateLegacyAppliedFiles,
+  onPromptsChanged,
+  promptsRootOf,
+} from './prompts/service.ts'
 import { workspaceOfAgent, rootSessionIdOf } from './scope/agent-scope.ts'
 
 export const name = 'tool-center'
@@ -30,7 +36,7 @@ export const name = 'tool-center'
 export const inject = ['skills', 'tools', 'webServer', 'agents', 'workspaceRegistry']
 
 /** 面板页脚报的版本。必须与 `package.json` 的 `version` 一致（`wiring.test.mjs` 会核对）。 */
-export const VERSION = '0.5.1'
+export const VERSION = '0.6.0'
 
 interface WebRoute {
   kind: 'exact' | 'prefix'
@@ -136,6 +142,15 @@ export function apply(ctx: PluginContext, config?: PluginConfig): void {
   registerSceneCommand(ctx, service, dshHome, logger, gate.refresh)
   registerRoute(ctx, service, logger, dshHome, gate.refresh)
   registerWatcher(ctx, service, config)
+
+  // 旧版本把预设正文覆盖写进了 AGENTS.md；换成追加系统提示词后先把那份副本还原，
+  // 否则同一条指令会进两次。迁移失败只记日志 —— 旧文件多留一版，也好过插件挂不上。
+  void migrateLegacyAppliedFiles(dshHome)
+    .then((lines) => {
+      for (const line of lines) logger.system(`prompt migration: ${line}`)
+    })
+    .catch((error) => logger.system(`prompt migration failed: ${describe(error)}`))
+  registerPromptSection(ctx, dshHome, logger)
 
   // 启动时按当前文档重新物化会话层：层是快照，场景定义或工作区映射可能在上次退出后变过。
   ctx.effect(() => {
@@ -747,6 +762,110 @@ function registerRoute(
       }
     }
   }, 'tool-center: route')
+}
+
+/* ------------------------------ 提示词区段 ------------------------------ */
+
+/** `ctx.systemPrompt` 里我们用到的那一小块。 */
+interface SystemPromptLike {
+  section(definition: {
+    name: string
+    order: number
+    interpolate?: boolean
+    text: string | ((context: { agent?: unknown }) => string)
+  }): (() => void) | undefined
+}
+
+/** 区段名：固定一个，全局只注册一次（正文每次组装时现取）。 */
+const PROMPT_SECTION = 'tool-center:prompt'
+/**
+ * 区段位置：`DELIVERABLE_FILE_REFERENCES`(9000) 之后、`STRUCTURED_OUTPUT`(9900) 之前。
+ * 用户写的常驻指令比工具说明更「像话」，但要让宿主的结构化输出约束收在最末。
+ */
+const PROMPT_SECTION_ORDER = 9500
+
+/**
+ * 把启用的预设追加成一段系统提示词。
+ *
+ * 这里用的是**宿主的区段注册表**，不写 AGENTS.md：用户手改、覆盖、删掉自己的 AGENTS.md
+ * 都不会让预设失效。作用范围在正文函数里按「这个 agent 的工作区」现算，所以一份全局预设
+ * 对每个会话追加、一份工作区预设只追加给该目录（含子目录）里的会话。
+ *
+ * 正文函数是同步的（宿主每步组装都会调），所以读盘放在启动、写入广播与目录监听里。
+ */
+function registerPromptSection(ctx: PluginContext, dshHome: string, logger: PluginLogger): void {
+  const source = createPromptSource(dshHome)
+  const refresh = (): void => {
+    void source.refresh().catch((error) => logger.system(`prompt section refresh failed: ${describe(error)}`))
+  }
+
+  ctx.effect(() => {
+    let timer: NodeJS.Timeout | null = null
+    const refreshSoon = (): void => {
+      if (timer !== null) return
+      timer = setTimeout(() => {
+        timer = null
+        refresh()
+      }, 200)
+      timer.unref?.()
+    }
+
+    // 写入广播（面板 op / 场景应用 / /scene）+ 目录监听（用户直接改预设文件）都能刷新。
+    const offChanged = onPromptsChanged(refreshSoon)
+    let watcher: FSWatcher | null = null
+    try {
+      watcher = watch(promptsRootOf(dshHome), { persistent: false }, () => refreshSoon())
+      watcher.on('error', () => { /* 目录被删掉时靠下一次变更重建 */ })
+    } catch {
+      /* 还没有预设目录：第一次保存会建出来，那之后靠写入广播 */
+    }
+    refresh()
+
+    let disposeSection: (() => void) | undefined
+    const mount = (scoped: PluginContext): void => {
+      let systemPrompt: SystemPromptLike | undefined
+      try {
+        const value = scoped.get('systemPrompt') as SystemPromptLike | undefined
+        systemPrompt = value !== undefined && value !== null && typeof value.section === 'function' ? value : undefined
+      } catch {
+        systemPrompt = undefined
+      }
+      if (systemPrompt === undefined) {
+        logger.system('systemPrompt service unavailable; enabled prompts will not reach the model')
+        return
+      }
+      try {
+        disposeSection = systemPrompt.section({
+          name: PROMPT_SECTION,
+          order: PROMPT_SECTION_ORDER,
+          // 正文是用户写的 Markdown，其中的 `{{…}}` 只是正文，不该被当成提示词变量解析。
+          interpolate: false,
+          text: (context) => source.textFor(workspaceOfAgent(context?.agent)),
+        })
+      } catch (error) {
+        logger.system(`prompt section registration failed: ${describe(error)}`)
+      }
+    }
+
+    // 系统提示词服务可能比本插件晚装载：走 inject 等它就绪，而不是在 apply 里直接 get。
+    if (typeof ctx.inject === 'function') ctx.inject(['systemPrompt'], mount)
+    else mount(ctx)
+
+    return () => {
+      if (timer !== null) clearTimeout(timer)
+      offChanged()
+      try {
+        watcher?.close()
+      } catch {
+        /* 已经没了 */
+      }
+      try {
+        disposeSection?.()
+      } catch {
+        /* 已经没了 */
+      }
+    }
+  }, 'tool-center: prompt section')
 }
 
 /* ------------------------------- 监听器 ------------------------------- */

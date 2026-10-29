@@ -1,12 +1,12 @@
 /**
  * 提示词域视图：每份预设自带作用范围，卡片上直接「启用 / 停用」。
  *
- * 版面按「先用哪个、再说规则」排：页头（有几份、几份生效、几份备份）→ 预设卡片列表 →
- * 生效目标脚注。那两句关于生效时机的长解释收进一个默认关闭的 `<details>`：它是第一次才需要
- * 读的说明，摆在列表上方只会把列表推下去。
+ * 版面按「先用哪个、再说规则」排：页头（有几份、几份生效）→ 预设卡片列表 → 生效目标脚注。
+ * 那两句关于生效时机的长解释收进一个默认关闭的 `<details>`：它是第一次才需要读的说明，
+ * 摆在列表上方只会把列表推下去。
  *
- * 生效时机如实写在界面上：宿主每轮都会重新核对这些文件，所以启用 / 停用 / 改正文会影响已有
- * 会话的**下一轮**；文件方案做不到「只对新会话生效」。
+ * 生效时机如实写在界面上：宿主每一步都会重新组装系统提示词，所以启用 / 停用 / 改正文会影响
+ * 已有会话的**下一轮**；做不到「只对新会话生效」。
  */
 import type { ReactNode } from 'react'
 import type { DomainProps } from '../../lib/core/domain.ts'
@@ -25,7 +25,6 @@ export function PromptsView(props: DomainProps): ReactNode {
   const badges: ReactNode[] = []
   if (prompts.presets.length > 0) badges.push(badgeOf(t('prompts.total', { n: prompts.presets.length })))
   if (prompts.applied.length > 0) badges.push(badgeOf(t('prompts.activeCount', { n: prompts.applied.length }), 'ok'))
-  if (prompts.state !== null) badges.push(badgeOf(t('prompts.backups', { n: prompts.state.backupCount }), 'off'))
 
   return (
     <div className='dsk-root'>
@@ -63,7 +62,7 @@ export function PromptsView(props: DomainProps): ReactNode {
           onDelete: () => prompts.remove(preset),
         })))}
 
-      {/* 生效中的目标一览：一份预设 → 写到了哪个 AGENTS.md，以及有没有被外部改过 */}
+      {/* 生效中的目标一览：一份预设 → 追加到了哪个范围 */}
       {prompts.applied.length === 0
         ? null
         : (
@@ -76,11 +75,8 @@ export function PromptsView(props: DomainProps): ReactNode {
               {prompts.applied.map((record) => (
                 <div className='dsk-row dsk-row-static' key={record.key}>
                   <div className='dsk-row-main'>
-                    <div className='dsk-row-name'>
-                      {record.preset}
-                      {record.drifted ? badgeOf(t('prompts.driftShort'), 'warn') : null}
-                    </div>
-                    <div className='dsk-row-sub' title={record.agentsPath}>{record.label} · {record.agentsPath}</div>
+                    <div className='dsk-row-name'>{record.preset}</div>
+                    <div className='dsk-row-sub'>{record.label} · {t('prompts.appendedTo')}</div>
                   </div>
                   <div className='dsk-row-actions dsk-row-when'>{formatWhen(record.at)}</div>
                 </div>

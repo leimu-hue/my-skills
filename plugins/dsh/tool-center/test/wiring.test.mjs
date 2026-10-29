@@ -4,6 +4,7 @@ import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { apply, name as pluginName, inject, VERSION } from '../dist/host/index.js'
+import { savePreset, setPresetEnabled } from '../dist/host/prompts/service.js'
 
 test('the version the panel reports is the one in package.json', async () => {
   const manifest = JSON.parse(await readFile(join(import.meta.dirname, '..', 'package.json'), 'utf8'))
@@ -86,6 +87,16 @@ function fakeHost() {
       }
     },
   })
+  /** 已注册的系统提示词区段（`ctx.systemPrompt.section()`）。 */
+  const sections = []
+  services.set('systemPrompt', {
+    section(definition) {
+      sections.push(definition)
+      return () => {
+        sections.splice(sections.indexOf(definition), 1)
+      }
+    },
+  })
   services.set('agents', { list: () => agents })
   services.set('sessions', { list: () => [{ id: 'session-abc', header: { agentPreset: 'standard' } }] })
 
@@ -104,7 +115,7 @@ function fakeHost() {
     for (const listener of events.get(event) ?? []) listener(...args)
   }
 
-  return { ctx, providers, agentProviders, agentSkills, tools, routes, disposers, registry, emitted, emit, agents }
+  return { ctx, providers, agentProviders, agentSkills, tools, routes, disposers, registry, emitted, emit, agents, sections }
 }
 
 async function fixture() {
@@ -433,6 +444,33 @@ test('the /scene command is registered with the host command service and dispose
   assert.equal(commands.length, 0)
 })
 
+test('an enabled preset is appended as one system prompt section, scoped by the agent workspace', async () => {
+  const host = fakeHost()
+  const f = await fixture()
+  const workspace = join(f.base, 'repo')
+  await mkdir(workspace, { recursive: true })
+  await savePreset(f.dshHome, '全局', '# 全局\n')
+  await savePreset(f.dshHome, '项目', '# 项目\n', { kind: 'workspace', path: workspace })
+  await setPresetEnabled(f.dshHome, '全局', true)
+  await setPresetEnabled(f.dshHome, '项目', true)
+
+  apply(host.ctx, { dshHome: f.dshHome, claudeHome: f.claudeHome, codexHome: f.codexHome, watch: false })
+  assert.equal(host.sections.length, 1, 'one section carries every enabled preset')
+  const section = host.sections[0]
+  assert.equal(section.name, 'tool-center:prompt')
+  assert.equal(section.interpolate, false, 'preset markdown must not be parsed as a prompt template')
+
+  // 快照是异步读的（apply 里 fire-and-forget），等一拍再看正文。
+  await new Promise((done) => setTimeout(done, 100))
+  const inside = { session: { id: 'in-scope', header: { cwd: workspace } } }
+  const outside = { session: { id: 'out-of-scope', header: { cwd: join(f.base, 'elsewhere') } } }
+  assert.equal(section.text({ agent: inside }), '# 全局\n\n# 项目')
+  assert.equal(section.text({ agent: outside }), '# 全局', 'the workspace preset does not leak out')
+
+  for (const dispose of host.disposers) dispose()
+  assert.equal(host.sections.length, 0, 'disposing the plugin withdraws the section')
+})
+
 test('a host without a command service still loads the plugin', async () => {
   const host = fakeHost()
   const f = await fixture()
@@ -468,7 +506,8 @@ test('with cordis inject the command waits for the command service instead of ra
   }
 
   apply(host.ctx, { dshHome: f.dshHome, claudeHome: f.claudeHome, codexHome: f.codexHome, watch: false })
-  assert.deepEqual(waits, [['commands']], 'the plugin declares the wait instead of polling')
+  // 两个服务都比你插件晚装载：命令服务（/scene）与系统提示词服务（提示词区段）。
+  assert.deepEqual(waits.map((names) => names[0]).sort(), ['commands', 'systemPrompt'], 'the plugin declares the waits instead of polling')
   assert.equal(commands.length, 1)
   assert.equal(commands[0].name, 'scene')
 })

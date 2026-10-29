@@ -1,10 +1,11 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
-  deletePreset, digestOf, isValidPresetName, loadPrompts, promptsRootOf, readPreset, savePreset, setPresetEnabled,
+  createPromptSource, deletePreset, digestOf, isValidPresetName, loadPrompts, migrateLegacyAppliedFiles,
+  promptsRootOf, readPreset, savePreset, setPresetEnabled,
 } from '../dist/host/prompts/service.js'
 
 async function home() {
@@ -12,6 +13,13 @@ async function home() {
   const dshHome = join(base, 'dsh')
   await mkdir(dshHome, { recursive: true })
   return { base, dshHome }
+}
+
+/** 读一次快照再问「这个工作区该追加什么」——正文函数本身是同步的，读盘在 refresh 里。 */
+async function textFor(dshHome, workspace = '') {
+  const source = createPromptSource(dshHome)
+  await source.refresh()
+  return source.textFor(workspace)
 }
 
 test('saves, lists and reads presets, with scope defaulting to global', async () => {
@@ -40,65 +48,104 @@ test('rejects bad names and empty content', async () => {
   assert.equal(isValidPresetName('写作 模式.v2-a_b'), true)
 })
 
-test('enabling writes the global AGENTS.md, backs it up and records the digest', async () => {
+test('enabling only records the target: the preset body is appended, AGENTS.md is never written', async () => {
   const { dshHome } = await home()
-  await writeFile(join(dshHome, 'AGENTS.md'), '# 旧的全局指令\n')
+  await writeFile(join(dshHome, 'AGENTS.md'), '# 用户自己的全局指令\n')
   await savePreset(dshHome, '新', '# 新指令\n')
 
   const result = await setPresetEnabled(dshHome, '新', true)
   assert.equal(result.changed, true)
   assert.equal(result.target, 'global')
-  assert.equal(await readFile(join(dshHome, 'AGENTS.md'), 'utf8'), '# 新指令\n')
-
-  const backups = await readdir(join(promptsRootOf(dshHome), '__backup__', 'global'))
-  assert.ok(backups.some((name) => name.includes('before-apply')), 'the replaced AGENTS.md must be backed up')
-  assert.ok(backups.some((name) => name.includes('start-')), 'the chain start must be captured')
+  // 用户文件一个字节都不能动 —— 这正是旧版本「覆盖 AGENTS.md」方案的病根。
+  assert.equal(await readFile(join(dshHome, 'AGENTS.md'), 'utf8'), '# 用户自己的全局指令\n')
+  assert.equal(await textFor(dshHome), '# 新指令')
 
   const state = await loadPrompts(dshHome)
-  const preset = state.presets.find((entry) => entry.name === '新')
-  assert.equal(preset.enabled, true)
+  assert.equal(state.presets.find((entry) => entry.name === '新').enabled, true)
   assert.equal(state.applied.length, 1)
   assert.equal(state.applied[0].preset, '新')
-  assert.equal(state.applied[0].drifted, false)
 })
 
-test('disabling restores the chain start, not just one step back', async () => {
+test('overwriting AGENTS.md by hand leaves the enabled preset working', async () => {
   const { dshHome } = await home()
-  await writeFile(join(dshHome, 'AGENTS.md'), '# 起点\n')
+  await savePreset(dshHome, 'p', '# 预设正文\n')
+  await setPresetEnabled(dshHome, 'p', true)
+  await writeFile(join(dshHome, 'AGENTS.md'), '# 我手改的\n')
+
+  assert.equal(await textFor(dshHome), '# 预设正文', 'the preset does not live in AGENTS.md')
+  const state = await loadPrompts(dshHome)
+  assert.equal(state.warnings.length, 0, 'nothing to drift: there is no copy to drift from')
+})
+
+test('disabling stops the append and keeps the preset file', async () => {
+  const { dshHome } = await home()
+  await savePreset(dshHome, 'only', '# only\n')
+  await setPresetEnabled(dshHome, 'only', true)
+  assert.equal(await textFor(dshHome), '# only')
+
+  const off = await setPresetEnabled(dshHome, 'only', false)
+  assert.equal(off.changed, true)
+  assert.equal(await textFor(dshHome), '', 'a disabled preset contributes nothing')
+  assert.equal(await readPreset(dshHome, 'only'), '# only\n', 'the preset file stays')
+  assert.equal((await loadPrompts(dshHome)).applied.length, 0)
+})
+
+test('one target holds one preset: enabling another replaces it', async () => {
+  const { dshHome } = await home()
   await savePreset(dshHome, 'a', '# a\n')
   await savePreset(dshHome, 'b', '# b\n')
 
   await setPresetEnabled(dshHome, 'a', true)
   const second = await setPresetEnabled(dshHome, 'b', true)
   assert.equal(second.replaced, 'a', 'the other preset on the same target is replaced')
-  assert.equal(await readFile(join(dshHome, 'AGENTS.md'), 'utf8'), '# b\n')
+  assert.equal(await textFor(dshHome), '# b')
 
-  await setPresetEnabled(dshHome, 'b', false)
-  assert.equal(await readFile(join(dshHome, 'AGENTS.md'), 'utf8'), '# 起点\n')
   const state = await loadPrompts(dshHome)
-  assert.equal(state.applied.length, 0)
-  assert.equal(state.presets.every((preset) => preset.enabled === false), true)
+  assert.deepEqual(state.applied.map((record) => record.preset), ['b'])
+  assert.equal(state.presets.find((preset) => preset.name === 'a').enabled, false, 'the replaced preset is kept, just off')
 })
 
-test('disabling deletes AGENTS.md when the chain started without one', async () => {
+test('editing an enabled preset changes the appended body without re-applying', async () => {
   const { dshHome } = await home()
-  await savePreset(dshHome, 'only', '# only\n')
-  await setPresetEnabled(dshHome, 'only', true)
-  assert.equal(await stat(join(dshHome, 'AGENTS.md')).then(() => true), true)
-  await setPresetEnabled(dshHome, 'only', false)
-  const exists = await stat(join(dshHome, 'AGENTS.md')).then(() => true).catch(() => false)
-  assert.equal(exists, false, 'an empty AGENTS.md would be injected as an empty instruction')
-})
-
-test('an external edit is reported as drift instead of being ignored', async () => {
-  const { dshHome } = await home()
-  await savePreset(dshHome, 'p', '# preset\n')
+  await savePreset(dshHome, 'p', '# 第一版\n')
   await setPresetEnabled(dshHome, 'p', true)
-  await writeFile(join(dshHome, 'AGENTS.md'), '# 我手改的\n')
+  await savePreset(dshHome, 'p', '# 第二版\n')
+  assert.equal(await textFor(dshHome), '# 第二版')
+})
+
+test('a workspace is part of the preset: each one is appended only inside its own tree', async () => {
+  const { base, dshHome } = await home()
+  const repoA = join(base, 'repo-a')
+  const repoB = join(base, 'repo-b')
+  const nested = join(repoA, 'packages', 'app')
+  await mkdir(repoB, { recursive: true })
+  await mkdir(nested, { recursive: true })
+  await savePreset(dshHome, 'A 的规矩', '# A\n', { kind: 'workspace', path: repoA })
+  await savePreset(dshHome, 'B 的规矩', '# B\n', { kind: 'workspace', path: repoB })
+  await setPresetEnabled(dshHome, 'A 的规矩', true)
+  await setPresetEnabled(dshHome, 'B 的规矩', true)
+
+  assert.equal(await textFor(dshHome, repoA), '# A')
+  assert.equal(await textFor(dshHome, nested), '# A', 'subdirectories are inside the workspace')
+  assert.equal(await textFor(dshHome, repoB), '# B')
+  assert.equal(await textFor(dshHome, join(base, 'elsewhere')), '', 'no preset leaks outside its scope')
+
   const state = await loadPrompts(dshHome)
-  assert.equal(state.applied[0].drifted, true)
-  assert.ok(state.warnings.some((warning) => warning.includes('外部改过')))
-  assert.equal(digestOf('# 我手改的\n') === digestOf('# preset\n'), false)
+  assert.equal(state.applied.length, 2, 'both targets are active at the same time')
+  assert.deepEqual(state.applied.map((record) => record.preset).sort(), ['A 的规矩', 'B 的规矩'])
+})
+
+test('a global preset and a workspace preset are appended broad-to-specific', async () => {
+  const { base, dshHome } = await home()
+  const repo = join(base, 'repo')
+  await mkdir(repo, { recursive: true })
+  await savePreset(dshHome, '全局', '# 全局\n')
+  await savePreset(dshHome, '项目', '# 项目\n', { kind: 'workspace', path: repo })
+  await setPresetEnabled(dshHome, '全局', true)
+  await setPresetEnabled(dshHome, '项目', true)
+
+  assert.equal(await textFor(dshHome, repo), '# 全局\n\n# 项目')
+  assert.equal(await textFor(dshHome, ''), '# 全局', 'outside any workspace only the global preset applies')
 })
 
 test('an enabled preset cannot be deleted; a disabled one can', async () => {
@@ -112,55 +159,6 @@ test('an enabled preset cannot be deleted; a disabled one can', async () => {
   assert.deepEqual(names, ['keep'])
 })
 
-test('backups are capped at five generations', async () => {
-  const { dshHome } = await home()
-  await writeFile(join(dshHome, 'AGENTS.md'), '# 0\n')
-  for (let index = 1; index <= 8; index += 1) {
-    await savePreset(dshHome, `p${index}`, `# ${index}\n`)
-    await setPresetEnabled(dshHome, `p${index}`, true)
-  }
-  const backups = (await readdir(join(promptsRootOf(dshHome), '__backup__', 'global'))).filter((name) => name.includes('before-apply'))
-  assert.ok(backups.length <= 5, `expected at most 5 backups, got ${backups.length}`)
-})
-
-test('a workspace is part of the preset, so two presets can serve two projects at once', async () => {
-  const { base, dshHome } = await home()
-  const repoA = join(base, 'repo-a')
-  const repoB = join(base, 'repo-b')
-  await mkdir(repoA, { recursive: true })
-  await mkdir(repoB, { recursive: true })
-  await savePreset(dshHome, 'A 的规矩', '# A\n', { kind: 'workspace', path: repoA })
-  await savePreset(dshHome, 'B 的规矩', '# B\n', { kind: 'workspace', path: repoB })
-
-  await setPresetEnabled(dshHome, 'A 的规矩', true)
-  await setPresetEnabled(dshHome, 'B 的规矩', true)
-  assert.equal(await readFile(join(repoA, 'AGENTS.md'), 'utf8'), '# A\n')
-  assert.equal(await readFile(join(repoB, 'AGENTS.md'), 'utf8'), '# B\n')
-  const globalExists = await stat(join(dshHome, 'AGENTS.md')).then(() => true).catch(() => false)
-  assert.equal(globalExists, false, 'neither preset touches the global file')
-
-  const state = await loadPrompts(dshHome)
-  assert.equal(state.applied.length, 2, 'both targets are active at the same time')
-  assert.deepEqual(state.applied.map((record) => record.preset).sort(), ['A 的规矩', 'B 的规矩'])
-})
-
-test('disabling one workspace leaves the other untouched', async () => {
-  const { base, dshHome } = await home()
-  const repoA = join(base, 'repo-a')
-  const repoB = join(base, 'repo-b')
-  await mkdir(repoA, { recursive: true })
-  await mkdir(repoB, { recursive: true })
-  await writeFile(join(repoA, 'AGENTS.md'), '# A 起点\n')
-  await savePreset(dshHome, 'A', '# A 预设\n', { kind: 'workspace', path: repoA })
-  await savePreset(dshHome, 'B', '# B 预设\n', { kind: 'workspace', path: repoB })
-  await setPresetEnabled(dshHome, 'A', true)
-  await setPresetEnabled(dshHome, 'B', true)
-
-  await setPresetEnabled(dshHome, 'A', false)
-  assert.equal(await readFile(join(repoA, 'AGENTS.md'), 'utf8'), '# A 起点\n', 'A returns to its own start')
-  assert.equal(await readFile(join(repoB, 'AGENTS.md'), 'utf8'), '# B 预设\n', 'B is still applied')
-})
-
 test('changing the scope of an enabled preset is refused', async () => {
   const { base, dshHome } = await home()
   const repo = join(base, 'repo')
@@ -168,4 +166,63 @@ test('changing the scope of an enabled preset is refused', async () => {
   await savePreset(dshHome, 'p', '# p\n')
   await setPresetEnabled(dshHome, 'p', true)
   await assert.rejects(() => savePreset(dshHome, 'p', '# p\n', { kind: 'workspace', path: repo }), /先停用再改作用范围/)
+})
+
+/**
+ * 旧版本（v3）把预设正文覆盖写进了 AGENTS.md。升级后那份副本必须收回去，否则同一条指令会
+ * 进两次；而用户自己写的文件一个字都不能动。
+ */
+test('the legacy AGENTS.md copy is rolled back to the chain start on upgrade', async () => {
+  const { dshHome } = await home()
+  const root = promptsRootOf(dshHome)
+  await mkdir(join(root, '__backup__', 'global'), { recursive: true })
+  await writeFile(join(root, '__backup__', 'global', 'AGENTS.md.start-2026'), '# 用户原有的\n')
+  await savePreset(dshHome, '旧', '# 旧预设\n')
+  await writeFile(join(dshHome, 'AGENTS.md'), '# 旧预设\n')
+  await writeFile(join(root, 'index.json'), JSON.stringify({
+    version: 3,
+    presets: { 旧: { scope: { kind: 'global', path: '' } } },
+    applied: {
+      global: {
+        preset: '旧',
+        digest: digestOf('# 旧预设\n'),
+        at: Date.now(),
+        chainStart: 'AGENTS.md.start-2026',
+        agentsPath: join(dshHome, 'AGENTS.md'),
+      },
+    },
+  }))
+
+  const warnings = await migrateLegacyAppliedFiles(dshHome)
+  assert.deepEqual(warnings, [])
+  assert.equal(await readFile(join(dshHome, 'AGENTS.md'), 'utf8'), '# 用户原有的\n', 'the user content comes back')
+  assert.equal(JSON.parse(await readFile(join(root, 'index.json'), 'utf8')).version, 4)
+  assert.equal(await textFor(dshHome), '# 旧预设', 'the preset keeps working, now via the prompt section')
+})
+
+test('a hand-edited AGENTS.md is left alone during the legacy migration', async () => {
+  const { dshHome } = await home()
+  const root = promptsRootOf(dshHome)
+  await mkdir(join(root, '__backup__', 'global'), { recursive: true })
+  await writeFile(join(root, '__backup__', 'global', 'AGENTS.md.start-2026'), '# 用户原有的\n')
+  await savePreset(dshHome, '旧', '# 旧预设\n')
+  await writeFile(join(dshHome, 'AGENTS.md'), '# 用户后来手写的\n')
+  await writeFile(join(root, 'index.json'), JSON.stringify({
+    version: 3,
+    presets: { 旧: { scope: { kind: 'global', path: '' } } },
+    applied: {
+      global: {
+        preset: '旧',
+        digest: digestOf('# 旧预设\n'),
+        at: Date.now(),
+        chainStart: 'AGENTS.md.start-2026',
+        agentsPath: join(dshHome, 'AGENTS.md'),
+      },
+    },
+  }))
+
+  const warnings = await migrateLegacyAppliedFiles(dshHome)
+  assert.equal(warnings.length, 1)
+  assert.ok(warnings[0].includes('被改过'))
+  assert.equal(await readFile(join(dshHome, 'AGENTS.md'), 'utf8'), '# 用户后来手写的\n')
 })

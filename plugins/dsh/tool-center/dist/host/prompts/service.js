@@ -5,33 +5,34 @@
  * 「工作区 B 的规矩」，它们同时存在、各自生效。把它做成页面级选择器，就变成「同一时刻只能看
  * 一个目标」，而预设本身反而没有身份。
  *
- * 宿主的指令来源有两档（`dsh-agent-instructions`）：
- *   * **用户级全局** `$DSH_HOME/AGENTS.md` —— 每个会话都读；
- *   * **工作区级** `<项目>/AGENTS.md` —— 只对该项目里的会话生效。
- * 所以「绑定到工作区 A 的预设」天然不影响 B 项目和全局 —— 这就是隔离的真实边界。
+ * 落点：**追加一段系统提示词，从不碰 AGENTS.md。**
+ *   * `AGENTS.md` 是用户自己的地盘（`dsh-agent-instructions` 读它）。早先「启用 = 覆盖
+ *     AGENTS.md」的做法，用户手改一次、从 git 还原一次、甚至编辑器整文件保存一次，预设正文
+ *     就跟着没了 —— 而界面上它仍然显示「正在生效」。这条静默失效的路现在不存在了；
+ *   * 宿主的 `dsh-system-prompt` 允许插件注册有序区段（`ctx.systemPrompt.section`），区段
+ *     正文在每次组装时现取，所以预设正文只存在于 `tool-center/prompts/<名字>.md` 一处，
+ *     没有副本，也就没有「副本被改坏」这种状态；
+ *   * 作用范围照样是真的：区段正文按**这个 agent 的工作区**现算 —— 全局预设追加给每个会话，
+ *     工作区预设只追加给该目录（含子目录）里的会话。
  *
- * ⚠️ 生效时机说实话：宿主每个会话**每轮**都会重新对账这些文件，所以启用 / 停用 / 改正文，
- * 会影响**已有会话的下一轮**。文件方案做不到「只对新会话生效」；本模块不假装能。
+ * ⚠️ 生效时机说实话：系统提示词每一步都会重新组装，所以启用 / 停用 / 改正文会影响**已有会话的
+ * 下一轮**；没有「只对新会话生效」这回事，本模块不假装能。
  *
  * 不变式（每个目标各自成立）：
- *   * 启用 = 备份 → 覆盖该目标的 AGENTS.md → 记指纹；同一目标上只允许一份预设生效
+ *   * 启用 / 停用 = **只改索引**，预设文件一直留着；同一目标上只允许一份预设生效
  *     （启用新的会自动停用旧的，旧的那份仍留在列表里，只是不再生效）；
- *   * 停用 = 回到该目标的链起点（起点本来没有文件就删掉文件，而不是留一个空文件）；
- *   * 记内容指纹，外部手改能如实报出来；
- *   * 预设文件与「是否生效」都记在索引里，重装 / 重启都不丢。
+ *   * 正文只有一个来源，不产生任何「落盘副本」，因此不需要备份，也没有漂移可比。
  */
+import { mkdir, readdir, rm, stat, unlink } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
-import { copyFile, mkdir, readdir, rm, stat, unlink } from 'node:fs/promises';
 import { basename, join, resolve } from 'node:path';
-import { writeFileAtomic } from "../shared/paths.js";
-import { DomainError } from "../shared/result.js";
+import { isInside, pathKey, writeFileAtomic } from "../shared/paths.js";
+import { DomainError, describe } from "../shared/result.js";
 import { exists, readTextOrNull } from "../shared/fs.js";
-import { writeBackup } from "../shared/backups.js";
 import { isRecord } from "../shared/json.js";
 const GLOBAL_TARGET = { kind: 'global' };
 const INDEX_NAME = 'index.json';
 const BACKUP_DIR = '__backup__';
-const MAX_BACKUPS = 5;
 const MAX_PRESET_BYTES = 512 * 1024;
 const PRESET_NAME = /^[\w\u4e00-\u9fa5][\w\u4e00-\u9fa5 .-]{0,63}$/;
 export function promptsRootOf(dshHome) {
@@ -42,6 +43,21 @@ export function isValidPresetName(name) {
 }
 export function digestOf(content) {
     return createHash('sha256').update(content, 'utf8').digest('hex').slice(0, 32);
+}
+const CHANGE_LISTENERS = new Set();
+export function onPromptsChanged(listener) {
+    CHANGE_LISTENERS.add(listener);
+    return () => { CHANGE_LISTENERS.delete(listener); };
+}
+function notifyChanged() {
+    for (const listener of [...CHANGE_LISTENERS]) {
+        try {
+            listener();
+        }
+        catch {
+            /* 监听器自己的问题不该挡住写入 */
+        }
+    }
 }
 /** 把 op 传来的作用范围收成合法形状；缺省 = 全局。 */
 function normaliseScope(input) {
@@ -67,7 +83,7 @@ function targetLabelOf(target) {
 function targetOfKey(key) {
     return key === 'global' ? GLOBAL_TARGET : { kind: 'workspace', path: key.slice(3) };
 }
-/** 某个目标的 AGENTS.md 路径：全局在 `$DSH_HOME`，工作区在项目根。 */
+/** 旧版本写过的那个文件。现在只在迁移时读它。 */
 function agentsPathOf(dshHome, target = GLOBAL_TARGET) {
     return target.kind === 'global' ? join(dshHome, 'AGENTS.md') : join(target.path, 'AGENTS.md');
 }
@@ -82,7 +98,7 @@ function presetPathOf(dshHome, name) {
     return join(promptsRootOf(dshHome), `${name}.md`);
 }
 function emptyIndex() {
-    return { version: 3, presets: {}, applied: {} };
+    return { version: 4, presets: {}, applied: {} };
 }
 async function readIndex(dshHome) {
     const raw = (await readTextOrNull(indexPathOf(dshHome))) ?? '';
@@ -105,12 +121,10 @@ async function readIndex(dshHome) {
                 const entry = value;
                 if (typeof entry.preset !== 'string' || entry.preset === '')
                     continue;
+                // v3 的 digest / chainStart / agentsPath 已经没有意义，读到就丢。
                 index.applied[key] = {
                     preset: entry.preset,
-                    digest: typeof entry.digest === 'string' ? entry.digest : '',
                     at: typeof entry.at === 'number' ? entry.at : Date.now(),
-                    chainStart: typeof entry.chainStart === 'string' ? entry.chainStart : null,
-                    agentsPath: typeof entry.agentsPath === 'string' ? entry.agentsPath : '',
                 };
             }
         }
@@ -119,10 +133,7 @@ async function readIndex(dshHome) {
         if (typeof legacyPreset === 'string' && legacyPreset !== '' && index.applied.global === undefined) {
             index.applied.global = {
                 preset: legacyPreset,
-                digest: typeof parsed.appliedDigest === 'string' ? parsed.appliedDigest : '',
                 at: typeof parsed.appliedAt === 'number' ? parsed.appliedAt : Date.now(),
-                chainStart: typeof parsed.chainStart === 'string' ? parsed.chainStart : null,
-                agentsPath: '',
             };
             index.presets[legacyPreset] = { scope: { kind: 'global', path: '' } };
         }
@@ -138,8 +149,7 @@ function writeIndex(dshHome, index) {
 /**
  * 一份预设在哪个目标上生效，以及那个目标当前生效的是哪份预设。
  *
- * 场景应用时要同时知道这两件事，所以一次索引读取把两个答案都给出来（早先是「读一次索引
- * 拿作用范围 + 再 loadPrompts 读一次拿应用记录」）。
+ * 场景应用时要同时知道这两件事，所以一次索引读取把两个答案都给出来。
  */
 export async function promptTargetOf(dshHome, name) {
     const index = await readIndex(dshHome);
@@ -186,26 +196,15 @@ export async function loadPrompts(dshHome) {
     // 固定用 en 归集排序：结果跨机器稳定（默认 locale 下中文与英文的相对顺序会随系统变）。
     presets.sort((left, right) => left.name.localeCompare(right.name, 'en'));
     const applied = [];
-    let backupCount = 0;
     for (const [key, entry] of Object.entries(index.applied)) {
         const target = targetOfKey(key);
-        const agentsPath = entry.agentsPath !== '' ? entry.agentsPath : agentsPathOf(dshHome, target);
-        const content = await readTextOrNull(agentsPath);
-        const drifted = content !== null && entry.digest !== '' && digestOf(content) !== entry.digest;
-        if (drifted)
-            warnings.push(`「${targetLabelOf(target)}」上的 AGENTS.md 在上次应用之后被外部改过`);
-        backupCount += (await readdir(backupDirOf(dshHome, target)).catch(() => [])).length;
-        applied.push({
-            key,
-            label: targetLabelOf(target),
-            preset: entry.preset,
-            at: entry.at,
-            agentsPath,
-            drifted,
-        });
+        if (!presets.some((preset) => preset.name === entry.preset)) {
+            warnings.push(`「${entry.preset}」的预设文件已经不在了，这条生效记录不会追加任何内容`);
+        }
+        applied.push({ key, label: targetLabelOf(target), preset: entry.preset, at: entry.at });
     }
     applied.sort((left, right) => left.key.localeCompare(right.key, 'en'));
-    return { presets, applied, backupCount, warnings };
+    return { presets, applied, warnings };
 }
 /** 新建或覆盖一份预设；`scope` 省略时保留原有作用范围（新预设默认全局）。 */
 export async function savePreset(dshHome, name, content, scope) {
@@ -224,13 +223,15 @@ export async function savePreset(dshHome, name, content, scope) {
     await writeFileAtomic(path, content);
     const index = await readIndex(dshHome);
     const next = scope === undefined ? (index.presets[name]?.scope ?? { kind: 'global', path: '' }) : normaliseScope(scope);
-    // 正在生效的预设被改范围时，先停用旧目标上的应用，避免「索引说 A、文件在 B」。
+    // 正在生效的预设被改范围时，先停用旧目标上的应用，避免「索引说 A、读的时候按 B 追加」。
     const activeKey = Object.entries(index.applied).find(([, entry]) => entry.preset === name)?.[0];
     if (activeKey !== undefined && activeKey !== targetKeyOf(targetOfScope(next))) {
         throw new DomainError('error.prompt.scopeLocked', '这份预设正在生效，先停用再改作用范围');
     }
     index.presets[name] = { scope: next };
     await writeIndex(dshHome, index);
+    // 正文刚改过：正在生效的那份下一次组装就该用新正文。
+    notifyChanged();
     return { name, created: !existed, scope: next };
 }
 export async function readPreset(dshHome, name) {
@@ -253,53 +254,16 @@ export async function deletePreset(dshHome, name) {
     await unlink(path);
     delete index.presets[name];
     await writeIndex(dshHome, index);
-}
-async function backupAgents(dshHome, target, label) {
-    const agents = await readTextOrNull(agentsPathOf(dshHome, target));
-    if (agents === null)
-        return null;
-    return writeBackup({
-        dir: backupDirOf(dshHome, target),
-        baseName: `AGENTS.md.${label}`,
-        content: agents,
-        keep: MAX_BACKUPS,
-        // 只淘汰「每次写之前」的备份；`AGENTS.md.start-*` 是链起点，必须一直留着。
-        prunePrefix: 'AGENTS.md.before-',
-        // 备份不参与在线读取，普通写就够（保持原来的 0600）。
-        atomic: false,
-    });
-}
-/** 把该目标恢复到链起点。 */
-async function unapplyTarget(dshHome, target) {
-    const index = await readIndex(dshHome);
-    const key = targetKeyOf(target);
-    const agentsPath = agentsPathOf(dshHome, target);
-    const entry = index.applied[key];
-    await backupAgents(dshHome, target, 'before-unapply');
-    let restored = 'absent';
-    let from = null;
-    if (entry?.chainStart != null) {
-        const content = await readTextOrNull(join(backupDirOf(dshHome, target), entry.chainStart));
-        if (content !== null) {
-            await writeFileAtomic(agentsPath, content);
-            restored = 'file';
-            from = entry.chainStart;
-        }
-    }
-    if (restored === 'absent')
-        await rm(agentsPath, { force: true }).catch(() => undefined);
-    delete index.applied[key];
-    await writeIndex(dshHome, index);
-    return { restored, from };
+    notifyChanged();
 }
 /**
  * 启用 / 停用一份预设。
  *
- * 启用时若该目标上已有别的预设生效，会**先停用那一份**（同一目标只允许一份生效）——
- * 那个目标上的 AGENTS.md 只有一个，两份同时「生效」是说不通的。
+ * 只改索引 —— 不写任何用户文件。启用时若该目标上已有别的预设生效，会**先停用那一份**
+ * （同一目标只允许一份生效：那个目标只有一条追加通道，两份同时「生效」是说不通的）。
  */
 export async function setPresetEnabled(dshHome, name, enabled) {
-    const content = await readPreset(dshHome, name);
+    await readPreset(dshHome, name);
     const index = await readIndex(dshHome);
     const scope = index.presets[name]?.scope ?? { kind: 'global', path: '' };
     const target = targetOfScope(scope);
@@ -308,33 +272,119 @@ export async function setPresetEnabled(dshHome, name, enabled) {
     if (!enabled) {
         if (current === undefined)
             return { name, enabled: false, changed: false, replaced: null, target: key };
-        await unapplyTarget(dshHome, targetOfKey(current[0]));
+        delete index.applied[current[0]];
+        await writeIndex(dshHome, index);
+        notifyChanged();
         return { name, enabled: false, changed: true, replaced: null, target: current[0] };
     }
     if (current !== undefined && current[0] === key) {
         return { name, enabled: true, changed: false, replaced: null, target: key };
     }
-    // 同一目标上的另一份先停用。
+    // 这份预设若记在别的目标上（索引被手改过），先把那条摘掉，别留下两条生效记录。
+    if (current !== undefined)
+        delete index.applied[current[0]];
     let replaced = null;
     const occupant = index.applied[key];
-    if (occupant !== undefined && occupant.preset !== name) {
+    if (occupant !== undefined && occupant.preset !== name)
         replaced = occupant.preset;
-        await unapplyTarget(dshHome, target);
-    }
-    const agentsPath = agentsPathOf(dshHome, target);
-    const dir = backupDirOf(dshHome, target);
-    const backup = await backupAgents(dshHome, target, 'before-apply');
-    const fresh = await readIndex(dshHome);
-    const previous = fresh.applied[key];
-    const chainStart = previous?.chainStart ?? backup?.fileName ?? null;
-    if (previous === undefined && backup !== null) {
-        // 链起点只在「这个目标第一次被应用」时留一条。
-        await copyFile(join(dir, backup.fileName), join(dir, `AGENTS.md.start-${backup.stamp}`))
-            .catch(() => undefined);
-    }
-    await writeFileAtomic(agentsPath, content);
-    fresh.applied[key] = { preset: name, digest: digestOf(content), at: Date.now(), chainStart, agentsPath };
-    fresh.presets[name] = { scope };
-    await writeIndex(dshHome, fresh);
+    index.applied[key] = { preset: name, at: Date.now() };
+    index.presets[name] = { scope };
+    await writeIndex(dshHome, index);
+    notifyChanged();
     return { name, enabled: true, changed: true, replaced, target: key };
+}
+async function readSnapshot(dshHome) {
+    const index = await readIndex(dshHome);
+    const snapshot = { global: '', workspaces: [] };
+    for (const [key, entry] of Object.entries(index.applied)) {
+        const content = await readTextOrNull(presetPathOf(dshHome, entry.preset));
+        if (content === null || content.trim() === '')
+            continue;
+        const target = targetOfKey(key);
+        if (target.kind === 'global')
+            snapshot.global = content;
+        else
+            snapshot.workspaces.push({ path: target.path, content });
+    }
+    return snapshot;
+}
+export function createPromptSource(dshHome) {
+    let snapshot = { global: '', workspaces: [] };
+    return {
+        textFor(workspace) {
+            const parts = [];
+            // 每份正文各自修边：预设文件几乎都以换行结尾，直接拼会在区段里多出空行。
+            if (snapshot.global.trim() !== '')
+                parts.push(snapshot.global.trim());
+            if (workspace !== '') {
+                // 祖先链上每一份都算（与宿主读 AGENTS.md 的「由宽到严」一致），浅的先追加。
+                const matched = snapshot.workspaces.filter((entry) => isInside(entry.path, workspace));
+                matched.sort((left, right) => pathKey(left.path).length - pathKey(right.path).length);
+                for (const entry of matched)
+                    parts.push(entry.content.trim());
+            }
+            return parts.join('\n\n');
+        },
+        async refresh() {
+            snapshot = await readSnapshot(dshHome);
+        },
+    };
+}
+/* ------------------------------- 迁移 ------------------------------- */
+/**
+ * 旧版本（索引 v3）把预设正文**覆盖写进**了 `AGENTS.md`。现在改成追加系统提示词区段，
+ * 那份副本要收回去，否则同一条指令会进两次。
+ *
+ * 克制条件：只处理「内容仍是当初写进去的那份」（指纹对得上）的目标。用户已经手改过的文件属于
+ * 用户，一个字都不动，只报一条警告说明。恢复目标是当初的**链起点**（起点本来没有文件就删掉）。
+ */
+export async function migrateLegacyAppliedFiles(dshHome) {
+    const warnings = [];
+    const raw = await readTextOrNull(indexPathOf(dshHome));
+    if (raw === null)
+        return warnings;
+    let parsed;
+    try {
+        const value = JSON.parse(raw);
+        if (!isRecord(value))
+            return warnings;
+        parsed = value;
+    }
+    catch {
+        return warnings;
+    }
+    if (parsed.version !== 3)
+        return warnings;
+    for (const [key, value] of Object.entries(isRecord(parsed.applied) ? parsed.applied : {})) {
+        if (!isRecord(value))
+            continue;
+        const entry = value;
+        const target = targetOfKey(key);
+        const agentsPath = typeof entry.agentsPath === 'string' && entry.agentsPath !== ''
+            ? entry.agentsPath
+            : agentsPathOf(dshHome, target);
+        const content = await readTextOrNull(agentsPath);
+        if (content === null)
+            continue;
+        const digest = typeof entry.digest === 'string' ? entry.digest : '';
+        if (digest !== '' && digest !== digestOf(content)) {
+            warnings.push(`「${targetLabelOf(target)}」的 AGENTS.md 在应用之后被改过，保留原样不回滚（预设已改为追加系统提示词，不再需要那份副本）`);
+            continue;
+        }
+        const chainStart = typeof entry.chainStart === 'string' && entry.chainStart !== '' ? entry.chainStart : '';
+        const start = chainStart === '' ? null : await readTextOrNull(join(backupDirOf(dshHome, target), chainStart));
+        try {
+            if (start !== null)
+                await writeFileAtomic(agentsPath, start);
+            else
+                await rm(agentsPath, { force: true });
+        }
+        catch (error) {
+            warnings.push(`把「${agentsPath}」恢复到旧版本覆盖之前的状态失败：${describe(error)}`);
+        }
+    }
+    // 抬到 v4：之后 readIndex 不再看到那些 v3 字段。
+    await writeIndex(dshHome, await readIndex(dshHome));
+    notifyChanged();
+    return warnings;
 }

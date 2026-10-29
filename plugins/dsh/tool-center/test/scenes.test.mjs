@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { createService } from '../dist/host/skills/service.js'
 import { loadState } from '../dist/host/skills/state.js'
 import { loadMcp, patchPathOf } from '../dist/host/mcp/service.js'
-import { savePreset } from '../dist/host/prompts/service.js'
+import { createPromptSource, loadPrompts, savePreset } from '../dist/host/prompts/service.js'
 import {
   adoptPendingScene,
   deleteScene,
@@ -296,16 +296,22 @@ test('an unknown scene is refused', async () => {
   await assert.rejects(() => setSessionScene(dshHome, service, 's1', workspace, 'nope'), /场景不存在/)
 })
 
-test('a workspace-scoped preset lands in that workspace AGENTS.md and is removed on clear', async () => {
+test('a workspace-scoped preset is enabled by the scene and cleared again', async () => {
   const { dshHome, service, workspace } = await fixture()
   await savePreset(dshHome, 'ws-preset', '# 工作区指令\n', { kind: 'workspace', path: workspace })
   await saveScene(dshHome, { name: 'ws', prompt: 'ws-preset', skills: [], exclusive: false })
   await setWorkspaceScene(dshHome, service, workspace, 'ws')
 
-  assert.equal(await readFile(join(workspace, 'AGENTS.md'), 'utf8'), '# 工作区指令\n')
+  const source = createPromptSource(dshHome)
+  await source.refresh()
+  assert.equal(source.textFor(workspace), '# 工作区指令')
+  const agentsFile = await stat(join(workspace, 'AGENTS.md')).then(() => true).catch(() => false)
+  assert.equal(agentsFile, false, 'the preset is appended to the prompt, never written to AGENTS.md')
+
   await setWorkspaceScene(dshHome, service, workspace, null)
-  const exists = await stat(join(workspace, 'AGENTS.md')).then(() => true).catch(() => false)
-  assert.equal(exists, false, 'clearing restores the chain start (no file)')
+  await source.refresh()
+  assert.equal(source.textFor(workspace), '', 'clearing the scene stops the append')
+  assert.equal((await loadPrompts(dshHome)).applied.length, 0)
 })
 
 test('a global preset is skipped with a warning instead of leaking into every workspace', async () => {
@@ -315,8 +321,7 @@ test('a global preset is skipped with a warning instead of leaking into every wo
   const report = await setWorkspaceScene(dshHome, service, workspace, 'g')
 
   assert.ok(report.warnings.some((warning) => warning.includes('不随工作区隔离')))
-  const globalExists = await stat(join(dshHome, 'AGENTS.md')).then(() => true).catch(() => false)
-  assert.equal(globalExists, false)
+  assert.equal((await loadPrompts(dshHome)).applied.length, 0, 'nothing was enabled')
 })
 
 test('a session-level choice never changes the prompt, and says so', async () => {
@@ -326,8 +331,7 @@ test('a session-level choice never changes the prompt, and says so', async () =>
   const report = await setSessionScene(dshHome, service, 's1', workspace, 'ws')
 
   assert.ok(report.warnings.some((warning) => warning.includes('不改变提示词')))
-  const exists = await stat(join(workspace, 'AGENTS.md')).then(() => true).catch(() => false)
-  assert.equal(exists, false, 'the prompt is not applied by a session-level choice')
+  assert.equal((await loadPrompts(dshHome)).applied.length, 0, 'the prompt is not applied by a session-level choice')
 })
 
 test('a missing skill in the allowlist is reported as "entered, but not everything"', async () => {

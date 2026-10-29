@@ -53,7 +53,7 @@ DeepSeek Harness 的一个左侧栏面板：**场景 / MCP / 技能 / 提示词*
 - **技能留空的场景只动 MCP**：只勾了服务器的场景不会写一张空白名单 —— 那会把整个会话的
   技能一次全关掉。一条没命中时写 `null`（跟随下层）；只有「整套切换 + 勾了技能」才会遮人。
 - 提示词**只有作用范围就是这个工作区的预设**才会进场景；全局预设会被跳过并警告。
-  **提示词没有会话级**：`AGENTS.md` 是文件、宿主按目录读，按会话开关不了 —— 所以会话选择只覆盖
+  **提示词没有会话级**：区段正文按工作区现算，按会话开关不了 —— 所以会话选择只覆盖
   技能与 MCP 工具，命令与界面都会说明这一点。
 - **MCP 工具按作用域隔离**：服务器本身仍是宿主级装载（`cordis.patch.yml` 不动），但「模型能看见
   哪些 MCP 工具」是在 **agent 作用域**里遮出来的 —— 只保留勾选服务器的
@@ -109,27 +109,30 @@ DeepSeek Harness 的一个左侧栏面板：**场景 / MCP / 技能 / 提示词*
 ### 提示词
 
 多套预设（`tool-center/prompts/*.md`，中文名可用），**作用范围是每份预设自己的属性**，卡片上
-直接启用 / 停用：
+直接启用 / 停用。启用后**追加成一段系统提示词**（`ctx.systemPrompt.section`），**不写任何用户
+文件** —— 所以用户手改、覆盖、甚至删掉 `AGENTS.md`，预设都照旧生效。
 
-| 作用范围 | 写到哪 | 谁受影响 |
-|---|---|---|
-| 全局 | `$DSH_HOME/AGENTS.md` | 每个会话 |
-| 工作区 | `<项目>/AGENTS.md` | 只该项目里的会话 |
+| 作用范围 | 追加给谁 |
+|---|---|
+| 全局 | 每个会话 |
+| 工作区 | 只该项目里的会话（含子目录） |
 
-两档都是宿主真实存在的指令来源（`dsh-agent-instructions` 读用户级全局 + cwd 到项目根这条祖先链），
-所以「只对某个工作区生效」不是模拟。工作区列表来自宿主的**工作区登记表**
-（`ctx.workspaceRegistry`），不是猜的、也不是写死的。
+工作区列表来自宿主的**工作区登记表**（`ctx.workspaceRegistry`），不是猜的、也不是写死的。
 
-- 因为范围属于预设，**可以同时有两份在不同工作区生效**，互不干扰；
-- 同一个目标（同一个 `AGENTS.md`）上只允许一份生效：启用新的会自动停用旧的，并告诉你换掉了谁；
-- **启用 = 先备份再覆盖**，每个目标各留 5 代；**停用 = 回到该目标的链起点**
-  （起点本来没有文件就把文件删掉，而不是留一个空文件被宿主当成空指令读进去）；
-- 每个目标各自记内容指纹：外部手改了某份 `AGENTS.md`，界面会标那份「已被外部改动」；
-- 页面下方列「生效中的目标」，一眼看清哪份写到了哪个文件。
+- 范围属于预设，所以**可以同时有两份在不同工作区生效**，互不干扰；
+- 同一个目标上只允许一份生效：启用新的会自动停用旧的，并告诉你换掉了谁；
+- 正文只在预设文件里存在一份：改正文不用「再应用一次」，也就不需要备份与「已被外部改动」这种状态；
+- 区段固定在 order 9500（工具说明之后、结构化输出的约束之前），正文按 `interpolate: false`
+  原样注入 —— 正文里的 `{{…}}` 只是正文，不会被当成提示词变量解析；
+- 页面下方列「生效中的目标」，一眼看清哪份追加到了哪个范围。
 
-**生效时机说实话**：宿主每个会话**每轮**都会重新读取这些文件，所以启用 / 停用 / 改正文会影响
-已有会话的**下一轮**；文件方案做不到「只对新会话生效」，本插件不假装能。真正的隔离边界是
-作用范围：绑定到工作区 A 的预设不碰 B 项目和全局。
+**生效时机说实话**：系统提示词每一步都会重新组装，所以启用 / 停用 / 改正文会影响已有会话的
+**下一轮**；做不到「只对新会话生效」。真正的隔离边界是作用范围：绑定到工作区 A 的预设不碰
+B 项目和全局。
+
+> 旧版本（≤0.5）把预设正文**覆盖写进** `AGENTS.md`。升级时那份副本会被收回：内容仍是当初写进去
+> 的那份就恢复成你当时的原文；已经被你手改过的文件一个字都不动，只记一条日志。
+> `tool-center/prompts/__backup__/` 是旧版本留下的备份，可以手动删掉。
 
 ## 安装
 
@@ -151,7 +154,7 @@ DeepSeek Harness 的一个左侧栏面板：**场景 / MCP / 技能 / 提示词*
 cd D:\custom_project\ai-project\my-skills\plugins\dsh\tool-center
 npm install        # 只装 esbuild / typescript / @types/node / react / @types/react
 npm run build      # 必须先构建：dist/ 不存在时宿主加载会失败
-npm test           # 185 个用例
+npm test           # 188 个用例
 
 cd $env:USERPROFILE\.dsh\profiles\desktop
 npm install --no-audit --no-fund
@@ -176,8 +179,8 @@ npm install --no-audit --no-fund
 | 内容 | 位置 |
 |---|---|
 | 技能策略（来源开关、逐条开关、首选、自定义目录、rank）+ **工作区场景层** | `$DSH_HOME/tool-center/state.json`（工作区层在 `layers.workspaces`） |
-| 提示词预设 + 索引 + 备份 | `$DSH_HOME/tool-center/prompts/`（备份在 `__backup__/`） |
-| 提示词生效文件 | 全局 `$DSH_HOME/AGENTS.md`；工作区场景写 `<工作区>/AGENTS.md` |
+| 提示词预设 + 索引 | `$DSH_HOME/tool-center/prompts/`（`__backup__/` 是旧版本遗留，可删） |
+| 提示词生效方式 | 追加成系统提示词区段（`tool-center:prompt`），不写任何用户文件 |
 | 场景定义 + 每个工作区默认 + 每个会话的选择 | `$DSH_HOME/tool-center/scenes.json`（v4：`scenes[]` / `active[工作区]` / `sessions[根会话]` / `applied[工作区]`） |
 | MCP 服务器 | `$DSH_HOME/cordis.patch.yml`（本插件只追加自己的段落，写前备份） |
 | patch 备份 | `$DSH_HOME/tool-center/backups/` |
@@ -324,7 +327,7 @@ src/host/
     paths.ts            路径身份、原子写、唯一写锁、旧布局迁移
     fs.ts               「出错就当没有」的读法（exists / statOrNull / readTextOrNull）
     json.ts             isRecord：非 null、非数组的「普通对象」判断（原先各处手写）
-    backups.ts          带时间戳的备份 + 保留最近 N 份（提示词 / MCP 共用）
+    backups.ts          带时间戳的备份 + 保留最近 N 份（MCP 的 patch 用）
     http.ts             请求管道：POST、门禁头、JSON 体与大小上限、回环兜底
     zip.ts              零依赖 ZIP 读写（CRC 表与浏览器侧 lib/core/zip.ts 各一份，改动时两处一起改）
     log.ts              插件日志（512 KiB 滚动）
@@ -342,7 +345,7 @@ src/host/
       authoring.ts      新建 / 编辑 / 读详情（一次读盘出正文与 frontmatter）
       trash.ts          回收站：删除是移动，索引只有一个文件
       transfer.ts       导入（路径 / ZIP）与导出
-  prompts/service.ts    提示词预设、应用 / 取消应用、备份与指纹
+  prompts/service.ts    提示词预设、启用 / 停用、系统提示词区段的正文快照
   mcp/service.ts        cordis.patch.yml 的 MCP 服务器：列出 / 启停 / 删除
   scenes/service.ts     场景：可复用定义、工作区默认、会话自选、层物化与提示词
   scenes/gate.ts        场景的工具闸门：在 agent 作用域里遮掉不属于该场景的 MCP 工具

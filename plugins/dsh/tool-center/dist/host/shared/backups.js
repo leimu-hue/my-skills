@@ -1,8 +1,9 @@
 /**
  * 备份一件事：写一份带时间戳的副本，并只保留最近 N 份。
  *
- * 提示词（AGENTS.md）与 MCP（cordis.patch.yml）原本各写了一遍同样的「mkdir → 时间戳 →
- * 写 → 列目录 → 删旧的」，连时间戳格式都一致；这里收成一处。
+ * 原本提示词（AGENTS.md）与 MCP（cordis.patch.yml）各写了一遍同样的「mkdir → 时间戳 →
+ * 写 → 列目录 → 删旧的」，收成一处。提示词改成追加系统提示词、不再写用户文件之后，实际
+ * 只剩 MCP 的 patch 在用；形状是通用的，所以留在 shared/。
  */
 import { mkdir, readdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
