@@ -11,8 +11,8 @@
  */
 import { RegistryError } from '../shared/errors.js'
 import { normalizePath } from '../shared/paths.js'
-import { directoryTarget, listDirectory, searchProjects } from '../files/service.js'
-import type { ProjectRoot } from '../files/service.js'
+import { directoryTarget } from '../files/service.js'
+import type { FileSearch, ProjectRoot } from '../files/service.js'
 import { boundaryText, describeUpdate, sectionText } from '../prompt/text.js'
 import { canonicalWorkspace, nativePicker, sandboxModeOf, sessionOf, workspaceOfSession, workspaceRows } from '../workspace/service.js'
 import type { Context } from '@deepseek-ai/cordis'
@@ -22,12 +22,17 @@ import type { StateValue } from '../shared/types.js'
 
 type Payload = Record<string, unknown>
 
-export type Handler = (payload: Payload) => Promise<unknown>
+/**
+ * `signal` 在请求方掉线时中止：菜单每按一个键就发一次请求，没人看的那次
+ * 不该继续替一份可能很大的索引跑遍历。
+ */
+export type Handler = (payload: Payload, signal: AbortSignal) => Promise<unknown>
 
 export interface HandlerDeps {
   ctx: Context
   registry: Registry
   sessions: SessionRegistry
+  files: FileSearch
   openInFileManager(path: string): void
 }
 
@@ -45,7 +50,7 @@ function rootsOf(registry: Registry, workspace: string): ProjectRoot[] {
 }
 
 export function createHandlers(deps: HandlerDeps): Record<string, Handler> {
-  const { ctx, registry, sessions } = deps
+  const { ctx, registry, sessions, files } = deps
 
   /**
    * 目标 workspace：显式路径优先（面板知道路径），否则由会话解析（composer 行
@@ -85,22 +90,22 @@ export function createHandlers(deps: HandlerDeps): Record<string, Handler> {
 
     /* related projects 里的文件，供 `@` 菜单使用：内置的文件源受 Agent 工作目录限制，
        而这些项目是它之外的兄弟目录。只读且有上限——见 files/service.ts。 */
-    async files(payload) {
+    async files(payload, signal) {
       const query = str(payload.query)
       if (query.trim() === '') return { rows: [] }
-      return { rows: searchProjects(rootsOf(registry, workspaceOf(payload)), query, limitOf(payload)) }
+      return { rows: await files.search(rootsOf(registry, workspaceOf(payload)), query, limitOf(payload), signal) }
     },
 
     /* 一次下钻：该目录必须位于此 workspace 的某个 related project 之内，
        然后列出它的子项（见 `directoryTarget`）。 */
-    async list(payload) {
+    async list(payload, signal) {
       const dir = normalizePath(str(payload.dir))
       if (dir === '') throw new RegistryError('not-directory')
       const target = directoryTarget(rootsOf(registry, workspaceOf(payload)), dir)
       /* 不是 'no-group'：该 workspace 可能本来就有项目——只是这个目录不在其中任何
          一个里面，UI 必须能区分这两种情况。 */
       if (target === null) throw new RegistryError('outside-project')
-      return listDirectory(target.root, target.rel, str(payload.filter), limitOf(payload))
+      return files.list(target.root, target.rel, str(payload.filter), limitOf(payload), signal)
     },
 
     async add(payload) {
@@ -125,7 +130,10 @@ export function createHandlers(deps: HandlerDeps): Record<string, Handler> {
 
     async remove(payload) {
       const workspace = requireWorkspace(payload)
+      /* 删之前先记下路径：它的索引也要跟着走，否则内存里会留一份没人认领的条目。 */
+      const target = registry.findProject(workspace, payload.id)
       const name = registry.remove(workspace, payload.id)
+      if (target !== undefined) files.forget(target.path)
       announce(workspace, 'removed ' + name, payload.notify)
       return { removed: name }
     },

@@ -21,11 +21,6 @@ function kindOf(value: unknown): RowKind {
   return value === 'file' || value === 'directory' ? value : 'project'
 }
 
-/** 单个面包屑的 drill 载荷：它要导航到的目录。 */
-export function drillValue(label: string, path: string): string {
-  return valueOf({ kind: 'directory', label, mention: referenceOf(path, true) })
-}
-
 /** 写入 `candidate.value` 的行载荷：一次 pick 必须插入的内容。 */
 export function parseRowValue(value: unknown): RowValue | null {
   if (typeof value !== 'string' || value === '') return null
@@ -54,13 +49,19 @@ export function projectRows(projects: ProjectView[], section: string): InputTrig
   }))
 }
 
-/** 某一目录层级的行：目录可 drill，文件可插入。 */
+/**
+ * 某一目录层级的行：目录可 drill，文件可插入。
+ *
+ * 描述里以项目名开头：同为 `src/index.ts` 的两行来自两个关联项目时，
+ * 只看相对路径用户分不清点的是哪一个，而绝对路径太长——截断后正好把
+ * 项目名露在左边。
+ */
 export function levelRows(hits: FileHit[], section: string): InputTriggerCandidate[] {
   return hits.map((entry) => {
     const directory = entry.kind === 'directory'
     return {
       name: directory ? entry.name + '/' : entry.name,
-      description: entry.rel,
+      description: entry.project + '  ·  ' + entry.rel,
       icon: directory ? 'folder' : 'file',
       section,
       drill: directory,

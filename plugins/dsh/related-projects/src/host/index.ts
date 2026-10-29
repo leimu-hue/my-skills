@@ -18,6 +18,13 @@ import { SessionRegistry } from './prompt/sessions.js'
 import { createHandlers } from './api/routes.js'
 import { createRouteHandler, routePath } from './api/server.js'
 import { createTool } from './api/tools.js'
+import {
+  DEFAULT_FILE_SEARCH_EXCLUDED_DIRECTORIES,
+  DEFAULT_FILE_SEARCH_MAX_ENTRIES,
+  DEFAULT_FILE_SEARCH_MAX_RESULTS,
+  FileSearch,
+} from './files/service.js'
+import type { FileSearchConfig } from './files/service.js'
 
 export const name = 'related-projects'
 
@@ -29,14 +36,39 @@ export const name = 'related-projects'
  */
 export const inject = ['webServer', 'tools']
 
+/** `@` 菜单文件搜索的预算与排除清单。 */
+export interface FileSearchOptions {
+  maxResults?: number
+  maxEntries?: number
+  excludedDirectories?: string[]
+}
+
 export interface Config {
   /** 注册表文件；缺省写到 `$DSH_HOME/related-projects/settings.json`。 */
   dataFile?: string
+  /** `@` 菜单的文件搜索；缺省即与 DSH 自带的文件补全一致。 */
+  fileSearch?: FileSearchOptions
 }
 
 export const Config: Schema<Config> = Schema.object({
   dataFile: Schema.string().description('注册表文件；缺省写到 $DSH_HOME/related-projects/settings.json'),
+  fileSearch: Schema.object({
+    maxResults: Schema.number().step(1).min(1).default(DEFAULT_FILE_SEARCH_MAX_RESULTS)
+      .description('一次查询最多返回的行数'),
+    maxEntries: Schema.number().step(1).min(1).default(DEFAULT_FILE_SEARCH_MAX_ENTRIES)
+      .description('一个项目最多索引多少条目；唯一的预算，没有深度上限'),
+    excludedDirectories: Schema.array(Schema.string()).default([...DEFAULT_FILE_SEARCH_EXCLUDED_DIRECTORIES])
+      .description('永不遍历的目录名（basename）'),
+  }).description('@ 菜单文件搜索的预算与排除清单'),
 })
+
+function fileSearchConfigOf(options: FileSearchOptions | undefined): FileSearchConfig {
+  return {
+    maxResults: options?.maxResults ?? DEFAULT_FILE_SEARCH_MAX_RESULTS,
+    maxEntries: options?.maxEntries ?? DEFAULT_FILE_SEARCH_MAX_ENTRIES,
+    excludedDirectories: options?.excludedDirectories ?? DEFAULT_FILE_SEARCH_EXCLUDED_DIRECTORIES,
+  }
+}
 
 /** 在操作系统文件管理器里打开目录；失败不是调用方的问题。 */
 function openInFileManager(target: string): void {
@@ -50,11 +82,13 @@ function openInFileManager(target: string): void {
 export function apply(ctx: Context, config: Config): void {
   const registry = new Registry(config?.dataFile)
   const sessions = new SessionRegistry(ctx, registry)
+  const files = new FileSearch(fileSearchConfigOf(config?.fileSearch))
 
-  installRoutes(ctx, registry, sessions)
+  installRoutes(ctx, registry, sessions, files)
   /* `tools.register()` 自己把 disposer 挂到调用它的上下文上。 */
   ctx.tools.register(createTool(ctx, registry, sessions))
   trackSessions(ctx, sessions)
+  trackFileChanges(ctx, files)
 }
 
 /* --------------------------------- 路由 --------------------------------- */
@@ -64,9 +98,9 @@ export function apply(ctx: Context, config: Config): void {
  * 不接管生命周期，所以必须由 `ctx.effect()` 回收——否则重载插件会撞上
  * 「duplicate exact route」。
  */
-function installRoutes(ctx: Context, registry: Registry, sessions: SessionRegistry): void {
+function installRoutes(ctx: Context, registry: Registry, sessions: SessionRegistry, files: FileSearch): void {
   const webServer: WebServer = ctx.webServer
-  const handlers = createHandlers({ ctx, registry, sessions, openInFileManager })
+  const handlers = createHandlers({ ctx, registry, sessions, files, openInFileManager })
   for (const [method, handler] of Object.entries(handlers)) {
     const serve = createRouteHandler({ ctx, method, handler })
     ctx.effect(
@@ -97,4 +131,31 @@ function trackSessions(ctx: Context, sessions: SessionRegistry): void {
   } catch { /* 这个 Host 上没有活 agent 注册表 */ }
 
   ctx.effect(() => () => sessions.disposeAll(), 'related-projects: session cleanup')
+}
+
+/* ------------------------------ 文件索引 ------------------------------ */
+
+/** `session/event` 的载荷里只有事件类型对本插件有意义。 */
+interface SessionEventLike {
+  type: string
+}
+
+/**
+ * 索引失效：任何工具结果都可能改过关联项目里的文件，而菜单只有路径、
+ * 没有别的新鲜度来源。与自带的文件补全同一策略——只标记过期，下一次裸查询
+ * 先用旧条目作答，重建在后台进行（见 files/service.ts 的 `indexFor`）。
+ *
+ * `session/event` 由 `dsh-session` 声明；事件名用字符串转接，好让本插件在
+ * 没有这个服务的 Host 上也能加载。
+ */
+function trackFileChanges(ctx: Context, files: FileSearch): void {
+  const listen = ctx.on.bind(ctx) as unknown as (
+    name: string,
+    listener: (session: unknown, event: SessionEventLike) => void,
+  ) => void
+  listen('session/event', (_session, event) => {
+    if (event.type !== 'tool/result') return
+    files.invalidate()
+  })
+  ctx.effect(() => () => files.dispose(), 'related-projects: file search cache')
 }

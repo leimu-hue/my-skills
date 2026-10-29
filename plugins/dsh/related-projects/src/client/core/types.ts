@@ -73,6 +73,7 @@ export interface FileHit {
   rel: string
   name: string
   kind: 'file' | 'directory'
+  project: string
 }
 
 /**

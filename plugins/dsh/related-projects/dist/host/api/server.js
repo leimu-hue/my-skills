@@ -43,11 +43,24 @@ export function createRouteHandler(deps) {
             sendError(res, 405, 'method', 'POST required');
             return;
         }
+        /* 响应在写完之前就 close，说明是请求方走了（客户端换了两次按键就会这样）。
+           中止信号交给处理器，让它们把没人在等的遍历停下来。 */
+        const controller = new AbortController();
+        res.on('close', () => {
+            if (res.writableEnded !== true)
+                controller.abort(new Error('request closed'));
+        });
         try {
             const payload = await readJsonBody(req);
-            sendJson(res, 200, { ok: true, data: await deps.handler(payload) });
+            const data = await deps.handler(payload, controller.signal);
+            /* 已经中止：连接不在了，写回执没有意义，也不能把 abort 报成 500。 */
+            if (controller.signal.aborted)
+                return;
+            sendJson(res, 200, { ok: true, data });
         }
         catch (error) {
+            if (controller.signal.aborted)
+                return;
             if (error instanceof RegistryError) {
                 sendError(res, 400, error.code, error.code);
                 return;

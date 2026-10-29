@@ -12,7 +12,7 @@ import { homedir, tmpdir } from 'node:os'
 import { join, parse } from 'node:path'
 import { Readable } from 'node:stream'
 import { Registry } from '../dist/host/registry/service.js'
-import { searchProjects, directoryTarget, listDirectory } from '../dist/host/files/service.js'
+import { FileSearch, directoryTarget } from '../dist/host/files/service.js'
 import { SessionRegistry } from '../dist/host/prompt/sessions.js'
 import { createHandlers } from '../dist/host/api/routes.js'
 import { createRouteHandler, routePath } from '../dist/host/api/server.js'
@@ -204,35 +204,117 @@ test('prompt: the section is instructions plus rows, and empty without any proje
   }
 })
 
-test('files: ranks by name, hides build directories, and refuses to walk outside', () => {
+test('files: a source file far below the old depth cap is still indexed', async () => {
   const box = sandbox()
   try {
+    /* 深得像 Java 包结构：旧的「最多 12 层」正是在这里把源码整层丢掉的。 */
+    const deep = join(box.proj, 'boot', 'src', 'main', 'java', 'com', 'xiaopeng', 'xpd', 'task', 'manage', 'boot', 'presentation', 'controller', 'external')
+    mkdirSync(deep, { recursive: true })
+    writeFileSync(join(deep, 'ExTaskController.java'), 'x')
+
+    const files = new FileSearch()
     const roots = [{ path: box.proj, name: 'proj' }]
 
-    const hit = searchProjects(roots, 'index')
-    assert.equal(hit.length, 1)
-    assert.deepEqual(Object.keys(hit[0]).sort(), ['kind', 'name', 'path', 'rel'], 'a row carries no ranking fields')
-    assert.equal(hit[0].rel, 'src/index.ts')
+    const hit = await files.search(roots, 'ExTaskController')
+    assert.equal(
+      hit[0].rel,
+      'boot/src/main/java/com/xiaopeng/xpd/task/manage/boot/presentation/controller/external/ExTaskController.java',
+      'the file leads; its ancestors may still fuzzy-match behind it',
+    )
+    assert.deepEqual(Object.keys(hit[0]).sort(), ['kind', 'name', 'path', 'project', 'rel'], 'a row carries no ranking fields')
+    assert.equal(hit[0].project, 'proj', 'the row names the project it came from')
+  } finally {
+    box.dispose()
+  }
+})
 
-    assert.equal(searchProjects(roots, 'src').length, 1, 'a matching directory swallows its descendants')
-    assert.equal(searchProjects(roots, 'dep').length, 0, 'node_modules is not searched')
-    assert.equal(searchProjects(roots, '   ').length, 0)
+test('files: ranks by name, then path, then subsequence; build and dot directories stay out', async () => {
+  const box = sandbox()
+  try {
+    mkdirSync(join(box.proj, '.github', 'workflows'), { recursive: true })
+    writeFileSync(join(box.proj, '.github', 'workflows', 'ci.yml'), 'x')
+    mkdirSync(join(box.proj, 'boot', 'src'), { recursive: true })
+    writeFileSync(join(box.proj, 'boot', 'src', 'Start.java'), 'x')
 
-    assert.equal(directoryTarget(roots, join(box.proj, 'src')).rel, 'src')
-    assert.equal(directoryTarget(roots, join(box.root, 'elsewhere')), null)
-    assert.equal(directoryTarget(roots, join(box.proj, '..', 'other-ws')), null, 'a sibling cannot be reached with ..')
+    const files = new FileSearch()
+    const roots = [{ path: box.proj, name: 'proj' }]
 
-    const level = listDirectory({ path: box.proj, name: 'proj' }, '', '')
+    const byName = await files.search(roots, 'index')
+    assert.equal(byName.length, 1)
+    assert.equal(byName[0].rel, 'src/index.ts')
+
+    /* 深文件不再被命中的目录“吞掉”：同一次查询里目录排前、文件也在。 */
+    const byPath = await files.search(roots, 'src')
+    assert.equal(byPath[0].rel, 'src', 'the exact directory keeps the first row')
+    assert.ok(byPath.some((row) => row.rel === 'src/index.ts'), 'a path match surfaces the file too')
+
+    /* 只记得半条路径，或把名字记得模模糊糊，都还能命中。 */
+    assert.equal((await files.search(roots, 'boot/src/Start')).length, 1)
+    assert.ok(
+      (await files.search(roots, 'Strt')).some((row) => row.rel === 'boot/src/Start.java'),
+      'a fuzzy subsequence still finds the file',
+    )
+
+    assert.equal((await files.search(roots, 'dep')).length, 0, 'node_modules is not searched')
+    assert.equal((await files.search(roots, 'ci.yml')).length, 0, 'a dot directory is hidden from ordinary queries')
+    assert.ok(
+      (await files.search(roots, '.github/workflows')).some((row) => row.rel === '.github/workflows'),
+      'asking for a dot path shows it',
+    )
+    assert.equal((await files.search(roots, '   ')).length, 0)
+  } finally {
+    box.dispose()
+  }
+})
+
+test('files: the same relative path in two projects stays distinguishable', async () => {
+  const box = sandbox()
+  try {
+    const second = join(box.root, 'proj-two')
+    mkdirSync(join(second, 'src'), { recursive: true })
+    writeFileSync(join(second, 'src', 'index.ts'), 'x')
+
+    const files = new FileSearch()
+    const roots = [{ path: box.proj, name: 'proj' }, { path: second, name: 'proj-two' }]
+    const rows = await files.search(roots, 'index')
+
+    assert.deepEqual(rows.map((row) => row.rel), ['src/index.ts', 'src/index.ts'], 'the rows look identical')
+    assert.deepEqual(rows.map((row) => row.project).sort(), ['proj', 'proj-two'], 'the project names tell them apart')
+    assert.equal(new Set(rows.map((row) => row.path)).size, 2, 'and so do the absolute paths')
+  } finally {
+    box.dispose()
+  }
+})
+
+test('files: one level is read live, never walked outside the project', async () => {
+  const box = sandbox()
+  try {
+    const files = new FileSearch()
+    const roots = [{ path: box.proj, name: 'proj' }]
+    const project = { path: box.proj, name: 'proj' }
+
+    const level = await files.list(project, '', '')
     const names = level.rows.map((row) => row.name)
     assert.ok(names.includes('src') && names.includes('README.md'))
     assert.ok(!names.includes('node_modules'))
     assert.equal(level.rows[0].kind, 'directory', 'directories come first')
     assert.equal(level.truncated, false)
 
-    const filtered = listDirectory({ path: box.proj, name: 'proj' }, '', 'read')
+    /* 深层目录是实时读的：没有索引，所以多深都进得去。 */
+    const deepRel = 'boot/src/main/java'
+    mkdirSync(join(box.proj, 'boot', 'src', 'main', 'java', 'com'), { recursive: true })
+    const deep = await files.list(project, deepRel, '')
+    assert.deepEqual(deep.rows.map((row) => row.name), ['com'])
+
+    const filtered = await files.list(project, '', 'read')
     assert.deepEqual(filtered.rows.map((row) => row.name), ['README.md'])
-    assert.equal(listDirectory({ path: box.proj, name: 'proj' }, '', '', 1).truncated, true)
-    assert.deepEqual(listDirectory({ path: join(box.root, 'missing'), name: 'x' }, '', ''), { rows: [], truncated: false })
+    assert.equal((await files.list(project, '', '', 1)).truncated, true)
+    assert.deepEqual(await files.list({ path: join(box.root, 'missing'), name: 'x' }, '', ''), { rows: [], truncated: false })
+    assert.deepEqual(await files.list(project, 'node_modules', ''), { rows: [], truncated: false })
+
+    assert.equal(directoryTarget(roots, join(box.proj, 'src')).rel, 'src')
+    assert.equal(directoryTarget(roots, join(box.root, 'elsewhere')), null)
+    assert.equal(directoryTarget(roots, join(box.proj, '..', 'other-ws')), null, 'a sibling cannot be reached with ..')
 
     assert.equal(basename('D:\\a\\b\\proj'), 'proj')
     assert.equal(basename('/a/b/proj/'), 'proj')
@@ -244,6 +326,41 @@ test('files: ranks by name, hides build directories, and refuses to walk outside
   } finally {
     box.dispose()
   }
+})
+
+test('files: an invalidated index keeps answering, then catches up in the background', async () => {
+  const box = sandbox()
+  try {
+    const files = new FileSearch()
+    const roots = [{ path: box.proj, name: 'proj' }]
+    assert.equal((await files.search(roots, 'Later')).length, 0)
+
+    writeFileSync(join(box.proj, 'src', 'Later.ts'), 'x')
+    files.invalidate()
+    assert.equal((await files.search(roots, 'Later')).length, 0, 'the stale index answers instead of waiting')
+
+    /* 重建在后台：给它几拍。 */
+    const deadline = Date.now() + 2_000
+    let found = []
+    while (Date.now() < deadline) {
+      found = await files.search(roots, 'Later')
+      if (found.length > 0) break
+      await new Promise((resolve) => setTimeout(resolve, 10))
+    }
+    assert.equal(found.length, 1, 'the rebuilt index sees the file')
+
+    /* 删项目会把索引一起放掉；下一次查询要重建，而不是继续用一份已 dispose 的实例回空。 */
+    files.forget(box.proj)
+    assert.equal((await files.search(roots, 'Later')).length, 1, 'a forgotten project rebuilds on demand')
+  } finally {
+    box.dispose()
+  }
+})
+
+test('files: the search config is validated like the shipped file completion', () => {
+  assert.throws(() => new FileSearch({ maxResults: 0, maxEntries: 10, excludedDirectories: [] }), /maxResults/)
+  assert.throws(() => new FileSearch({ maxResults: 10, maxEntries: 0, excludedDirectories: [] }), /maxEntries/)
+  assert.throws(() => new FileSearch({ maxResults: 10, maxEntries: 10, excludedDirectories: ['a/b'] }), /excludedDirectories/)
 })
 
 /* ------------------------------- 路由 ------------------------------- */
@@ -261,8 +378,9 @@ function routeFixture() {
     on: () => () => {},
   }
   const sessions = new SessionRegistry(ctx, registry)
+  const files = new FileSearch()
   const opened = []
-  const handlers = createHandlers({ ctx, registry, sessions, openInFileManager: (path) => opened.push(path) })
+  const handlers = createHandlers({ ctx, registry, sessions, files, openInFileManager: (path) => opened.push(path) })
   /* Host 为每个方法注册一条 exact 路由；这里照同一张表复现，未命中的路径
      交给「WebServer 的 404」，因此拼错的路径与未知方法一样得到 404。 */
   const routes = new Map(
@@ -283,10 +401,13 @@ function routeFixture() {
     req.url = path
     req.headers = { host: '127.0.0.1:50769', 'content-type': 'application/json', ...headers }
     await serve(req, {
+      writableEnded: false,
+      on: () => {},
       writeHead: (status) => {
         captured.status = status
       },
       end: (text) => {
+        captured.writableEnded = true
         captured.body = JSON.parse(text)
       },
     })
@@ -383,8 +504,8 @@ test('api: the @ menu endpoints only walk inside the registered projects', async
     await fixture.post('add', { workspace: box.ws, path: box.proj })
 
     const found = await fixture.post('files', { workspace: box.ws, query: 'src' })
-    assert.equal(found.body.data.rows.length, 1)
-    assert.equal(found.body.data.rows[0].kind, 'directory')
+    assert.equal(found.body.data.rows[0].rel, 'src')
+    assert.ok(found.body.data.rows.some((row) => row.rel === 'src/index.ts'), 'a path match surfaces the file too')
     assert.deepEqual((await fixture.post('files', { workspace: box.ws, query: '  ' })).body.data.rows, [])
 
     const listed = await fixture.post('list', { workspace: box.ws, dir: join(box.proj, 'src'), filter: '' })

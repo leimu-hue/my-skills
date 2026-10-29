@@ -111,4 +111,6 @@ export interface FileHit {
   rel: string
   name: string
   kind: 'file' | 'directory'
+  /** 它属于哪个关联项目（显示名）：两个项目里可能有同一条相对路径，行上必须看得出区别。 */
+  project: string
 }

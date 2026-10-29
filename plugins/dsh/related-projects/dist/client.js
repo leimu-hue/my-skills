@@ -1138,9 +1138,6 @@ function valueOf(value) {
 function kindOf(value) {
   return value === "file" || value === "directory" ? value : "project";
 }
-function drillValue(label, path) {
-  return valueOf({ kind: "directory", label, mention: referenceOf(path, true) });
-}
 function parseRowValue(value) {
   if (typeof value !== "string" || value === "") return null;
   try {
@@ -1170,7 +1167,7 @@ function levelRows(hits, section) {
     const directory = entry.kind === "directory";
     return {
       name: directory ? entry.name + "/" : entry.name,
-      description: entry.rel,
+      description: entry.project + "  \xB7  " + entry.rel,
       icon: directory ? "folder" : "file",
       section,
       drill: directory,
@@ -1230,30 +1227,6 @@ function createTriggerSource(t) {
         rows.push(...levelRows(await rowsOf("files", sessionPayload(sessionId, { query })), t("menu.files")));
       }
       return request.signal.aborted ? [] : rows;
-    },
-    /* drill 位置的面包屑：先是项目，然后是每一级目录段。
-       只在菜单确实由 drill 打开时发布，与随附源限定其 header 的方式一致。 */
-    header(session, request) {
-      if (request.drilled !== true) return void 0;
-      const projects = cache.get(String(session.sessionId))?.projects ?? [];
-      const target = directoryTarget(projects, request.query);
-      if (target === null) return void 0;
-      const root = referenceOf(target.project.path, false);
-      const dir = referenceOf(target.dir, false);
-      const crumbs = [
-        { label: target.project.name, value: drillValue(target.project.name, root) }
-      ];
-      const rest = dir.slice(root.length).replace(/^\/+/, "");
-      if (rest !== "") {
-        const segments = rest.split("/");
-        for (const [index, segment] of segments.entries()) {
-          const path = root + "/" + segments.slice(0, index + 1).join("/");
-          crumbs.push({ label: segment, value: drillValue(segment, path) });
-        }
-      }
-      const last = crumbs[crumbs.length - 1];
-      if (last === void 0) return crumbs;
-      return [...crumbs.slice(0, -1), { ...last, current: true }];
     },
     /* 在 warm 时预取，这样会话中的第一个 `@` 不必再等一次往返。 */
     warm(session) {

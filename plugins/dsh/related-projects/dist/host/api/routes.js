@@ -11,7 +11,7 @@
  */
 import { RegistryError } from '../shared/errors.js';
 import { normalizePath } from '../shared/paths.js';
-import { directoryTarget, listDirectory, searchProjects } from '../files/service.js';
+import { directoryTarget } from '../files/service.js';
 import { boundaryText, describeUpdate, sectionText } from '../prompt/text.js';
 import { canonicalWorkspace, nativePicker, sandboxModeOf, sessionOf, workspaceOfSession, workspaceRows } from '../workspace/service.js';
 function str(value) {
@@ -25,7 +25,7 @@ function rootsOf(registry, workspace) {
     return registry.readable(workspace).present.map((project) => ({ path: project.path, name: project.name }));
 }
 export function createHandlers(deps) {
-    const { ctx, registry, sessions } = deps;
+    const { ctx, registry, sessions, files } = deps;
     /**
      * 目标 workspace：显式路径优先（面板知道路径），否则由会话解析（composer 行
      * 只知道自己）。两者都需要，因为只靠猜会为一个还没有分组的 workspace 报出
@@ -63,15 +63,15 @@ export function createHandlers(deps) {
         },
         /* related projects 里的文件，供 `@` 菜单使用：内置的文件源受 Agent 工作目录限制，
            而这些项目是它之外的兄弟目录。只读且有上限——见 files/service.ts。 */
-        async files(payload) {
+        async files(payload, signal) {
             const query = str(payload.query);
             if (query.trim() === '')
                 return { rows: [] };
-            return { rows: searchProjects(rootsOf(registry, workspaceOf(payload)), query, limitOf(payload)) };
+            return { rows: await files.search(rootsOf(registry, workspaceOf(payload)), query, limitOf(payload), signal) };
         },
         /* 一次下钻：该目录必须位于此 workspace 的某个 related project 之内，
            然后列出它的子项（见 `directoryTarget`）。 */
-        async list(payload) {
+        async list(payload, signal) {
             const dir = normalizePath(str(payload.dir));
             if (dir === '')
                 throw new RegistryError('not-directory');
@@ -80,7 +80,7 @@ export function createHandlers(deps) {
                一个里面，UI 必须能区分这两种情况。 */
             if (target === null)
                 throw new RegistryError('outside-project');
-            return listDirectory(target.root, target.rel, str(payload.filter), limitOf(payload));
+            return files.list(target.root, target.rel, str(payload.filter), limitOf(payload), signal);
         },
         async add(payload) {
             const workspace = requireWorkspace(payload);
@@ -102,7 +102,11 @@ export function createHandlers(deps) {
         },
         async remove(payload) {
             const workspace = requireWorkspace(payload);
+            /* 删之前先记下路径：它的索引也要跟着走，否则内存里会留一份没人认领的条目。 */
+            const target = registry.findProject(workspace, payload.id);
             const name = registry.remove(workspace, payload.id);
+            if (target !== undefined)
+                files.forget(target.path);
             announce(workspace, 'removed ' + name, payload.notify);
             return { removed: name };
         },

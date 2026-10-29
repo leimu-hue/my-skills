@@ -4,10 +4,13 @@
  * 源本身刻意保持精简——契约由 `dsh-client-ui-input-trigger` 定义（见
  * `InputTriggerSource`），查询解析在 `query.ts`，行形状在 `rows.ts`。留在这里的
  * 是状态：每个会话一份项目列表缓存，以及菜单需要的几个回调。
+ *
+ * 刻意不实现 `header`：菜单按源各渲染一份面包屑，而随附的文件源（`reference`）
+ * 对任何带 `/` 的查询都会发布自己的那一份——下钻时用户会看到两条指向同一个
+ * 目录的路径。下钻仍然由行的 `drill` 提供，项目身份则写进每一行的描述里。
  */
 import type {
   InputTriggerCandidate,
-  InputTriggerCrumb,
   InputTriggerSource,
   PickOutcome,
 } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
@@ -16,7 +19,7 @@ import { atToken, referenceOf } from '../core/reference.js'
 import type { Translate } from '../i18n/index.js'
 import type { FileHit, ProjectView, StateValue } from '../core/types.js'
 import { directoryTarget, rankProjects } from './query.js'
-import { drillValue, levelRows, parseRowValue, projectRows } from './rows.js'
+import { levelRows, parseRowValue, projectRows } from './rows.js'
 
 /**
  * 稳定的源标识。管线依据 `name` 把恢复后的 chip 路由回它的源，
@@ -108,40 +111,14 @@ export function createTriggerSource(t: Translate): InputTriggerSource {
       return request.signal.aborted ? [] : rows
     },
 
-    /* drill 位置的面包屑：先是项目，然后是每一级目录段。
-       只在菜单确实由 drill 打开时发布，与随附源限定其 header 的方式一致。 */
-    header(session, request): readonly InputTriggerCrumb[] | undefined {
-      if (request.drilled !== true) return undefined
-      const projects = cache.get(String(session.sessionId))?.projects ?? []
-      const target = directoryTarget(projects, request.query)
-      if (target === null) return undefined
-      const root = referenceOf(target.project.path, false)
-      const dir = referenceOf(target.dir, false)
-      const crumbs: InputTriggerCrumb[] = [
-        { label: target.project.name, value: drillValue(target.project.name, root) },
-      ]
-      const rest = dir.slice(root.length).replace(/^\/+/, '')
-      if (rest !== '') {
-        const segments = rest.split('/')
-        for (const [index, segment] of segments.entries()) {
-          const path = root + '/' + segments.slice(0, index + 1).join('/')
-          crumbs.push({ label: segment, value: drillValue(segment, path) })
-        }
-      }
-      /* 最深的面包屑就是用户当前所在的位置。 */
-      const last = crumbs[crumbs.length - 1]
-      if (last === undefined) return crumbs
-      return [...crumbs.slice(0, -1), { ...last, current: true }]
-    },
-
     /* 在 warm 时预取，这样会话中的第一个 `@` 不必再等一次往返。 */
     warm(session) {
       void load(String(session.sessionId)).catch(() => undefined)
     },
 
     onPick(pick): PickOutcome {
-      /* 行的不透明 `value` 携带精确路径——与随附文件源使用同一契约。
-         恢复时缺少它的行会回退到描述开头的路径，而描述开头始终是项目路径。 */
+      /* 行的不透明 `value` 携带精确路径——与随附文件源使用同一契约。项目行
+         之外的行一定带 value，而项目行的描述以绝对路径开头。 */
       const payload = parseRowValue(pick.candidate.value)
       const fromDescription = (pick.candidate.description ?? '').split('  ·  ')[0]
       const absolute = payload?.mention ?? referenceOf(fromDescription, true)
