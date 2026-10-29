@@ -100,12 +100,12 @@ interface Generation {
 }
 
 /** 一层目录的答案：行 + 是否被行数上限截断。 */
-export interface DirectoryListing {
+interface DirectoryListing {
   rows: FileHit[]
   truncated: boolean
 }
 
-export function defaultFileSearchConfig(): FileSearchConfig {
+function defaultFileSearchConfig(): FileSearchConfig {
   return {
     maxResults: DEFAULT_FILE_SEARCH_MAX_RESULTS,
     maxEntries: DEFAULT_FILE_SEARCH_MAX_ENTRIES,
@@ -131,7 +131,8 @@ function kindRank(kind: FileHit['kind']): number {
 }
 
 function clampLimit(limit: number | undefined, max: number): number {
-  return Math.min(Math.max(limit ?? max, 1), max)
+  if (limit === undefined || !Number.isFinite(limit)) return max
+  return Math.min(Math.max(Math.floor(limit), 1), max)
 }
 
 function abortError(signal: AbortSignal): Error {
@@ -282,8 +283,9 @@ function validateConfig(config: FileSearchConfig): void {
  * 一个项目根目录上的有界索引，语义对齐自带的 `WorkspaceFileSearch`：
  * 可取消、可复用、过期不阻塞。目录内的查询读实时状态，裸查询共用这一份遍历。
  */
-export class ProjectFileSearch {
-  private readonly root: ProjectRoot
+class ProjectFileSearch {
+  /** 只用于取显示名与拼绝对路径；名字会改，所以不是 `readonly`。 */
+  private root: ProjectRoot
   private readonly config: FileSearchConfig
   private readonly excluded: Set<string>
   private settled: Settled | undefined
@@ -351,6 +353,11 @@ export class ProjectFileSearch {
     }
     rows.sort(compare)
     return { rows: rows.slice(0, capped).map(strip), truncated: matched > capped }
+  }
+
+  /** 项目改名了：索引与路径都不变，只有行上的项目名要跟上。 */
+  rename(project: ProjectRoot): void {
+    this.root = project
   }
 
   /**
@@ -515,7 +522,10 @@ export class FileSearch {
   private searchOf(project: ProjectRoot): ProjectFileSearch {
     const key = workspaceKey(project.path)
     const existing = this.searches.get(key)
-    if (existing !== undefined) return existing
+    if (existing !== undefined) {
+      existing.rename(project)
+      return existing
+    }
     const created = new ProjectFileSearch(project, this.config)
     this.searches.set(key, created)
     return created

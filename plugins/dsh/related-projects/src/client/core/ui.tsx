@@ -63,7 +63,6 @@ export function ConfirmButton(props: {
         <button
           type='button'
           className='rprj-btn rprj-btn-danger'
-          autoFocus
           onClick={() => {
             setArmed(false)
             props.onConfirm()
@@ -71,7 +70,7 @@ export function ConfirmButton(props: {
         >
           {props.confirmLabel}
         </button>
-        <button type='button' className='rprj-btn' onClick={() => setArmed(false)}>
+        <button type='button' className='rprj-btn' autoFocus onClick={() => setArmed(false)}>
           {props.cancelLabel}
         </button>
       </span>

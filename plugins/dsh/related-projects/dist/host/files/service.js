@@ -40,7 +40,7 @@ export const DEFAULT_FILE_SEARCH_EXCLUDED_DIRECTORIES = [
  * 没有事件可听，所以过期超过这个间隔的索引会在下一次查询时后台重建。
  */
 const REFRESH_AFTER_MS = 15_000;
-export function defaultFileSearchConfig() {
+function defaultFileSearchConfig() {
     return {
         maxResults: DEFAULT_FILE_SEARCH_MAX_RESULTS,
         maxEntries: DEFAULT_FILE_SEARCH_MAX_ENTRIES,
@@ -61,7 +61,9 @@ function kindRank(kind) {
     return kind === 'directory' ? 0 : 1;
 }
 function clampLimit(limit, max) {
-    return Math.min(Math.max(limit ?? max, 1), max);
+    if (limit === undefined || !Number.isFinite(limit))
+        return max;
+    return Math.min(Math.max(Math.floor(limit), 1), max);
 }
 function abortError(signal) {
     return signal.reason instanceof Error ? signal.reason : new Error('file search aborted');
@@ -200,7 +202,8 @@ function validateConfig(config) {
  * 一个项目根目录上的有界索引，语义对齐自带的 `WorkspaceFileSearch`：
  * 可取消、可复用、过期不阻塞。目录内的查询读实时状态，裸查询共用这一份遍历。
  */
-export class ProjectFileSearch {
+class ProjectFileSearch {
+    /** 只用于取显示名与拼绝对路径；名字会改，所以不是 `readonly`。 */
     root;
     config;
     excluded;
@@ -275,6 +278,10 @@ export class ProjectFileSearch {
         }
         rows.sort(compare);
         return { rows: rows.slice(0, capped).map(strip), truncated: matched > capped };
+    }
+    /** 项目改名了：索引与路径都不变，只有行上的项目名要跟上。 */
+    rename(project) {
+        this.root = project;
     }
     /**
      * 标记过期。旧条目继续作答：一次重建是一整棵树，把它摆在光标前面
@@ -437,8 +444,10 @@ export class FileSearch {
     searchOf(project) {
         const key = workspaceKey(project.path);
         const existing = this.searches.get(key);
-        if (existing !== undefined)
+        if (existing !== undefined) {
+            existing.rename(project);
             return existing;
+        }
         const created = new ProjectFileSearch(project, this.config);
         this.searches.set(key, created);
         return created;

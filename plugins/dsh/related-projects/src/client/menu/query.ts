@@ -8,9 +8,8 @@
 import { slashPath } from '../core/reference.js'
 import type { ProjectView } from '../core/types.js'
 
-/** 一个 drill 后的位置：哪个项目、哪个目录，以及在其最后一个 `/` 之后输入的文本。 */
-export interface DirectoryTarget {
-  project: ProjectView
+/** 一个 drill 后的位置：哪个目录，以及在其最后一个 `/` 之后输入的文本。 */
+interface DirectoryTarget {
   dir: string
   filter: string
 }
@@ -43,7 +42,7 @@ export function directoryTarget(projects: ProjectView[], query: string): Directo
     const root = slashPath(project.path)
     const rootLower = root.toLowerCase()
     if (headLower === rootLower + '/' || headLower.startsWith(rootLower + '/')) {
-      return { project, dir: root + head.slice(root.length), filter }
+      return { dir: root + head.slice(root.length), filter }
     }
   }
   /* 项目相对写法：`my-app/src/`——一个有名字的目录段。 */
@@ -52,7 +51,7 @@ export function directoryTarget(projects: ProjectView[], query: string): Directo
   const named = projects.find((project) => project.name.toLowerCase() === first.toLowerCase())
   if (named === undefined) return null
   const root = slashPath(named.path)
-  return { project: named, dir: root + head.slice(first.length), filter }
+  return { dir: root + head.slice(first.length), filter }
 }
 
 /**

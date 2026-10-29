@@ -225,7 +225,6 @@ function Popover(props: {
           {project.note === '' ? null : <span className='rprj-popover-note'>{project.note}</span>}
         </button>
       ))}
-      <div className='rprj-popover-foot'>{t('dock.applies')}</div>
     </div>
   )
 }

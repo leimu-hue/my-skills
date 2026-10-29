@@ -286,6 +286,25 @@ test('files: the same relative path in two projects stays distinguishable', asyn
   }
 })
 
+test('files: a reused index follows a renamed project, and a fractional limit does not crash', async () => {
+  const box = sandbox()
+  try {
+    const files = new FileSearch()
+    const before = await files.search([{ path: box.proj, name: 'before' }], 'index')
+    assert.equal(before[0].project, 'before')
+
+    /* 同一路径再次查询会复用那份索引：行上的项目名要跟着注册表走，不能留在旧值。 */
+    const after = await files.search([{ path: box.proj, name: 'after' }], 'index')
+    assert.equal(after[0].project, 'after')
+
+    /* limit 来自请求体，可能不是正整数：先取整再封顶，不能让 rows.length 变成小数。 */
+    assert.equal((await files.search([{ path: box.proj, name: 'after' }], 'index', 2.5)).length, 1)
+    assert.equal((await files.search([{ path: box.proj, name: 'after' }], 'index', 0)).length, 1)
+  } finally {
+    box.dispose()
+  }
+})
+
 test('files: one level is read live, never walked outside the project', async () => {
   const box = sandbox()
   try {

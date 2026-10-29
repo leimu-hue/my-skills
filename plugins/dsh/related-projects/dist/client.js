@@ -57,19 +57,23 @@ var CSS = `
 .rprj-popover-path{font-size:11px;color:var(--dsw-alias-label-secondary);word-break:break-all}
 .rprj-popover-note{font-size:11px;color:var(--dsw-alias-label-secondary);opacity:.85;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .rprj-popover-missing{font-size:11px;color:var(--dsw-alias-state-error-primary)}
-.rprj-popover-foot{padding:8px 4px 2px;font-size:11px;color:var(--dsw-alias-label-secondary);border-top:1px solid var(--dsw-alias-border-l1);margin-top:6px}
 .rprj-panel{display:flex;flex-direction:column;gap:14px;padding:20px 24px;width:100%;box-sizing:border-box;min-width:0;height:100%;overflow:auto;overscroll-behavior:contain;color:var(--dsw-alias-label-primary);font-size:13px}
 [data-platform=darwin] .rprj-panel{padding-top:calc(20px + var(--dsh-frame-top-clearance,0px))}
 .rprj-panel-head{display:flex;flex-direction:column;gap:4px}
 .rprj-title{font-size:16px;font-weight:600;margin:0;text-wrap:balance}
 .rprj-sub{margin:0;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:1.5;text-wrap:pretty}
-.rprj-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.rprj-select,.rprj-input,.rprj-textarea{background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);border:1px solid var(--dsw-alias-border-l1);border-radius:8px;padding:5px 8px;font-size:12px;font-family:inherit}
+.rprj-select,.rprj-input,.rprj-textarea{background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);border:1px solid transparent;border-radius:8px;padding:6px 8px;font-size:12px;line-height:18px;font-family:inherit;transition:border-color .12s ease,background-color .12s ease,box-shadow .12s ease}
+.rprj-select:hover,.rprj-input:hover,.rprj-textarea:hover{border-color:var(--dsw-alias-border-l1)}
+/* \u7126\u70B9\uFF1A\u8FB9\u6846\u8F6C\u54C1\u724C\u8272 + \u4E00\u5708\u6DE1\u8272\u5916\u73AF\uFF0C\u8FD9\u5C31\u662F\u66FF\u4EE3 outline \u7684\u7126\u70B9\u6307\u793A\u3002
+   2px \u767D\u73AF\u5728\u6574\u5BBD\u8F93\u5165\u6846\u4E0A\u53C8\u4EAE\u53C8\u8DF3\uFF08\u5C24\u5176\u6697\u8272\u4E3B\u9898\uFF09\uFF0C\u6240\u4EE5\u4E0D\u7528 outline\u3002 */
+.rprj-select:focus,.rprj-input:focus,.rprj-textarea:focus{outline:none;border-color:var(--dsw-alias-brand-primary);background:var(--dsw-alias-bg-layer-1);box-shadow:0 0 0 3px color-mix(in srgb,var(--dsw-alias-brand-primary) 22%,transparent)}
 .rprj-select{max-width:420px}
-.rprj-input:focus,.rprj-textarea:focus,.rprj-select:focus{outline:none;border-color:var(--dsw-alias-brand-primary)}
-.rprj-input-grow{flex:1 1 260px}
-.rprj-input-name{width:180px;font-weight:600}
-.rprj-textarea{width:100%;resize:vertical;line-height:1.5}
+/* \u540D\u79F0\u662F\u884C\u5361\u7247\u91CC\u7684\u6807\u9898\uFF1A\u5E73\u65F6\u8BFB\u4F5C\u6587\u5B57\uFF0C\u6307\u4E0A\u53BB\u624D\u663E\u51FA\u5B83\u662F\u4E00\u4E2A\u53EF\u7F16\u8F91\u6846\u3002 */
+.rprj-input-name{flex:1 1 160px;min-width:0;width:auto;margin-left:-6px;padding:4px 6px;font-size:13px;font-weight:600;background:transparent}
+/* \u6307\u4E0A\u53BB\u6D6E\u51FA\u4E00\u5757\u5E95\u8272\uFF1A\u540D\u79F0\u5E73\u65F6\u8BFB\u4F5C\u6807\u9898\uFF0C\u4F46\u5F97\u770B\u5F97\u51FA\u53EF\u6539\u3002\u805A\u7126\u65F6\u4E0D\u53E0\u8FD9\u5C42\uFF0C
+   \u5426\u5219\u540C\u6837\u7279\u5F02\u6027\u7684 hover \u8FB9\u6846\u4F1A\u76D6\u6389\u7126\u70B9\u8272\u3002 */
+.rprj-input-name:hover:not(:focus){border-color:transparent;background:var(--dsw-alias-bg-layer-2)}
+.rprj-textarea{width:100%;resize:vertical;line-height:1.55;background:transparent}
 .rprj-btn{border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);border-radius:8px;padding:4px 10px;font-size:12px;cursor:pointer;line-height:18px}
 .rprj-btn:hover{border-color:var(--dsw-alias-border-l2)}
 .rprj-btn:disabled{opacity:.5;cursor:default}
@@ -88,6 +92,8 @@ var CSS = `
 .rprj-grow{flex:1 1 auto}
 .rprj-toggle{width:34px;height:20px;border-radius:999px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-2);position:relative;cursor:pointer;padding:0;flex:0 0 auto}
 .rprj-toggle[aria-checked=true]{border-color:var(--dsw-alias-brand-primary)}
+.rprj-toggle:hover{border-color:var(--dsw-alias-label-secondary)}
+.rprj-toggle[aria-checked=true]:hover{border-color:var(--dsw-alias-brand-primary)}
 .rprj-toggle-knob{position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:var(--dsw-alias-label-secondary);transition:transform .15s ease,background-color .15s ease}
 .rprj-toggle[aria-checked=true] .rprj-toggle-knob{transform:translateX(14px);background:var(--dsw-alias-brand-primary)}
 .rprj-btn-delete:hover{background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 12%,transparent);border-color:color-mix(in srgb,var(--dsw-alias-state-error-primary) 45%,transparent);color:var(--dsw-alias-state-error-primary)}
@@ -108,9 +114,7 @@ var CSS = `
 .rprj-ws-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end;flex:0 0 auto}
 .rprj-ws-count{font-size:11px;color:var(--dsw-alias-label-secondary);white-space:nowrap;font-variant-numeric:tabular-nums}
 .rprj-ws-warn{font-size:11px;color:var(--dsw-alias-state-warn-primary)}
-.rprj-ws-manual{margin-top:2px}
 .rprj-select-copy{max-width:200px}
-.rprj-row-add{align-self:flex-start}
 .rprj-empty{border:1px dashed var(--dsw-alias-border-l2);border-radius:10px;padding:18px;text-align:center}
 .rprj-muted{color:var(--dsw-alias-label-secondary);font-size:12px;margin:0}
 .rprj-error{color:var(--dsw-alias-state-error-primary);font-size:12px}
@@ -122,9 +126,10 @@ var CSS = `
   .rprj-confirm{animation:none}
   .rprj-toggle-knob{transition:none}
 }
-/* \u53EF\u4EA4\u4E92\u5143\u7D20\uFF1A\u53BB\u6389\u53CC\u51FB\u7F29\u653E\u5EF6\u8FDF\u4E0E\u70B9\u51FB\u9AD8\u4EAE\uFF0C\u7126\u70B9\u73AF\u53EA\u5728\u952E\u76D8\u5BFC\u822A\u65F6\u51FA\u73B0\u3002 */
+/* \u53EF\u4EA4\u4E92\u5143\u7D20\uFF1A\u53BB\u6389\u53CC\u51FB\u7F29\u653E\u5EF6\u8FDF\u4E0E\u70B9\u51FB\u9AD8\u4EAE\u3002\u6309\u94AE\u7C7B\u7528 focus-visible \u7126\u70B9\u73AF\uFF1B
+   \u8F93\u5165\u7C7B\u81EA\u5DF1\u5E26\u54C1\u724C\u8272\u8FB9\u6846 + \u6DE1\u5916\u73AF\uFF0C\u6240\u4EE5\u4E0D\u5728\u8FD9\u91CC\u518D\u52A0\u4E00\u5708 outline\u3002 */
 .rprj-dock-label,.rprj-dock-add,.rprj-icon-btn,.rprj-btn,.rprj-toggle,.rprj-ws-toggle,.rprj-popover-row,.rprj-select,.rprj-input,.rprj-textarea{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
-.rprj-dock-label:focus-visible,.rprj-dock-add:focus-visible,.rprj-icon-btn:focus-visible,.rprj-btn:focus-visible,.rprj-toggle:focus-visible,.rprj-ws-toggle:focus-visible,.rprj-popover-row:focus-visible,.rprj-select:focus-visible,.rprj-input:focus-visible,.rprj-textarea:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}
+.rprj-dock-label:focus-visible,.rprj-dock-add:focus-visible,.rprj-icon-btn:focus-visible,.rprj-btn:focus-visible,.rprj-toggle:focus-visible,.rprj-ws-toggle:focus-visible,.rprj-popover-row:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}
 /* \u7EC4\u5408\u63A7\u4EF6\u7528 focus-within \u63D0\u793A\uFF1A\u6574\u884C/\u6574\u5361\u90FD\u662F\u540C\u4E00\u4E2A\u7F16\u8F91\u5BF9\u8C61\u3002 */
 .rprj-row:focus-within,.rprj-ws:focus-within{border-color:var(--dsw-alias-border-l2)}
 `;
@@ -134,9 +139,6 @@ var ZH_COMMON = {
   "common.cancel": "\u53D6\u6D88",
   "common.close": "\u5173\u95ED",
   "common.loading": "\u52A0\u8F7D\u4E2D\u2026",
-  "manual.title": "\u624B\u52A8\u8F93\u5165\u8DEF\u5F84",
-  "manual.placeholder": "D:\\other\\project",
-  "manual.ok": "\u786E\u5B9A",
   "error.generic": "\u64CD\u4F5C\u5931\u8D25",
   "error.not-directory": "\u8DEF\u5F84\u4E0D\u5B58\u5728\u6216\u4E0D\u662F\u76EE\u5F55\u3002",
   "error.root": "\u4E0D\u80FD\u628A\u78C1\u76D8\u6839\u76EE\u5F55\u8BBE\u4E3A\u5173\u8054\u9879\u76EE\u3002",
@@ -147,7 +149,7 @@ var ZH_COMMON = {
   "error.no-group": "\u8FD9\u4E2A\u5DE5\u4F5C\u533A\u8FD8\u6CA1\u6709\u5173\u8054\u9879\u76EE\u3002",
   "error.no-project": "\u8FD9\u4E2A\u9879\u76EE\u5DF2\u7ECF\u4E0D\u5728\u5217\u8868\u91CC\u4E86\uFF0C\u8BF7\u5237\u65B0\u3002",
   "error.outside-project": "\u8FD9\u4E2A\u76EE\u5F55\u4E0D\u5728\u4EFB\u4F55\u5173\u8054\u9879\u76EE\u5185\u3002",
-  "error.pick-unavailable": "\u76EE\u5F55\u9009\u62E9\u5668\u4E0D\u53EF\u7528\uFF0C\u8BF7\u624B\u52A8\u8F93\u5165\u8DEF\u5F84\u3002",
+  "error.pick-unavailable": "\u8FD9\u4E2A\u5BBF\u4E3B\u6CA1\u6709\u76EE\u5F55\u9009\u62E9\u5668\uFF0C\u65E0\u6CD5\u4ECE\u754C\u9762\u6DFB\u52A0\u9879\u76EE\uFF1B\u53EF\u4EE5\u8BA9 Agent \u7528 related_projects \u5DE5\u5177\u6DFB\u52A0\u3002",
   "error.bad-json": "\u8BF7\u6C42\u683C\u5F0F\u4E0D\u5BF9\u3002",
   "error.too-large": "\u8BF7\u6C42\u5185\u5BB9\u8FC7\u5927\u3002",
   "error.transport": "\u8BF7\u6C42\u4F20\u8F93\u4E2D\u65AD\u3002",
@@ -162,9 +164,6 @@ var EN_COMMON = {
   "common.cancel": "Cancel",
   "common.close": "Close",
   "common.loading": "Loading\u2026",
-  "manual.title": "Type a path",
-  "manual.placeholder": "D:\\other\\project",
-  "manual.ok": "OK",
   "error.generic": "Operation failed",
   "error.not-directory": "The path does not exist or is not a directory.",
   "error.root": "A drive root cannot be a related project.",
@@ -175,7 +174,7 @@ var EN_COMMON = {
   "error.no-group": "This workspace has no related projects yet.",
   "error.no-project": "That project is no longer in the list; reload.",
   "error.outside-project": "That directory is not inside any related project.",
-  "error.pick-unavailable": "The directory picker is unavailable; type the path instead.",
+  "error.pick-unavailable": "This host has no directory picker, so the UI cannot add a project; have the agent add one with the related_projects tool.",
   "error.bad-json": "The request body is not valid JSON.",
   "error.too-large": "The request body is too large.",
   "error.transport": "The request was interrupted.",
@@ -249,7 +248,7 @@ var EN_PANEL = {
   "panel.name": "Name",
   "panel.namePlaceholder": "Name",
   "panel.note": "Note",
-  "panel.notePlaceholder": "When does this project need a change? (<=200 chars)",
+  "panel.notePlaceholder": "When does this project need a change? (\u2264200 chars)",
   "panel.enabled": "Enabled",
   "panel.delete": "Delete",
   "panel.deleteConfirm": "Delete \u201C{name}\u201D? Its note goes too, unrecoverable",
@@ -484,7 +483,6 @@ function ConfirmButton(props) {
         {
           type: "button",
           className: "rprj-btn rprj-btn-danger",
-          autoFocus: true,
           onClick: () => {
             setArmed(false);
             props.onConfirm();
@@ -492,7 +490,7 @@ function ConfirmButton(props) {
           children: props.confirmLabel
         }
       ),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", className: "rprj-btn", onClick: () => setArmed(false), children: props.cancelLabel })
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", className: "rprj-btn", autoFocus: true, onClick: () => setArmed(false), children: props.cancelLabel })
     ] });
   }
   return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
@@ -670,8 +668,7 @@ function Popover(props) {
             ]
           },
           project.id
-        )),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "rprj-popover-foot", children: t("dock.applies") })
+        ))
       ]
     }
   );
@@ -788,7 +785,6 @@ function Panel(props) {
   const [expanded, setExpanded] = (0, import_react5.useState)({});
   const [notice, setNotice] = (0, import_react5.useState)(null);
   const [busy, setBusy] = (0, import_react5.useState)(false);
-  const [manualKey, setManualKey] = (0, import_react5.useState)(null);
   (0, import_react5.useEffect)(() => {
     void panelStore.refresh(true);
   }, []);
@@ -818,13 +814,6 @@ function Panel(props) {
     const path = await pickDirectoryPath();
     if (path === null) return;
     await call("add", { workspace: workspace.path, path, notify: true });
-    openSection(workspace);
-  });
-  const submitManual = (workspace, raw) => run(async () => {
-    const text = raw.trim();
-    if (text === "") return;
-    await call("add", { workspace: workspace.path, path: text, notify: true });
-    setManualKey(null);
     openSection(workspace);
   });
   const update = (workspace, project, patch) => mutate("update", {
@@ -920,62 +909,30 @@ function Panel(props) {
       ] })
     ] });
     if (open !== true) return /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("section", { className: "rprj-ws", children: head }, workspace.key);
-    const manualBar = manualKey !== workspace.key ? null : /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
-      ManualPathForm,
-      {
-        t,
-        busy,
-        onSubmit: (text) => {
-          void submitManual(workspace, text);
-        },
-        onCancel: () => setManualKey(null)
-      }
-    );
     const body = workspace.projects.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "rprj-empty", children: [
       /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("p", { children: t("panel.empty") }),
-      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("p", { className: "rprj-muted", children: t("panel.emptyHint") }),
-      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
-        "button",
-        {
-          type: "button",
-          className: "rprj-btn",
-          onClick: () => setManualKey(workspace.key),
-          children: t("manual.title")
-        }
-      )
-    ] }) : /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "rprj-rows", children: [
-      workspace.projects.map((project) => /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
-        ProjectRow,
-        {
-          t,
-          project,
-          busy,
-          nameMax: limits.nameMax,
-          noteMax: limits.noteMax,
-          onUpdate: (patch) => {
-            void update(workspace, project, patch);
-          },
-          onRemove: () => {
-            void remove(workspace, project);
-          },
-          onOpen: () => openProject(workspace, project)
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("p", { className: "rprj-muted", children: t("panel.emptyHint") })
+    ] }) : /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "rprj-rows", children: workspace.projects.map((project) => /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+      ProjectRow,
+      {
+        t,
+        project,
+        busy,
+        nameMax: limits.nameMax,
+        noteMax: limits.noteMax,
+        onUpdate: (patch) => {
+          void update(workspace, project, patch);
         },
-        project.id
-      )),
-      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
-        "button",
-        {
-          type: "button",
-          className: "rprj-btn rprj-btn-quiet rprj-row-add",
-          onClick: () => setManualKey(workspace.key),
-          children: t("manual.title")
-        }
-      )
-    ] });
+        onRemove: () => {
+          void remove(workspace, project);
+        },
+        onOpen: () => openProject(workspace, project)
+      },
+      project.id
+    )) });
     return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("section", { className: "rprj-ws", children: [
       head,
       workspace.registered !== true ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "rprj-ws-warn", children: t("panel.unregistered") }) : null,
-      manualBar,
       body
     ] }, workspace.key);
   });
@@ -1002,45 +959,6 @@ function Panel(props) {
       )
     ] })
   ] });
-}
-function ManualPathForm(props) {
-  const [text, setText] = (0, import_react5.useState)("");
-  return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(
-    "form",
-    {
-      className: "rprj-bar rprj-ws-manual",
-      onSubmit: (event) => {
-        event.preventDefault();
-        props.onSubmit(text);
-      },
-      children: [
-        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
-          "input",
-          {
-            className: "rprj-input rprj-input-grow",
-            name: "related-project-path",
-            value: text,
-            autoFocus: true,
-            autoComplete: "off",
-            spellCheck: false,
-            "aria-label": props.t("manual.title"),
-            placeholder: props.t("manual.placeholder"),
-            onChange: (event) => setText(event.target.value)
-          }
-        ),
-        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
-          "button",
-          {
-            type: "submit",
-            className: "rprj-btn rprj-btn-primary",
-            disabled: props.busy || text.trim() === "",
-            children: props.t("manual.ok")
-          }
-        ),
-        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", className: "rprj-btn rprj-btn-quiet", onClick: props.onCancel, children: props.t("common.cancel") })
-      ]
-    }
-  );
 }
 
 // src/client/panel/icon.tsx
@@ -1092,7 +1010,7 @@ function directoryTarget(projects, query) {
     const root2 = slashPath(project.path);
     const rootLower = root2.toLowerCase();
     if (headLower === rootLower + "/" || headLower.startsWith(rootLower + "/")) {
-      return { project, dir: root2 + head.slice(root2.length), filter };
+      return { dir: root2 + head.slice(root2.length), filter };
     }
   }
   const first = head.split("/")[0] ?? "";
@@ -1100,7 +1018,7 @@ function directoryTarget(projects, query) {
   const named = projects.find((project) => project.name.toLowerCase() === first.toLowerCase());
   if (named === void 0) return null;
   const root = slashPath(named.path);
-  return { project: named, dir: root + head.slice(first.length), filter };
+  return { dir: root + head.slice(first.length), filter };
 }
 function rankProjects(projects, query) {
   const tokens = query.toLowerCase().split(/\s+/).filter((token) => token !== "");

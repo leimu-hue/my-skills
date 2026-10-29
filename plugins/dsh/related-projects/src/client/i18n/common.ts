@@ -1,12 +1,9 @@
-/** 共用文案：通用失败提示、手动输入路径的横条、加载中。 */
+/** 共用文案：通用失败提示、加载中，以及宿主退回来的错误码。 */
 
 export const ZH_COMMON = {
   'common.cancel': '取消',
   'common.close': '关闭',
   'common.loading': '加载中…',
-  'manual.title': '手动输入路径',
-  'manual.placeholder': 'D:\\other\\project',
-  'manual.ok': '确定',
   'error.generic': '操作失败',
   'error.not-directory': '路径不存在或不是目录。',
   'error.root': '不能把磁盘根目录设为关联项目。',
@@ -17,7 +14,7 @@ export const ZH_COMMON = {
   'error.no-group': '这个工作区还没有关联项目。',
   'error.no-project': '这个项目已经不在列表里了，请刷新。',
   'error.outside-project': '这个目录不在任何关联项目内。',
-  'error.pick-unavailable': '目录选择器不可用，请手动输入路径。',
+  'error.pick-unavailable': '这个宿主没有目录选择器，无法从界面添加项目；可以让 Agent 用 related_projects 工具添加。',
   'error.bad-json': '请求格式不对。',
   'error.too-large': '请求内容过大。',
   'error.transport': '请求传输中断。',
@@ -33,9 +30,6 @@ export const EN_COMMON: Record<keyof typeof ZH_COMMON, string> = {
   'common.cancel': 'Cancel',
   'common.close': 'Close',
   'common.loading': 'Loading…',
-  'manual.title': 'Type a path',
-  'manual.placeholder': 'D:\\other\\project',
-  'manual.ok': 'OK',
   'error.generic': 'Operation failed',
   'error.not-directory': 'The path does not exist or is not a directory.',
   'error.root': 'A drive root cannot be a related project.',
@@ -46,7 +40,7 @@ export const EN_COMMON: Record<keyof typeof ZH_COMMON, string> = {
   'error.no-group': 'This workspace has no related projects yet.',
   'error.no-project': 'That project is no longer in the list; reload.',
   'error.outside-project': 'That directory is not inside any related project.',
-  'error.pick-unavailable': 'The directory picker is unavailable; type the path instead.',
+  'error.pick-unavailable': 'This host has no directory picker, so the UI cannot add a project; have the agent add one with the related_projects tool.',
   'error.bad-json': 'The request body is not valid JSON.',
   'error.too-large': 'The request body is too large.',
   'error.transport': 'The request was interrupted.',

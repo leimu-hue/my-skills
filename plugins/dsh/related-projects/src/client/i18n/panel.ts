@@ -40,7 +40,7 @@ export const EN_PANEL: Record<keyof typeof ZH_PANEL, string> = {
   'panel.name': 'Name',
   'panel.namePlaceholder': 'Name',
   'panel.note': 'Note',
-  'panel.notePlaceholder': 'When does this project need a change? (<=200 chars)',
+  'panel.notePlaceholder': 'When does this project need a change? (≤200 chars)',
   'panel.enabled': 'Enabled',
   'panel.delete': 'Delete',
   'panel.deleteConfirm': 'Delete “{name}”? Its note goes too, unrecoverable',

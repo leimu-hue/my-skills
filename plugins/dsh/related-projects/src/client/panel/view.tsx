@@ -30,8 +30,6 @@ export function Panel(props: PanelProps): ReactNode {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [notice, setNotice] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  /* 只记「哪一段打开着手动输入」；文本留在表单自己身上，父面板不会逐键重渲染所有行。 */
-  const [manualKey, setManualKey] = useState<string | null>(null)
 
   /* 这个 store 的生命周期长于挂载（它是模块级的），可能已经存有
      本页打开之前拍下的快照：绝不能把那一份显示出来。 */
@@ -72,14 +70,6 @@ export function Panel(props: PanelProps): ReactNode {
     const path = await pickDirectoryPath()
     if (path === null) return
     await call('add', { workspace: workspace.path, path, notify: true })
-    openSection(workspace)
-  })
-
-  const submitManual = (workspace: WorkspaceRow, raw: string) => run(async () => {
-    const text = raw.trim()
-    if (text === '') return
-    await call('add', { workspace: workspace.path, path: text, notify: true })
-    setManualKey(null)
     openSection(workspace)
   })
 
@@ -189,29 +179,13 @@ export function Panel(props: PanelProps): ReactNode {
 
     if (open !== true) return <section className='rprj-ws' key={workspace.key}>{head}</section>
 
-    const manualBar = manualKey !== workspace.key
-      ? null
-      : (
-        <ManualPathForm
-          t={t}
-          busy={busy}
-          onSubmit={(text) => { void submitManual(workspace, text) }}
-          onCancel={() => setManualKey(null)}
-        />
-      )
-
+    /* 空状态不放自己的 CTA：分节头部的「+ 关联项目」就在旁边，再放一个
+       一样的按钮只是重复。手动输路径这条路已经取消——目录选择器覆盖了它。 */
     const body = workspace.projects.length === 0
       ? (
         <div className='rprj-empty'>
           <p>{t('panel.empty')}</p>
           <p className='rprj-muted'>{t('panel.emptyHint')}</p>
-          <button
-            type='button'
-            className='rprj-btn'
-            onClick={() => setManualKey(workspace.key)}
-          >
-            {t('manual.title')}
-          </button>
         </div>
       )
       : (
@@ -233,13 +207,6 @@ export function Panel(props: PanelProps): ReactNode {
               onOpen={() => openProject(workspace, project)}
             />
           ))}
-          <button
-            type='button'
-            className='rprj-btn rprj-btn-quiet rprj-row-add'
-            onClick={() => setManualKey(workspace.key)}
-          >
-            {t('manual.title')}
-          </button>
         </div>
       )
 
@@ -247,7 +214,6 @@ export function Panel(props: PanelProps): ReactNode {
       <section className='rprj-ws' key={workspace.key}>
         {head}
         {workspace.registered !== true ? <div className='rprj-ws-warn'>{t('panel.unregistered')}</div> : null}
-        {manualBar}
         {body}
       </section>
     )
@@ -276,52 +242,5 @@ export function Panel(props: PanelProps): ReactNode {
         />
       </footer>
     </div>
-  )
-}
-
-/**
- * 手动路径输入。文本状态留在表单自己身上：父面板每敲一个字都
- * 重渲染所有项目行，是这一页最没必要的开销。
- *
- * `autoFocus` 在这里是刻意的：它是用户刚点开的那个分节的主输入。
- */
-function ManualPathForm(props: {
-  t: Translate
-  busy: boolean
-  onSubmit(text: string): void
-  onCancel(): void
-}): ReactNode {
-  const [text, setText] = useState('')
-
-  return (
-    <form
-      className='rprj-bar rprj-ws-manual'
-      onSubmit={(event) => {
-        event.preventDefault()
-        props.onSubmit(text)
-      }}
-    >
-      <input
-        className='rprj-input rprj-input-grow'
-        name='related-project-path'
-        value={text}
-        autoFocus
-        autoComplete='off'
-        spellCheck={false}
-        aria-label={props.t('manual.title')}
-        placeholder={props.t('manual.placeholder')}
-        onChange={(event) => setText(event.target.value)}
-      />
-      <button
-        type='submit'
-        className='rprj-btn rprj-btn-primary'
-        disabled={props.busy || text.trim() === ''}
-      >
-        {props.t('manual.ok')}
-      </button>
-      <button type='button' className='rprj-btn rprj-btn-quiet' onClick={props.onCancel}>
-        {props.t('common.cancel')}
-      </button>
-    </form>
   )
 }
