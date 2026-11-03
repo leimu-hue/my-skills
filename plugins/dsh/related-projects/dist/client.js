@@ -790,7 +790,6 @@ function Panel(props) {
   }, []);
   const data = snapshot.data;
   const workspaces = data === null ? [] : data.workspaces;
-  const copied = data === null ? [] : data.groups;
   const limits = data === null ? DEFAULT_LIMITS : data.limits;
   const run = async (task) => {
     setBusy(true);
@@ -855,7 +854,7 @@ function Panel(props) {
   };
   const sections = workspaces.map((workspace) => {
     const open = isOpen(workspace);
-    const targets = copied.filter((group) => group.key !== workspace.key);
+    const targets = workspaces.filter((row) => row.key !== workspace.key && row.registered && row.projects.length < limits.max);
     const head = /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "rprj-ws-head", children: [
       /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
         "button",
@@ -902,7 +901,7 @@ function Panel(props) {
             },
             children: [
               /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("option", { value: "", children: t("panel.copyTo") }),
-              targets.map((group) => /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("option", { value: group.path, children: group.path }, group.key))
+              targets.map((row) => /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("option", { value: row.path, children: row.path }, row.key))
             ]
           }
         ) : null

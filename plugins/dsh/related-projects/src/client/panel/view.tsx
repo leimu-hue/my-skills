@@ -39,7 +39,6 @@ export function Panel(props: PanelProps): ReactNode {
 
   const data = snapshot.data
   const workspaces = data === null ? [] : data.workspaces
-  const copied = data === null ? [] : data.groups
   const limits = data === null ? DEFAULT_LIMITS : data.limits
 
   /* 一次变更 = 刷新所有视图：管理面板与每个已挂载的
@@ -125,7 +124,14 @@ export function Panel(props: PanelProps): ReactNode {
 
   const sections = workspaces.map((workspace) => {
     const open = isOpen(workspace)
-    const targets = copied.filter((group) => group.key !== workspace.key)
+    /* 目标取自工作区列表，而不是注册表里已有的分组：注册表只留「已有项目」的
+       分组，跟着它走的话，只有一个工作区有项目时复制入口就会整块消失——而
+       那正是最需要它的时候（把一组的项目推给 B / C / D）。已不在 DSH 列表里
+       的工作区不作目标：往一个看不见的地方复制没有意义；已经装到上限的也
+       不列，选它只会一个都加不进去。 */
+    const targets = workspaces.filter((row) => (
+      row.key !== workspace.key && row.registered && row.projects.length < limits.max
+    ))
     const head = (
       <div className='rprj-ws-head'>
         <button
@@ -169,7 +175,7 @@ export function Panel(props: PanelProps): ReactNode {
                 }}
               >
                 <option value=''>{t('panel.copyTo')}</option>
-                {targets.map((group) => <option key={group.key} value={group.path}>{group.path}</option>)}
+                {targets.map((row) => <option key={row.key} value={row.path}>{row.path}</option>)}
               </select>
             )
             : null}
