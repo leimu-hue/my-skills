@@ -5,7 +5,7 @@
   "sources": [
     {
       "// name": "来源标识，也用于缓存目录名",
-      "name": "mattpocock-skills",
+      "name": "vercel-labs",
       "repo": "https://github.com/vercel-labs/agent-skills.git",
       "ref": "main",
       "// paths": "写目录=自动同步其下所有技能；写单个技能目录=只同步该技能；也可用 { path, as } 改名",
@@ -19,13 +19,13 @@
     {
       "//": "也可用 agents 预设代替 targets，例如 agents: [\"claude\",\"pi\"]",
       "skills": [
-        "grill-me",
         "doc-generator",
         "rust-coding-guide",
-        "readonly-db-query"
+        "readonly-db-query",
+        "react-best-practices",
+        "web-design-guidelines"
       ],
       "targets": [
-        "~/.pi/agent/skills",
         "~/.agents/skills"
       ]
     }
