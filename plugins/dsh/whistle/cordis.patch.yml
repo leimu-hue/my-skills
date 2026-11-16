@@ -1,0 +1,14 @@
+# Whistle: one Host row, no client bundle.
+#
+# This plugin adds no UI — it only registers `whistle_*` tools for the agent.
+# The defaults below are spelled out on purpose: the Whistle CLI name and the
+# per-call timeout are the two knobs a user actually needs, and an installed
+# profile should not have to read the source to find them.
+- insert:
+    - id: whistle
+      name: '@local/dsh-whistle'
+      config:
+        # `w2` must be on PATH (`npm install -g whistle`); a full path works too.
+        command: w2
+        # Anything slower than this is reported as a timeout instead of hanging the turn.
+        timeoutMs: 20000
