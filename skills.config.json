@@ -20,10 +20,12 @@
       "//": "也可用 agents 预设代替 targets，例如 agents: [\"claude\",\"pi\"]",
       "skills": [
         "doc-generator",
-        "rust-coding-guide",
         "readonly-db-query",
         "react-best-practices",
-        "web-design-guidelines"
+        "web-design-guidelines",
+        "java-coding-standards-lite",
+        "stop-slop-zh",
+        "unit-integration-testing"
       ],
       "targets": [
         "~/.agents/skills"
