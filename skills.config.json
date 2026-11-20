@@ -25,7 +25,8 @@
         "web-design-guidelines",
         "java-coding-standards-lite",
         "stop-slop-zh",
-        "unit-integration-testing"
+        "unit-integration-testing",
+        "jvm-heap-dump-analysis"
       ],
       "targets": [
         "~/.agents/skills"

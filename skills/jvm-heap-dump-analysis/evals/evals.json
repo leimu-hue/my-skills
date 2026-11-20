@@ -1,0 +1,49 @@
+{
+  "skill_name": "jvm-heap-dump-analysis",
+  "//": "assertions 来自 iteration-1/2 实测：前几条任何有经验的执行者都能过，真正有区分度的是关于口径的最后两条（iteration-1 技能版 fail，iteration-2 pass）。",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "服务重启了，运维给了我一个 dump：D:\\custom_project\\xp-xpd-flow\\xp-xpd-flow\\heap_dump_10.129.63.122_1795088997000.hprof，你帮我看看内存是不是有问题，是不是内存把它搞重启的",
+      "expected_output": "先给结论（Java OOM / 容器 OOMKilled / 其他），再给活对象大小、Xmx/Xms、占用 top、判定依据；明确指出缺少 k8s 事件时不能断言 OOMKilled",
+      "assertions": [
+        "明确给出结论：不是 Java 堆 OOM（或明确指出仅凭 dump 无法断定 OOMKilled）",
+        "引用活对象大小（约 1.0 GiB）作为主要依据",
+        "引用 -Xms/-Xmx = 5g/5g 的配置",
+        "给出 RSS 估算或说明需要容器 limit / k8s 事件才能定论",
+        "列出占用 top（MySQL 连接约 333MB 或 Aspose 约 160MB）",
+        "不虚构 k8s 事件（不声称已确认 OOMKilled）",
+        "堆内对象总大小与 MAT 口径一致（活对象 shallow + 索引日志 Removed bytes ≈ 3,160 MiB / 61.7%），不用 HPROF payload 折算"
+      ],
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "这个 hprof 快 5G 了，我就想知道内存到底被谁吃了，给我一个占用排名，最好能说清楚哪些是常驻哪些是临时的",
+      "expected_output": "用 MAT 报告给活对象占用排名（含百分比），再用全量扫描区分活对象与垃圾，指出常驻大头和分配热点",
+      "assertions": [
+        "给出按大小排序的占用排名表",
+        "区分常驻（活对象）与临时（垃圾/分配热点）",
+        "引用具体数字（活对象约 1.0 GiB、对象总数约 8080 万）",
+        "指出至少一个分配热点（byte[] / Object[] / cache2k Sentinel）",
+        "堆内对象总大小用 MAT 口径（≈3,160 MiB / 61.7%），不用 HPROF payload 折算",
+        "Object[] 与 Object[][] 不混淆（Object[] 全量约 324 万且多数存活，Object[][] 仅 9 个）"
+      ],
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "我们的 Spring Boot 服务堆设的 -Xms5g -Xmx5g，pod 内存 limit 6Gi，最近老是 OOMKilled，dump 里活对象才 1G，这合理吗",
+      "expected_output": "指出 Xms==Xmx 导致的 RSS 基线问题，给出 RSS 估算（堆+非堆），说明这是配置与 limit 不匹配而不是泄漏，并给出参数调整建议",
+      "assertions": [
+        "指出这是配置与 limit 不匹配，不是内存泄漏",
+        "给出 RSS 估算（堆 + Metaspace + CodeCache + 线程 + Direct）",
+        "给出具体参数建议（Xms < Xmx 或 MaxRAMPercentage）",
+        "不把 dump 文件大小当堆使用量",
+        "堆占用数字与 MAT 口径一致（≈3,160 MiB / 61.7%）",
+        "用 limit 反推非堆预算（6,144 − 5,120 = 1,024 MiB < Metaspace 800 + CodeCache 256）"
+      ],
+      "files": []
+    }
+  ]
+}
