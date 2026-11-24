@@ -13,6 +13,15 @@
         "skills/react-best-practices",
         "skills/web-design-guidelines"
       ]
+    },
+    {
+      "name": "alibaba-opencode-review",
+      "repo": "https://github.com/alibaba/open-code-review.git",
+      "ref": "main",
+      "// paths": "写目录=自动同步其下所有技能；写单个技能目录=只同步该技能；也可用 { path, as } 改名",
+      "paths": [
+        "skills/open-code-review-delegate"
+      ]
     }
   ],
   "links": [
@@ -26,7 +35,8 @@
         "java-coding-standards-lite",
         "stop-slop-zh",
         "unit-integration-testing",
-        "jvm-heap-dump-analysis"
+        "jvm-heap-dump-analysis",
+        "open-code-review-delegate"
       ],
       "targets": [
         "~/.agents/skills"
