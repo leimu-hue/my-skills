@@ -7,22 +7,31 @@
 - `spec/`：技能规范说明入口
 - `template/`：新 Skill 的基础模板
 - `skills/`：已实现的 Skill 示例（也是同步工具的本地技能目录）
+- `prompts/`：常用提示词文档（项目架构、问题排查等）
+- `plugins/`：插件项目（`dsh/` 下含 related-projects、responses-tool-image-compat、tool-center、whistle 等）
+- `references/`：技能相关的参考文档（如 `caveman-style.md`：Caveman Full 写作规范，精简 token 输出）
 - `sync-skills.mjs`：技能拉取 + 软连接同步脚本
 - `skills.config.json`：同步工具配置文件
-- `references/`：技能相关的参考文档（如 `lumix-lab-apk-analysis/`：LUMIX Lab APK 架构逆向分析）
 
 ## 当前 Skill 列表
 
-| Skill | 说明 |
-|---|---|
-| `doc-generator` | 文档生成器，支持需求规格、概要设计、详细设计等核心文档及完整文档套件 |
-| `java-coding-standards-lite` | Java 编码规范，面向 Spring / MyBatis / JPA / 并发等企业级 Java 项目的轻量规范 |
-| `rust-coding-guide` | Rust 编码与审查指南，涵盖所有权/借用、unsafe、异步/并发、取消安全、错误处理、性能、Trait 设计 |
-| `readonly-db-query` | 只读数据库查询 CLI，支持 SQLite / MySQL / PostgreSQL，三层防护拒绝写操作，多库配置 |
-| `unit-integration-testing` | 单元测试与集成测试，提供可复制模板与 Java/仓颉测试 API 事实 |
-| `skill-creator` | Skill 创建辅助工具，包含评估、打包、改进描述等脚本 |
-| `skill-creator-rule` | 创建、编写、更改技能需要遵守的规约 |
-| `stop-slop-zh` | 去除中文文本里的 AI 生成痕迹，让散文、文案、博客等更自然、更像真人写 |
+> **来源**：`本地` = 仓库内维护；`远端` = 由 `sync-skills.mjs` 从 GitHub 拉取，`.gitignore` 忽略不入库，改动会被下次 `pull` 覆盖。
+> **同步**：`✓` = 配置在 `skills.config.json` 的 `links` 中，执行 `link` 时会软链到 Agent 目录；`-` = 不参与默认同步。
+
+| Skill | 说明 | 来源 | 同步 |
+|---|---|---|---|
+| `doc-generator` | 文档生成器，支持需求规格、概要设计、详细设计等核心文档及完整文档套件 | 本地 | ✓ |
+| `java-coding-standards-lite` | Java 编码规范，面向 Spring / MyBatis / JPA / 并发等企业级 Java 项目的轻量规范 | 本地 | ✓ |
+| `jvm-heap-dump-analysis` | JVM 堆转储分析，配合 Eclipse MAT 批处理 + 全量 HPROF 扫描，按元信息 → 活对象 → 分配构成 → 顶占 → 判定分析 .hprof | 本地 | ✓ |
+| `open-code-review-delegate` | OCR 委派式代码审查，复用宿主 Agent 的模型审查工作区改动 / PR / commit / 分支对比，无需独立 LLM Key | 远端 | ✓ |
+| `react-best-practices` | React / Next.js 性能优化指南（来自 Vercel Engineering），覆盖组件、数据获取、包体优化等 | 远端 | ✓ |
+| `readonly-db-query` | 只读数据库查询 CLI，支持 SQLite / MySQL / PostgreSQL，三层防护拒绝写操作，多库配置 | 本地 | ✓ |
+| `rust-coding-guide` | Rust 编码与审查指南，涵盖所有权/借用、unsafe、异步/并发、取消安全、错误处理、性能、Trait 设计 | 本地 | - |
+| `skill-creator` | Skill 创建辅助工具，包含评估、打包、改进描述等脚本 | 本地 | - |
+| `skill-creator-rule` | 创建、编写、更改技能需要遵守的规约 | 本地 | - |
+| `stop-slop-zh` | 去除中文文本里的 AI 生成痕迹，让散文、文案、博客等更自然、更像真人写 | 本地 | ✓ |
+| `unit-integration-testing` | 单元测试与集成测试，提供可复制模板与 Java/仓颉测试 API 事实 | 本地 | ✓ |
+| `web-design-guidelines` | Web 界面规范审查，对照 Web Interface Guidelines 检查 UI / 可访问性 / UX 设计 | 远端 | ✓ |
 
 ---
 
